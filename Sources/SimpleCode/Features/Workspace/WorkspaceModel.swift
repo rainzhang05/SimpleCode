@@ -358,3 +358,183 @@ final class WorkspaceModel {
         let count = openDocuments.sessions.count
         let previous = openDocuments.sessions[(index + count - 1) % count]
         openDocuments.activate(previous)
+    }
+
+    func showFind() {
+        findReplace.showFind()
+        syncFindBinding()
+    }
+
+    func showReplace() {
+        findReplace.showReplace()
+        syncFindBinding()
+    }
+
+    func findNext() {
+        guard let range = findReplace.findNext() else { return }
+        selectEditorRange(range)
+    }
+
+    func findPrevious() {
+        guard let range = findReplace.findPrevious() else { return }
+        selectEditorRange(range)
+    }
+
+    func replaceCurrent() {
+        guard let session = openDocuments.activeSession else { return }
+        let text = session.textStorage.string
+        guard let result = findReplace.replaceCurrentEdit(in: text, selection: session.selectionRange) else { return }
+        applyTextEdits([result.edit], selection: result.selection, session: session)
+    }
+
+    func replaceAll() {
+        guard let session = openDocuments.activeSession else { return }
+        guard let result = findReplace.replaceAllEdits(in: session.textStorage.string) else { return }
+        applyTextEdits(result.edits, selection: result.selection, session: session)
+    }
+
+    func showGoToLine() {
+        guard let session = openDocuments.activeSession else { return }
+        goToLine.show(currentLine: session.cursorLine)
+    }
+
+    func goToLineOffset(_ offset: Int) {
+        guard openDocuments.activeSession != nil else { return }
+        selectEditorRange(NSRange(location: offset, length: 0))
+        goToLine.dismiss()
+    }
+
+    func syncFileTreeFromSettings() {
+        fileTree.showHiddenFiles = appSettings.files.showHiddenFiles
+        fileTree.userExclusions = appSettings.files.userExclusions
+    }
+
+    func setShowHiddenFiles(_ visible: Bool) async {
+        appSettings.files.showHiddenFiles = visible
+        fileTree.showHiddenFiles = visible
+        await fileTree.refresh()
+    }
+
+    func refreshFileTreeIfSettingsChanged() async {
+        syncFileTreeFromSettings()
+        await fileTree.refresh()
+    }
+
+    func syncFindBinding() {
+        guard let session = openDocuments.activeSession else { return }
+        findReplace.bind(text: session.textStorage.string, selection: session.selectionRange)
+    }
+
+    private func selectEditorRange(_ range: NSRange) {
+        guard let session = openDocuments.activeSession else { return }
+        session.pendingSelectionRange = range
+        session.selectionRange = range
+        let line = session.lineStartIndex.lineNumber(atUTF16Offset: range.location)
+        let lineStart = session.lineStartIndex.lineStartUTF16Offset(forLine: line)
+        session.updateCursor(line: line, column: range.location - lineStart + 1)
+    }
+
+    private func applyEditorText(_ text: String, selection: NSRange, session: EditorDocumentSession) {
+        session.textStorage.setAttributedString(NSAttributedString(string: text))
+        session.lineStartIndex.rebuild(from: text)
+        session.pendingSelectionRange = selection
+        session.selectionRange = selection
+        session.bumpRevision()
+        session.markDirty()
+        findReplace.bind(text: text, selection: selection)
+    }
+
+    func applyEditorCommand(_ result: EditorCommandResult, session: EditorDocumentSession) {
+        applyCommandResult(result, session: session)
+    }
+
+    private func applyCommandResult(_ result: EditorCommandResult, session: EditorDocumentSession) {
+        let selection = result.resultingSelections.first ?? session.selectionRange
+        applyTextEdits(result.edits, selection: selection, session: session)
+    }
+
+    private func applyTextEdits(_ edits: [TextEdit], selection: NSRange, session: EditorDocumentSession) {
+        if !edits.isEmpty {
+            let hadStorageDelegate = session.textStorage.delegate != nil
+            let sortedEdits = edits.sorted { lhs, rhs in
+                if lhs.range.location == rhs.range.location {
+                    return lhs.range.length > rhs.range.length
+                }
+                return lhs.range.location > rhs.range.location
+            }
+            session.textStorage.beginEditing()
+            for edit in sortedEdits where edit.range.location >= 0 && NSMaxRange(edit.range) <= session.textStorage.length {
+                session.textStorage.replaceCharacters(in: edit.range, with: edit.replacement)
+            }
+            session.textStorage.endEditing()
+            session.lineStartIndex.rebuild(from: session.textStorage.string)
+            if !hadStorageDelegate {
+                session.bumpRevision()
+                session.markDirty()
+            }
+        }
+
+        session.pendingSelectionRange = selection
+        session.selectionRange = selection
+        findReplace.bind(text: session.textStorage.string, selection: selection)
+    }
+
+    func activeEditorCommandController(for session: EditorDocumentSession) -> EditorCommandController {
+        EditorCommandController(
+            indentationOptions: IndentationOptions(
+                language: commandLanguage(for: session),
+                usesTabs: !effectiveInsertSpaces(for: session),
+                tabWidth: appSettings.editor.tabWidth
+            ),
+            tabWidth: appSettings.editor.tabWidth,
+            smartPairDeletionEnabled: appSettings.editor.smartPairDeletion
+        )
+    }
+
+    func editorReturnResult(for session: EditorDocumentSession, selection: NSRange) -> EditorCommandResult? {
+        activeEditorCommandController(for: session).returnKey(
+            text: session.textStorage.string,
+            cursorLocation: selection.location
+        )
+    }
+
+    func editorTabResult(for session: EditorDocumentSession, selection: NSRange, shift: Bool) -> EditorCommandResult? {
+        let controller = activeEditorCommandController(for: session)
+        if shift {
+            return controller.outdent(text: session.textStorage.string, selection: selection)
+        }
+        return controller.indent(text: session.textStorage.string, selection: selection)
+    }
+
+    func editorBackspaceResult(for session: EditorDocumentSession, selection: NSRange) -> EditorCommandResult? {
+        activeEditorCommandController(for: session).backspace(text: session.textStorage.string, selection: selection)
+    }
+
+    func editorHomeResult(
+        for session: EditorDocumentSession,
+        selection: NSRange,
+        isSecondPress: Bool,
+        extendSelection: Bool = false
+    ) -> EditorCommandResult? {
+        activeEditorCommandController(for: session).home(
+            text: session.textStorage.string,
+            selection: selection,
+            isSecondPress: isSecondPress,
+            extendSelection: extendSelection
+        )
+    }
+
+    func editorPairInsertResult(
+        for session: EditorDocumentSession,
+        character: Character,
+        selection: NSRange
+    ) -> EditorCommandResult? {
+        activeEditorCommandController(for: session).insertPair(
+            character: character,
+            text: session.textStorage.string,
+            selection: selection,
+            syntaxContext: session.syntaxContext
+        )
+    }
+
+    private func activeCommandController() -> EditorCommandController {
