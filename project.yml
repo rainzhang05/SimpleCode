@@ -1,0 +1,148 @@
+name: SimpleCode
+options:
+  bundleIdPrefix: com.simplecode
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+  xcodeVersion: "26.0"
+
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.13.0
+  SwiftTreeSitter:
+    url: https://github.com/tree-sitter/swift-tree-sitter
+    exactVersion: 0.10.0
+  TreeSitterSwift:
+    url: https://github.com/alex-pinkus/tree-sitter-swift
+    exactVersion: 0.7.3-with-generated-files
+  TreeSitterC:
+    url: https://github.com/tree-sitter/tree-sitter-c
+    exactVersion: 0.24.2
+  TreeSitterCPP:
+    url: https://github.com/tree-sitter/tree-sitter-cpp
+    exactVersion: 0.23.4
+  TreeSitterJSON:
+    url: https://github.com/tree-sitter/tree-sitter-json
+    exactVersion: 0.24.8
+  TreeSitterMarkdown:
+    url: https://github.com/tree-sitter-grammars/tree-sitter-markdown
+    exactVersion: 0.5.3
+  TreeSitterBash:
+    url: https://github.com/tree-sitter/tree-sitter-bash
+    exactVersion: 0.25.1
+
+settings:
+  base:
+    ARCHS: arm64
+    EXCLUDED_ARCHS: x86_64 i386
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    SWIFT_STRICT_CONCURRENCY: complete
+    # Local "Sign to Run Locally" ad-hoc signing. Do not set CODE_SIGNING_ALLOWED=NO
+    # for Debug builds — it produces linker-signed binaries that macOS Gatekeeper
+    # reports as "damaged" when launching SimpleCodeUITests-Runner.
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+
+targets:
+  SimpleCode:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/SimpleCode
+        excludes:
+          - "**/.DS_Store"
+          - "Resources/TreeSitterQueries/**"
+      - path: Sources/SimpleCode/Resources/TreeSitterQueries
+        buildPhase: resources
+        type: folder
+      - path: Assets.xcassets
+        buildPhase: resources
+      - path: README.md
+        buildPhase: resources
+      - path: ACKNOWLEDGMENTS.md
+        buildPhase: resources
+      - path: LICENSE
+        buildPhase: resources
+    dependencies:
+      - package: SwiftTerm
+        product: SwiftTerm
+      - package: SwiftTreeSitter
+        product: SwiftTreeSitter
+      - package: TreeSitterSwift
+        product: TreeSitterSwift
+      - package: TreeSitterC
+        product: TreeSitterC
+      - package: TreeSitterCPP
+        product: TreeSitterCPP
+      - package: TreeSitterJSON
+        product: TreeSitterJSON
+      - package: TreeSitterMarkdown
+        product: TreeSitterMarkdown
+      - package: TreeSitterBash
+        product: TreeSitterBash
+    settings:
+      base:
+        PRODUCT_NAME: SimpleCode
+        PRODUCT_BUNDLE_IDENTIFIER: com.simplecode.app
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSMinimumSystemVersion: "26.0"
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Rain Zhang"
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_ENTITLEMENTS: SimpleCode/SimpleCode.entitlements
+    scheme:
+      testTargets:
+        - SimpleCodeTests
+        - SimpleCodeUITests
+
+  SimpleCodeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/SimpleCodeTests
+    dependencies:
+      - target: SimpleCode
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.simplecode.SimpleCodeTests
+
+  SimpleCodeUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/SimpleCodeUITests
+    resources:
+      - path: Tests/SimpleCodeUITests/Fixtures
+        buildPhase: resources
+        type: folder
+    dependencies:
+      - target: SimpleCode
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.simplecode.SimpleCodeUITests
+        TEST_TARGET_NAME: SimpleCode
+        CODE_SIGN_ENTITLEMENTS: SimpleCode/SimpleCodeUITests.entitlements
+        ENABLE_HARDENED_RUNTIME: NO
+
+schemes:
+  SimpleCode:
+    build:
+      targets:
+        SimpleCode: all
+        SimpleCodeTests: [test]
+        SimpleCodeUITests: [test]
+    test:
+      targets:
+        - SimpleCodeTests
+        - SimpleCodeUITests
