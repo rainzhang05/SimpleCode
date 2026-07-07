@@ -1,1 +1,25 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved.bak
 
+# Xcode
+build/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+**/*.xcodeproj/xcuserdata/
+**/*.xcworkspace/xcuserdata/
+*.xcuserstate
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Keep shared Xcode project data
+!SimpleCode.xcodeproj/project.xcworkspace/xcshareddata/
+!SimpleCode.xcodeproj/xcshareddata/
+
+# macOS
+.DS_Store

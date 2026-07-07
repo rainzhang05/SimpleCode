@@ -1,0 +1,38 @@
+name: Project Generation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  xcodegen:
+    name: Verify generated Xcode project
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s "$DEVELOPER_DIR"
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodebuild -version
+          xcodegen --version
+
+      - name: Regenerate project
+        run: xcodegen generate
+
+      - name: Verify project is current
+        run: git diff --exit-code -- SimpleCode.xcodeproj

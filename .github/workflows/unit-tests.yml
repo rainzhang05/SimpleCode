@@ -1,0 +1,33 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: SimpleCodeTests
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s "$DEVELOPER_DIR"
+
+      - name: Run unit tests
+        run: |
+          xcodebuild \
+            -project SimpleCode.xcodeproj \
+            -scheme SimpleCode \
+            -destination 'platform=macOS,arch=arm64' \
+            -only-testing:SimpleCodeTests \
+            test

@@ -1,0 +1,32 @@
+name: UI Test Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ui-test-build:
+    name: Build UI tests
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s "$DEVELOPER_DIR"
+
+      - name: Build for testing
+        run: |
+          xcodebuild -quiet \
+            -project SimpleCode.xcodeproj \
+            -scheme SimpleCode \
+            -destination 'platform=macOS,arch=arm64' \
+            build-for-testing
