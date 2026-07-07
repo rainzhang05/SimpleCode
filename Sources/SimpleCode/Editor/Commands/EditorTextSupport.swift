@@ -178,3 +178,42 @@ enum EditorTextSupport {
                 return NSRange(location: editStart, length: 0)
             }
             return NSRange(location: editStart + (edit.replacement as NSString).length, length: 0)
+        }
+    }
+
+    static func indentLevel(of whitespace: String, usesTabs: Bool, tabWidth: Int) -> Int {
+        if usesTabs {
+            return whitespace.filter { $0 == "\t" }.count
+                + whitespace.filter { $0 == " " }.count / tabWidth
+        }
+        return whitespace.count / tabWidth
+    }
+
+    static func indentString(level: Int, options: IndentationOptions) -> String {
+        guard level > 0 else { return "" }
+        return String(repeating: options.indentUnit, count: level)
+    }
+
+    static func trimTrailingWhitespace(from line: String) -> String {
+        var result = line
+        while let last = result.unicodeScalars.last, CharacterSet.whitespaces.contains(last) {
+            result.removeLast()
+        }
+        return result
+    }
+
+    static func character(at location: Int, in text: String) -> UInt16? {
+        let ns = nsString(text)
+        guard location >= 0, location < ns.length else { return nil }
+        return ns.character(at: location)
+    }
+
+    static func substring(_ range: NSRange, in text: String) -> String {
+        guard range.length > 0 else { return "" }
+        return nsString(text).substring(with: range)
+    }
+
+    static func rangesOverlap(_ a: NSRange, _ b: NSRange) -> Bool {
+        NSIntersectionRange(a, b).length > 0
+    }
+}
