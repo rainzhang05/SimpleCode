@@ -121,6 +121,11 @@ targets:
     platform: macOS
     sources:
       - path: Tests/SimpleCodeUITests
+        excludes:
+          - "Fixtures/sample.git/objects"
+          - "Fixtures/sample.git/objects/**"
+          - "Fixtures/sample.git/refs"
+          - "Fixtures/sample.git/refs/**"
     resources:
       - path: Tests/SimpleCodeUITests/Fixtures
         buildPhase: resources

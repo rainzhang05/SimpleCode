@@ -552,8 +552,6 @@
 			children = (
 				313951ABB1737549BC86B542 /* hooks */,
 				C81C4482117E3E70F2804D90 /* info */,
-				475833ED499B9C5A068C02F4 /* objects */,
-				D9F1AA9C088CE57C7F1E1315 /* refs */,
 				960E94D362B9436FDCA62598 /* config */,
 				73C08559719BD81703816D45 /* description */,
 				51CCE7DA302B9423D6F6F814 /* HEAD */,
@@ -658,22 +656,6 @@
 			path = SimpleCodeTests;
 			sourceTree = "<group>";
 		};
-		475833ED499B9C5A068C02F4 /* objects */ = {
-			isa = PBXGroup;
-			children = (
-				EE626DD948CA86B1B4C50977 /* info */,
-				81A49FF7B52D249611C8B5A9 /* pack */,
-			);
-			path = objects;
-			sourceTree = "<group>";
-		};
-		501979D5D853A8498CBDFDB3 /* heads */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = heads;
-			sourceTree = "<group>";
-		};
 		51D6DD603B802F5A155CCE74 /* Components */ = {
 			isa = PBXGroup;
 			children = (
@@ -728,13 +710,6 @@
 			path = Workspace;
 			sourceTree = "<group>";
 		};
-		6AF67786CE8B4035EBA30776 /* tags */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = tags;
-			sourceTree = "<group>";
-		};
 		7ECA8F5E8E12257046EB5F0E /* Tests */ = {
 			isa = PBXGroup;
 			children = (
@@ -742,13 +717,6 @@
 				5CE5D309297BC9A35929E849 /* SimpleCodeUITests */,
 			);
 			path = Tests;
-			sourceTree = "<group>";
-		};
-		81A49FF7B52D249611C8B5A9 /* pack */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = pack;
 			sourceTree = "<group>";
 		};
 		9BA1F980597B265E0A152200 /* Fixtures */ = {
@@ -925,15 +893,6 @@
 			path = Git;
 			sourceTree = "<group>";
 		};
-		D9F1AA9C088CE57C7F1E1315 /* refs */ = {
-			isa = PBXGroup;
-			children = (
-				501979D5D853A8498CBDFDB3 /* heads */,
-				6AF67786CE8B4035EBA30776 /* tags */,
-			);
-			path = refs;
-			sourceTree = "<group>";
-		};
 		DC2230607265484F0AC5A732 /* Editor */ = {
 			isa = PBXGroup;
 			children = (
@@ -942,13 +901,6 @@
 				33B701FB48C72127580C25E4 /* Visual */,
 			);
 			path = Editor;
-			sourceTree = "<group>";
-		};
-		EE626DD948CA86B1B4C50977 /* info */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = info;
 			sourceTree = "<group>";
 		};
 		FE2458C5EEB6C830FF55CFFB /* Commands */ = {
