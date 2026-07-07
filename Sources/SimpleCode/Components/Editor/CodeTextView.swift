@@ -178,3 +178,38 @@ final class CodeTextView: NSTextView {
             super.moveToBeginningOfLine(sender)
             return
         }
+        if commandDelegate?.codeTextViewHandleMoveToBeginningOfLine(self, extendSelection: false) == true { return }
+        super.moveToBeginningOfLine(sender)
+    }
+
+    override func moveToBeginningOfLineAndModifySelection(_ sender: Any?) {
+        guard !hasMarkedText() else {
+            super.moveToBeginningOfLineAndModifySelection(sender)
+            return
+        }
+        if commandDelegate?.codeTextViewHandleMoveToBeginningOfLine(self, extendSelection: true) == true { return }
+        super.moveToBeginningOfLineAndModifySelection(sender)
+    }
+
+    override func insertText(_ insertString: Any) {
+        handleInsertText(insertString, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        handleInsertText(insertString, replacementRange: replacementRange)
+    }
+
+    private func handleInsertText(_ insertString: Any, replacementRange: NSRange) {
+        guard !hasMarkedText() else {
+            super.insertText(insertString, replacementRange: replacementRange)
+            return
+        }
+        if let string = insertString as? String,
+           string.count == 1,
+           let character = string.first,
+           commandDelegate?.codeTextView(self, shouldInsertCharacter: character) == true {
+            return
+        }
+        super.insertText(insertString, replacementRange: replacementRange)
+    }
+}
