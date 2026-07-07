@@ -178,3 +178,54 @@ enum LanguageRegistry {
             for name in definition.exactFilenames {
                 map[name.lowercased()] = definition.id
             }
+        }
+        return map
+    }()
+
+    static func definition(for id: LanguageID) -> LanguageDefinition {
+        guard let definition = byID[id] else {
+            preconditionFailure("Missing language definition for \(id.rawValue)")
+        }
+        return definition
+    }
+
+    /// Returns the language definition, applying per-file overrides such as Makefile tab insertion.
+    static func definition(for id: LanguageID, url: URL) -> LanguageDefinition {
+        var definition = self.definition(for: id)
+        if isMakefile(url) {
+            definition = LanguageDefinition(
+                id: definition.id,
+                displayName: definition.displayName,
+                fileExtensions: definition.fileExtensions,
+                exactFilenames: definition.exactFilenames,
+                shebangPatterns: definition.shebangPatterns,
+                lineCommentToken: definition.lineCommentToken,
+                blockComment: definition.blockComment,
+                pairs: definition.pairs,
+                indentProfile: definition.indentProfile,
+                defaultTabWidth: definition.defaultTabWidth,
+                insertSpacesOverride: false,
+                highlightingAvailable: definition.highlightingAvailable,
+                highlighterKind: definition.highlighterKind,
+                treeSitterResourceName: definition.treeSitterResourceName
+            )
+        }
+        return definition
+    }
+
+    static func editingProfile(for id: LanguageID) -> LanguageEditingProfile {
+        LanguageEditingProfile.profile(for: id)
+    }
+
+    static func languageID(forExtension extension: String) -> LanguageID? {
+        extensionMap[`extension`.lowercased()]
+    }
+
+    static func languageID(forExactFilename filename: String) -> LanguageID? {
+        exactFilenameMap[filename.lowercased()]
+    }
+
+    static func isMakefile(_ url: URL) -> Bool {
+        makefileExactFilenames.contains(url.lastPathComponent.lowercased())
+    }
+}
