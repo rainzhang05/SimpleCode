@@ -1,0 +1,100 @@
+import Foundation
+
+struct FileTreeNodeID: Hashable, Sendable {
+    let path: String
+
+    init(url: URL) {
+        self.path = url.standardizedFileURL.path
+    }
+
+    var url: URL { URL(fileURLWithPath: path) }
+}
+
+struct FileTreeChild: Identifiable, Equatable, Sendable {
+    let id: FileTreeNodeID
+    let name: String
+    let url: URL
+    let isDirectory: Bool
+    let isSymlink: Bool
+    let isPackage: Bool
+}
+
+enum FileTreeLoadError: Equatable, Sendable {
+    case permissionDenied
+    case unreadable(String)
+}
+
+struct FileTreeDirectoryListing: Sendable {
+    let url: URL
+    let children: [FileTreeChild]
+    let error: FileTreeLoadError?
+}
+
+actor WorkspaceFileTreeService {
+    func listDirectory(
+        at url: URL,
+        workspaceRoot: URL,
+        showHidden: Bool,
+        userPatterns: [String] = []
+    ) -> FileTreeDirectoryListing {
+        let rootPath = workspaceRoot.standardizedFileURL.path
+        let keys: [URLResourceKey] = [
+            .isDirectoryKey,
+            .isSymbolicLinkKey,
+            .isPackageKey,
+            .isHiddenKey
+        ]
+
+        do {
+            let items = try FileManager.default.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: keys,
+                options: showHidden ? [] : [.skipsHiddenFiles]
+            )
+
+            var children: [FileTreeChild] = []
+            for item in items {
+                let values = try? item.resourceValues(forKeys: Set(keys))
+                let isDirectory = values?.isDirectory ?? false
+                let isSymlink = values?.isSymbolicLink ?? false
+                let name = item.lastPathComponent
+                let itemPath = item.standardizedFileURL.path
+                let relativePath = itemPath.hasPrefix(rootPath + "/")
+                    ? String(itemPath.dropFirst(rootPath.count + 1))
+                    : name
+
+                if isDirectory,
+                   WorkspaceTreeExclusions.shouldExclude(
+                       directoryName: name,
+                       relativePath: relativePath,
+                       isWorkspaceRoot: false,
+                       userPatterns: userPatterns
+                   ) {
+                    continue
+                }
+
+                children.append(FileTreeChild(
+                    id: FileTreeNodeID(url: item),
+                    name: name,
+                    url: item,
+                    isDirectory: isDirectory,
+                    isSymlink: isSymlink,
+                    isPackage: values?.isPackage ?? false
+                ))
+            }
+
+            children.sort { lhs, rhs in
+                if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+
+            return FileTreeDirectoryListing(url: url, children: children, error: nil)
+        } catch {
+            let ns = error as NSError
+            if ns.domain == NSCocoaErrorDomain && ns.code == NSFileReadNoPermissionError {
+                return FileTreeDirectoryListing(url: url, children: [], error: .permissionDenied)
+            }
+            return FileTreeDirectoryListing(url: url, children: [], error: .unreadable(error.localizedDescription))
+        }
+    }
+}
