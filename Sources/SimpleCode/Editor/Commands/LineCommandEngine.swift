@@ -178,3 +178,66 @@ enum LineCommandEngine {
         }
         return EditorCommandResult(edits: edits, resultingSelections: [selection])
     }
+
+    static func insertFinalNewline(text: String) -> EditorCommandResult? {
+        let ns = EditorTextSupport.nsString(text)
+        guard ns.length > 0 else {
+            return EditorCommandResult(
+                edits: [TextEdit(range: NSRange(location: 0, length: 0), replacement: "\n")],
+                resultingSelections: [NSRange(location: 1, length: 0)]
+            )
+        }
+        let lastChar = ns.character(at: ns.length - 1)
+        guard lastChar != 10 && lastChar != 13 else { return nil }
+        let ending = EditorTextSupport.lineEnding(in: text)
+        let edit = TextEdit(range: NSRange(location: ns.length, length: 0), replacement: ending)
+        return EditorCommandResult(
+            edits: [edit],
+            resultingSelections: [NSRange(location: ns.length + (ending as NSString).length, length: 0)]
+        )
+    }
+
+    private static func outdentAmount(for whitespace: String, options: IndentationOptions) -> Int {
+        if options.usesTabs {
+            if let tabIndex = whitespace.firstIndex(of: "\t") {
+                return whitespace.distance(from: whitespace.startIndex, to: tabIndex) + 1
+            }
+            return min(whitespace.count, options.tabWidth)
+        }
+        return min(whitespace.count, options.tabWidth)
+    }
+
+    private static func convertIndent(
+        text: String,
+        selection: NSRange,
+        toTabs: Bool,
+        tabWidth: Int
+    ) -> EditorCommandResult {
+        let lines = EditorTextSupport.affectedLineRanges(for: selection, in: text)
+        var edits: [TextEdit] = []
+        for line in lines {
+            let wsLength = EditorTextSupport.leadingWhitespaceLength(on: line, in: text)
+            guard wsLength > 0 else { continue }
+            let ws = EditorTextSupport.leadingWhitespace(on: line, in: text)
+            let column = EditorTextSupport.visualColumn(
+                of: line.location + wsLength,
+                in: text,
+                tabWidth: tabWidth
+            )
+            let newWS: String
+            if toTabs {
+                let tabs = column / tabWidth
+                let spaces = column % tabWidth
+                newWS = String(repeating: "\t", count: tabs) + String(repeating: " ", count: spaces)
+            } else {
+                newWS = String(repeating: " ", count: column)
+            }
+            guard newWS != ws else { continue }
+            edits.append(TextEdit(
+                range: NSRange(location: line.location, length: wsLength),
+                replacement: newWS
+            ))
+        }
+        return EditorCommandResult(edits: edits, resultingSelections: [selection])
+    }
+}
