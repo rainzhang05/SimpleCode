@@ -178,3 +178,25 @@ class SimpleCodeUITestCase: XCTestCase {
         let deadline = Date().addingTimeInterval(3)
         while Date() < deadline {
             let remaining = NSRunningApplication.runningApplications(withBundleIdentifier: testedAppBundleID)
+            if remaining.isEmpty { break }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+    }
+
+    @MainActor
+    func relaunchApp(extraArguments: [String] = []) {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = launchArguments(extraArguments: extraArguments)
+        app.launch()
+        app.activate()
+    }
+
+    private func launchArguments(extraArguments: [String]) -> [String] {
+        if let defaultsSuite {
+            return ["-UITestUserDefaultsSuite", defaultsSuite] + extraArguments
+        }
+        return extraArguments
+    }
+
+}
