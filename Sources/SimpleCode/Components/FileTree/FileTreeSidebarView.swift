@@ -178,3 +178,82 @@ struct FileTreeRowView: View {
         return node.name.hasSuffix(".swift") ? "swift" : "doc.text"
     }
 
+    private var isActiveFile: Bool {
+        guard let active = workspace.fileTree.activeFileURL else { return false }
+        return active.standardizedFileURL == node.url.standardizedFileURL
+    }
+
+    @ViewBuilder
+    private var contextMenu: some View {
+        if !node.isDirectory {
+            Button("Open") { Task { await workspace.openFile(url: node.url) } }
+        }
+        Button("New File") {
+            Task {
+                await workspace.createNewFile(in: node.isDirectory ? node.url : node.url.deletingLastPathComponent())
+            }
+        }
+        Button("New Folder") {
+            Task {
+                await workspace.createNewFolder(in: node.isDirectory ? node.url : node.url.deletingLastPathComponent())
+            }
+        }
+        Divider()
+        Button("Rename") {
+            workspace.pendingRename = WorkspaceModel.PendingRename(url: node.url, name: node.name)
+        }
+        Button("Duplicate") { Task { await workspace.duplicate(item: node.url) } }
+        Button("Delete", role: .destructive) { workspace.requestDelete(item: node.url, isDirectory: node.isDirectory) }
+        Divider()
+        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+        Button("Copy Path") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(node.url.path, forType: .string) }
+        Button("Copy Relative Path") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(relativePath, forType: .string)
+        }
+    }
+
+    private func errorText(_ error: FileTreeLoadError) -> String {
+        switch error {
+        case .permissionDenied: return "Permission denied"
+        case .unreadable(let message): return message
+        }
+    }
+}
+
+enum FileTreeAccessibility {
+    static func relativePath(for url: URL, workspaceRoot: URL) -> String {
+        let root = workspaceRoot.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        if path == root { return url.lastPathComponent }
+        let prefix = root + "/"
+        if path.hasPrefix(prefix) {
+            return String(path.dropFirst(prefix.count))
+        }
+        return url.lastPathComponent
+    }
+}
+
+private struct RenameSheet: View {
+    @Binding var name: String
+    var onRename: () -> Void
+    var onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.medium) {
+            Text("Rename").font(.headline)
+            TextField("Name", text: $name)
+                .accessibilityIdentifier("fileTree.renameField")
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel, action: onCancel)
+                Button("Rename", action: onRename)
+                    .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier("fileTree.renameConfirm")
+            }
+        }
+        .padding(Spacing.large)
+        .frame(width: 360)
+        .accessibilityIdentifier("fileTree.renameSheet")
+    }
+}
