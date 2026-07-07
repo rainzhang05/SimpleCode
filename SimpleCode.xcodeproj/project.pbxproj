@@ -1258,3 +1258,183 @@
 				4E0053918052BF78AD72BFD8 /* WorkspaceTrustController.swift in Sources */,
 				58D1D86CCE290F66FD284931 /* WorkspaceTrustSheet.swift in Sources */,
 				359AF8B08EAABE4729EC42F7 /* WorkspaceTrustState.swift in Sources */,
+				CD960D9D9A79860FC049128E /* WorkspaceView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D19F102624227FF7B92A7951 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F28851E4A698356B7FF15AC0 /* AppModelTests.swift in Sources */,
+				13A7CA1227049CE044237773 /* AppSettingsStoreTests.swift in Sources */,
+				4CD248A8B1BD18C09D7E9247 /* AssemblyHighlighterTests.swift in Sources */,
+				D34F2D2D53A4230DC9354A4D /* BracketMatcherTests.swift in Sources */,
+				F7FB12BEA0C23B0157BCB475 /* CloneDestinationOwnershipTests.swift in Sources */,
+				B79CEA41058CCEBE77791A1A /* ColorRoleTests.swift in Sources */,
+				03D4345D9069C34BFDEA4327 /* CommentToggleEngineTests.swift in Sources */,
+				8C6A703B6EDB3B38CA106B79 /* DocumentWatcherTests.swift in Sources */,
+				CDECC6B5D1FE2E577253B466 /* EditorDocumentModelTests.swift in Sources */,
+				8DD146B5DC725419BB811C7C /* EditorVisibleRangeTests.swift in Sources */,
+				50C26275AFC1C400512D0DD1 /* FileContentWriterTests.swift in Sources */,
+				5566DD4641A290634ECFCDBE /* FileServicesTests.swift in Sources */,
+				1C4783122C8EF6BCEC017F28 /* FileTreeAndOperationsTests.swift in Sources */,
+				65D922C57AAAE940F7188E06 /* FindReplaceControllerTests.swift in Sources */,
+				C576B2AE2FF017B08D0E8198 /* GitCloneErrorClassifierTests.swift in Sources */,
+				11985807982BCF622B8522F3 /* GitCloneInvocationTests.swift in Sources */,
+				AC7CCC7BAD986638CA715DE9 /* GitCloneProgressParserTests.swift in Sources */,
+				90D59425875DE474C5A5B023 /* GitCloneServiceTests.swift in Sources */,
+				9EDE9CE39374C8AC32B35763 /* GitURLParserTests.swift in Sources */,
+				FFB948B7606A6C3B8FA499E6 /* GoToLineTests.swift in Sources */,
+				1EBE78E5A7136EF9E1CE4D91 /* HighlightBatchApplicatorTests.swift in Sources */,
+				60A82E1A6A41D9345476C4DC /* HighlightThemeTests.swift in Sources */,
+				C6C130FF417D598A6ED3B781 /* HighlightingIntegrationTests.swift in Sources */,
+				994037A61DE0079A0693D80F /* IndentationEngineTests.swift in Sources */,
+				37539F326A4D74755FCF5B99 /* LanguageDetectorTests.swift in Sources */,
+				3CEDFAB28D20AE827842FB3D /* LargeFileOpenTests.swift in Sources */,
+				BF2B9176DE3D48A1960623B2 /* LaunchTests.swift in Sources */,
+				5093333D25F8EBEDB94F29D0 /* LineCommandEngineTests.swift in Sources */,
+				6C300CEC739D62CDF3C13F5F /* LineCountingTests.swift in Sources */,
+				98A084C8C367D7490D33213F /* LineStartIndexTests.swift in Sources */,
+				114E4012BFCE08C337410DE9 /* MoveValidatorTests.swift in Sources */,
+				58BC87FA2C90A03DFBB14C83 /* OpenDocumentsStoreTests.swift in Sources */,
+				2AAFCFF5CC40B258B5A923F7 /* PairInsertionEngineTests.swift in Sources */,
+				2AFB05A9221D148A22E65905 /* PerformanceAcceptanceTests.swift in Sources */,
+				BF9AEB15D536D5AB4B58FE0D /* PerformanceFixtureTests.swift in Sources */,
+				A657F191DD8997603CF93299 /* RecentWorkspaceStoreTests.swift in Sources */,
+				79A32ED9AF8484B743BB37E8 /* RenameTests.swift in Sources */,
+				3353B3EEE509530703883082 /* RunCommandSuggestionTests.swift in Sources */,
+				1F5D6D6BFDF6B091D414D3DE /* RunConfigurationStoreTests.swift in Sources */,
+				1F549D4E1C5D56E59BF6E288 /* RunExecutionControllerTests.swift in Sources */,
+				FEF093A32B5599B3B96AB727 /* SaveAsTests.swift in Sources */,
+				91A1381C603145A16E99726E /* SaveTransformServiceTests.swift in Sources */,
+				B218A5E723EA97D5528B2527 /* SmartBackspaceEngineTests.swift in Sources */,
+				9B3E73A63B5823323F41122E /* SmartHomeEngineTests.swift in Sources */,
+				6C5175D46494CF53488FD2EC /* TabIndependenceTests.swift in Sources */,
+				E342C99E90F296D1608067EE /* TerminalLifecycleStateTests.swift in Sources */,
+				79CC54C8B64390DB0CAB6ED3 /* TerminalSessionControllerTests.swift in Sources */,
+				7ECF87E2C620514234A691B8 /* WorkspaceTrustTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FFA811E7566D986D8BCF1388 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				61FAFF2C71F960F9B63ED9CE /* SimpleCodeCloneUITests.swift in Sources */,
+				7B92CDDFF88D0AC862E3B693 /* SimpleCodeEditorUITests.swift in Sources */,
+				3D96C4FFFA2FCF8AEDC87187 /* SimpleCodeRunUITests.swift in Sources */,
+				136E63048147BE5C48C1B0C5 /* SimpleCodeSettingsUITests.swift in Sources */,
+				375B8C060673F9A2ECB339BF /* SimpleCodeUITestCase.swift in Sources */,
+				0163F22A6AA8BB5A1168CA34 /* SimpleCodeUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3DB756E0DA30A6926A9D8B40 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 20590A39C1C16D6DACEBD330 /* SimpleCode */;
+			targetProxy = CB0A43CA2A71F60E32DAD96A /* PBXContainerItemProxy */;
+		};
+		A582B1CF866FFAFFC6A1B899 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 20590A39C1C16D6DACEBD330 /* SimpleCode */;
+			targetProxy = 366A928E2EEE73F0D961EE6A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0C106582B249809DC273A007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.simplecode.SimpleCodeTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SimpleCode.app/Contents/MacOS/SimpleCode";
+			};
+			name = Debug;
+		};
+		3E46350E1D86CD51F87C156A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_ENTITLEMENTS = SimpleCode/SimpleCodeUITests.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.simplecode.SimpleCodeUITests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = SimpleCode;
+			};
+			name = Debug;
+		};
+		5CE181B27C9946D737A72412 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				EXCLUDED_ARCHS = "x86_64 i386";
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
