@@ -538,3 +538,183 @@
 			sourceTree = "<group>";
 		};
 		257E4A127692D05CEC859C5C /* FileTree */ = {
+			isa = PBXGroup;
+			children = (
+				F352BE784DEC435050898081 /* FileTreeEntry.swift */,
+				0708C9DB2E727C8BE73F422A /* FileTreeSidebarView.swift */,
+				22895DE33548AB0330B4D0B2 /* WorkspaceFileTreeView.swift */,
+			);
+			path = FileTree;
+			sourceTree = "<group>";
+		};
+		3089F428B82B942A088AF689 /* sample.git */ = {
+			isa = PBXGroup;
+			children = (
+				313951ABB1737549BC86B542 /* hooks */,
+				C81C4482117E3E70F2804D90 /* info */,
+				475833ED499B9C5A068C02F4 /* objects */,
+				D9F1AA9C088CE57C7F1E1315 /* refs */,
+				960E94D362B9436FDCA62598 /* config */,
+				73C08559719BD81703816D45 /* description */,
+				51CCE7DA302B9423D6F6F814 /* HEAD */,
+			);
+			path = sample.git;
+			sourceTree = "<group>";
+		};
+		313951ABB1737549BC86B542 /* hooks */ = {
+			isa = PBXGroup;
+			children = (
+				0646A1D30CF02592C4D71EE0 /* applypatch-msg.sample */,
+				C8D7C8AA996A02F8C6DA88B1 /* commit-msg.sample */,
+				81594443139073248852DB5B /* fsmonitor-watchman.sample */,
+				599647CE7EFB542973D584D1 /* post-update.sample */,
+				473D6D58E97C61D728364A61 /* pre-applypatch.sample */,
+				0EC6D532EE1C00CDC1200074 /* pre-commit.sample */,
+				05703869FBBABE15D52A73D4 /* pre-merge-commit.sample */,
+				A927A434CDC8A67F577566C3 /* pre-push.sample */,
+				C20F9F676FD5FDA9DA621FCE /* pre-rebase.sample */,
+				1BB45C5704F01015F4E8153E /* pre-receive.sample */,
+				28FEC33C5B08FCAD507FBB53 /* prepare-commit-msg.sample */,
+				C47B86CA68964B5493561394 /* push-to-checkout.sample */,
+				50AD1660C803165127529A1F /* sendemail-validate.sample */,
+				2EEE30A68EA5A7D6FF3D9E35 /* update.sample */,
+			);
+			path = hooks;
+			sourceTree = "<group>";
+		};
+		33B701FB48C72127580C25E4 /* Visual */ = {
+			isa = PBXGroup;
+			children = (
+				129FC077BDA9994129113D6C /* BracketHighlightRenderer.swift */,
+				9AC6BAF281D74A929397C375 /* EditorOverlayView.swift */,
+			);
+			path = Visual;
+			sourceTree = "<group>";
+		};
+		35439E12665DE34A85442EF7 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				E78EE80875304C6B573A5B1B /* AccessibilityEnvironment.swift */,
+				187C7042C35CDDEBE750A9BF /* ColorRole.swift */,
+				29354B33E06EC3F0E26F4C54 /* GlassSurface.swift */,
+				BABFC8C0937FCFB81A60D3A2 /* Metrics.swift */,
+				31A177755B0B3A16FAC76F67 /* Typography.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		3F7B6669EC0F3AFD0DD66EC1 /* SimpleCodeTests */ = {
+			isa = PBXGroup;
+			children = (
+				73B967E786C45BFF2334AAC5 /* AppModelTests.swift */,
+				72E4AEFE1C93A33D219CE319 /* AppSettingsStoreTests.swift */,
+				BD853F277B450021E09F0631 /* AssemblyHighlighterTests.swift */,
+				9A125C64BE05058B89308296 /* BracketMatcherTests.swift */,
+				F7598CA2E051D2EEFE318DD6 /* CloneDestinationOwnershipTests.swift */,
+				E8D1609A10F9EFBFEFD5B45C /* ColorRoleTests.swift */,
+				AAAA4160158C9CA262D46EBC /* CommentToggleEngineTests.swift */,
+				204806F9E9117866F4FFBE90 /* DocumentWatcherTests.swift */,
+				4A7ECC4A934C614E8DD54D6E /* EditorDocumentModelTests.swift */,
+				3006013EB93CE3A9D96E97E0 /* EditorVisibleRangeTests.swift */,
+				E67C0F0EE89CE5363054C7F1 /* FileContentWriterTests.swift */,
+				3CA6AFF8E1FAAD8D5DB2022F /* FileServicesTests.swift */,
+				D6852D7BD9222BE9433F8759 /* FileTreeAndOperationsTests.swift */,
+				AB06F499304E18DDC4CB704A /* FindReplaceControllerTests.swift */,
+				97701B73F773E4D4A6DB08B4 /* GitCloneErrorClassifierTests.swift */,
+				901A7851F6CC039E4E54D891 /* GitCloneInvocationTests.swift */,
+				F4B8AB3741D29A8034AA8A99 /* GitCloneProgressParserTests.swift */,
+				4A0563CCC8C43E3EE761B895 /* GitCloneServiceTests.swift */,
+				60988BF0DD55FC039B4829C9 /* GitURLParserTests.swift */,
+				EAB04F8A892DA92342E2BF93 /* GoToLineTests.swift */,
+				C312461DB74D3FB9AE46F6E9 /* HighlightBatchApplicatorTests.swift */,
+				41699771F3FAF2BE6B690A08 /* HighlightingIntegrationTests.swift */,
+				17AB5239E7B14E1F4ED8E799 /* HighlightThemeTests.swift */,
+				B709F7C7B5B3867636AEE57B /* IndentationEngineTests.swift */,
+				EE375914AD2BB0E662C617BD /* LanguageDetectorTests.swift */,
+				DC72598D355CBC718BCECBCA /* LargeFileOpenTests.swift */,
+				82E41BEEB775DA14EA49FE7F /* LaunchTests.swift */,
+				E8D1EABDBAD8495DCFF7B26E /* LineCommandEngineTests.swift */,
+				48165BCBE3F9D2DBB94D1381 /* LineCountingTests.swift */,
+				F20817FB2EDA72C39902B0A7 /* LineStartIndexTests.swift */,
+				EBDAED3859C5D4C53C970756 /* MoveValidatorTests.swift */,
+				B9E85DF1E4BD33E24FE92B55 /* OpenDocumentsStoreTests.swift */,
+				D8E807D35EA4EBBD34B145E0 /* PairInsertionEngineTests.swift */,
+				915957E8C74C6B7C0BA1BD16 /* PerformanceAcceptanceTests.swift */,
+				324C238AFBCAE0D9B97B4EE7 /* PerformanceFixtureTests.swift */,
+				CEED2B76EE8F895E4350E645 /* RecentWorkspaceStoreTests.swift */,
+				A2A338EF4C610145A16DF74D /* RenameTests.swift */,
+				C4A2176CE870E5E8FEAF4EED /* RunCommandSuggestionTests.swift */,
+				ED6DC383D65FA7BBCE79FBCF /* RunConfigurationStoreTests.swift */,
+				FE1CE8AC3CCEF061F80BD777 /* RunExecutionControllerTests.swift */,
+				EB058BB65C977079DF8758D0 /* SaveAsTests.swift */,
+				EF870948026E5889AB46A3EC /* SaveTransformServiceTests.swift */,
+				C57F64CDDE4BEE2B29FC6F69 /* SmartBackspaceEngineTests.swift */,
+				570A8450EF8B187708BC1104 /* SmartHomeEngineTests.swift */,
+				B340A2BC17479A03DFCC4539 /* TabIndependenceTests.swift */,
+				292D2475C9744618A72924D1 /* TerminalLifecycleStateTests.swift */,
+				407DF75A0A4509DEB83F9D67 /* TerminalSessionControllerTests.swift */,
+				3AF8A08A13699AD43392CF5F /* WorkspaceTrustTests.swift */,
+			);
+			path = SimpleCodeTests;
+			sourceTree = "<group>";
+		};
+		475833ED499B9C5A068C02F4 /* objects */ = {
+			isa = PBXGroup;
+			children = (
+				EE626DD948CA86B1B4C50977 /* info */,
+				81A49FF7B52D249611C8B5A9 /* pack */,
+			);
+			path = objects;
+			sourceTree = "<group>";
+		};
+		501979D5D853A8498CBDFDB3 /* heads */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = heads;
+			sourceTree = "<group>";
+		};
+		51D6DD603B802F5A155CCE74 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				A0966787DDFFD49D786B717C /* Editor */,
+				257E4A127692D05CEC859C5C /* FileTree */,
+				23FA091DBB246AB266C7A33A /* Terminal */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		5952DCB1A6F7E8939F8711C3 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				C15CE5D3CA63946C933E6E00 /* SimpleCode */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		5CE5D309297BC9A35929E849 /* SimpleCodeUITests */ = {
+			isa = PBXGroup;
+			children = (
+				9BA1F980597B265E0A152200 /* Fixtures */,
+				85060116D40ED9FDD505A76A /* SimpleCodeCloneUITests.swift */,
+				08BB23BF3B52285FE550184B /* SimpleCodeEditorUITests.swift */,
+				3F17ACB365EA5340CBB47477 /* SimpleCodeRunUITests.swift */,
+				F202682AA805350D0F85EAC8 /* SimpleCodeSettingsUITests.swift */,
+				BBA8E1CCB030AADABC9F0541 /* SimpleCodeUITestCase.swift */,
+				7F4DD9D5E32900A363EE4151 /* SimpleCodeUITests.swift */,
+			);
+			path = SimpleCodeUITests;
+			sourceTree = "<group>";
+		};
+		659BDABF45AA1E1B3DAED5A5 /* Workspace */ = {
+			isa = PBXGroup;
+			children = (
+				DF54564210E46161088D1ED5 /* DocumentConflictBanner.swift */,
+				AD10A3253FABB3DB3CA40C4D /* EditorDocumentSession.swift */,
+				47A5340F776C51AD64B3C53D /* FileTreeModel.swift */,
+				2970D32049940CB71BAD4F25 /* LargeFileOpenSheet.swift */,
+				397563566922A2CAF7B2CF52 /* OpenDocumentsStore.swift */,
+				EB8719EA9352130C870C7EC1 /* RunCommandStore.swift */,
+				E9EE1DDB0F10FFD11022B8FC /* RunConfigurationPopover.swift */,
+				26FD962BD9B5EE1A1281E5B4 /* RunExecutionController.swift */,
+				B8F8E03DE294E112CDB83614 /* UnsavedDocumentsSheet.swift */,
