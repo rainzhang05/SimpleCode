@@ -178,3 +178,96 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         var changedUTF16Ranges: [NSRange] = []
         if let previousTree {
             changedUTF16Ranges = newTree.changedRanges(from: previousTree).map { $0.bytes.range }
+        }
+
+        tree = newTree
+        return ParseResult(tree: newTree, changedUTF16Ranges: changedUTF16Ranges)
+    }
+
+    private func batches(
+        tree: MutableTree,
+        changedUTF16Ranges: [NSRange],
+        revision: Int,
+        priorityUTF16Range: NSRange,
+        includePendingRetry: Bool
+    ) -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+        let priorityByteRange = utf16RangeToByteRange(priorityUTF16Range, documentUTF16Count: Int.max / 2)
+        let priorityTokens = highlightTokens(in: tree, restrictedTo: priorityByteRange)
+        let priorityBatch = HighlightBatch(
+            revision: revision,
+            coveredRanges: [priorityUTF16Range],
+            tokens: priorityTokens
+        )
+
+        var remainderRanges: [NSRange] = changedUTF16Ranges
+            .filter { !intersectsUTF16($0, priorityUTF16Range) }
+
+        if includePendingRetry, !pendingRetryUTF16Ranges.isEmpty {
+            remainderRanges.append(contentsOf: pendingRetryUTF16Ranges)
+            pendingRetryUTF16Ranges.removeAll()
+        }
+
+        guard !remainderRanges.isEmpty else {
+            return (priorityBatch, nil)
+        }
+
+        var remainderTokens: [SyntaxToken] = []
+        for range in remainderRanges {
+            let byteRange = utf16RangeToByteRange(range, documentUTF16Count: Int.max / 2)
+            remainderTokens.append(contentsOf: highlightTokens(in: tree, restrictedTo: byteRange))
+        }
+
+        let remainderBatch = HighlightBatch(
+            revision: revision,
+            coveredRanges: remainderRanges,
+            tokens: remainderTokens
+        )
+        return (priorityBatch, remainderBatch)
+    }
+
+    private func highlightTokens(in tree: MutableTree, restrictedTo byteRange: Range<UInt32>?) -> [SyntaxToken] {
+        guard let root = tree.rootNode else { return [] }
+
+        let cursor = query.execute(node: root, in: tree)
+        if let byteRange {
+            cursor.setByteRange(range: byteRange)
+        }
+
+        var tokens: [SyntaxToken] = []
+        while let capture = cursor.nextCapture() {
+            guard let name = capture.name, let category = HighlightTheme.category(forCapture: name) else {
+                continue
+            }
+            tokens.append(SyntaxToken(range: capture.range, category: category))
+        }
+        return tokens
+    }
+
+    private func utf16RangeToByteRange(_ range: NSRange, documentUTF16Count: Int) -> Range<UInt32> {
+        let lower = UInt32(max(0, range.location) * 2)
+        let upper = UInt32(min(documentUTF16Count, NSMaxRange(range)) * 2)
+        return lower..<max(lower + 2, upper)
+    }
+
+    private func intersectsUTF16(_ lhs: NSRange, _ rhs: NSRange) -> Bool {
+        NSIntersectionRange(lhs, rhs).length > 0
+    }
+
+    private static func highlightsQueryURL(resourceName: String) -> URL? {
+        let bundle = AppResources.bundle
+        if let url = bundle.url(
+            forResource: resourceName,
+            withExtension: "scm",
+            subdirectory: "TreeSitterQueries/\(resourceName)"
+        ) {
+            return url
+        }
+        return bundle.url(forResource: resourceName, withExtension: "scm")
+    }
+}
+
+private extension Range where Bound == UInt32 {
+    var range: NSRange {
+        NSRange(location: Int(lowerBound / 2), length: Int((upperBound - lowerBound) / 2))
+    }
+}
