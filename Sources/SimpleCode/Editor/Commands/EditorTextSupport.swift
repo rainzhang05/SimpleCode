@@ -1,0 +1,180 @@
+import Foundation
+
+enum EditorTextSupport {
+    static func nsString(_ text: String) -> NSString {
+        text as NSString
+    }
+
+    static func lineRange(at location: Int, in text: String) -> NSRange {
+        let ns = nsString(text)
+        let clamped = max(0, min(location, ns.length))
+        return ns.lineRange(for: NSRange(location: clamped, length: 0))
+    }
+
+    static func lineNumber(at location: Int, in text: String) -> Int {
+        LineCounting.lineNumber(atUTF16Offset: location, in: text)
+    }
+
+    static func lineStart(at location: Int, in text: String) -> Int {
+        lineRange(at: location, in: text).location
+    }
+
+    static func lineContentRange(at location: Int, in text: String) -> NSRange {
+        let line = lineRange(at: location, in: text)
+        let ns = nsString(text)
+        var end = line.location + line.length
+        if end > line.location, ns.character(at: end - 1) == 10 {
+            end -= 1
+        }
+        return NSRange(location: line.location, length: max(0, end - line.location))
+    }
+
+    static func leadingWhitespaceLength(on lineRange: NSRange, in text: String) -> Int {
+        let ns = nsString(text)
+        var count = 0
+        let end = min(lineRange.location + lineRange.length, ns.length)
+        var index = lineRange.location
+        while index < end {
+            let ch = ns.character(at: index)
+            if ch == 32 || ch == 9 { // space or tab
+                count += 1
+                index += 1
+            } else {
+                break
+            }
+        }
+        return count
+    }
+
+    static func leadingWhitespace(on lineRange: NSRange, in text: String) -> String {
+        let ns = nsString(text)
+        let length = leadingWhitespaceLength(on: lineRange, in: text)
+        guard length > 0 else { return "" }
+        return ns.substring(with: NSRange(location: lineRange.location, length: length))
+    }
+
+    static func visualColumn(of location: Int, in text: String, tabWidth: Int) -> Int {
+        let lineStart = lineStart(at: location, in: text)
+        let ns = nsString(text)
+        var column = 0
+        var index = lineStart
+        while index < location && index < ns.length {
+            let ch = ns.character(at: index)
+            if ch == 9 {
+                column += tabWidth - (column % tabWidth)
+            } else {
+                column += 1
+            }
+            index += 1
+        }
+        return column
+    }
+
+    static func locationForVisualColumn(
+        _ targetColumn: Int,
+        onLineStartingAt lineStart: Int,
+        in text: String,
+        tabWidth: Int
+    ) -> Int {
+        let ns = nsString(text)
+        var column = 0
+        var index = lineStart
+        let line = lineRange(at: lineStart, in: text)
+        let lineEnd = line.location + line.length
+        while index < lineEnd && index < ns.length {
+            if column >= targetColumn { return index }
+            let ch = ns.character(at: index)
+            if ch == 9 {
+                let next = column + tabWidth - (column % tabWidth)
+                if next > targetColumn { return index }
+                column = next
+            } else if ch == 10 || ch == 13 {
+                break
+            } else {
+                column += 1
+            }
+            index += 1
+        }
+        return index
+    }
+
+    static func firstNonWhitespaceOffset(on lineRange: NSRange, in text: String) -> Int {
+        let ns = nsString(text)
+        let end = min(lineRange.location + lineRange.length, ns.length)
+        var index = lineRange.location
+        while index < end {
+            let ch = ns.character(at: index)
+            if ch != 32 && ch != 9 && ch != 10 && ch != 13 {
+                return index
+            }
+            index += 1
+        }
+        return lineRange.location
+    }
+
+    static func isBlankLine(_ lineRange: NSRange, in text: String) -> Bool {
+        let content = lineContentRange(at: lineRange.location, in: text)
+        let ns = nsString(text)
+        for index in content.location..<(content.location + content.length) {
+            let ch = ns.character(at: index)
+            if ch != 32 && ch != 9 { return false }
+        }
+        return true
+    }
+
+    static func lineEnding(in text: String) -> String {
+        if text.contains("\r\n") { return "\r\n" }
+        if text.contains("\r") { return "\r" }
+        return "\n"
+    }
+
+    static func affectedLineRanges(for selection: NSRange, in text: String) -> [NSRange] {
+        guard selection.length > 0 else {
+            return [lineRange(at: selection.location, in: text)]
+        }
+        let startLine = lineRange(at: selection.location, in: text)
+        let endLocation = selection.location + selection.length
+        let endLine = lineRange(at: max(0, endLocation - 1), in: text)
+        var ranges: [NSRange] = []
+        var current = startLine.location
+        let ns = nsString(text)
+        while current <= endLine.location && current < ns.length {
+            let range = ns.lineRange(for: NSRange(location: current, length: 0))
+            ranges.append(range)
+            current = range.location + range.length
+            if current >= ns.length { break }
+        }
+        if ranges.isEmpty { ranges.append(startLine) }
+        return ranges
+    }
+
+    static func applyEdits(_ edits: [TextEdit], to text: String) -> String {
+        guard !edits.isEmpty else { return text }
+        let sorted = edits.sorted { $0.range.location > $1.range.location }
+        var result = text
+        for edit in sorted {
+            let ns = result as NSString
+            result = ns.replacingCharacters(in: edit.range, with: edit.replacement)
+        }
+        return result
+    }
+
+    static func adjustSelections(
+        _ selections: [NSRange],
+        for edit: TextEdit,
+        isBeforeEdit: Bool
+    ) -> [NSRange] {
+        let editStart = edit.range.location
+        let editEnd = edit.range.location + edit.range.length
+        let delta = (edit.replacement as NSString).length - edit.range.length
+        return selections.map { selection in
+            if selection.location + selection.length <= editStart {
+                return selection
+            }
+            if selection.location >= editEnd {
+                return NSRange(location: selection.location + delta, length: selection.length)
+            }
+            if isBeforeEdit {
+                return NSRange(location: editStart, length: 0)
+            }
+            return NSRange(location: editStart + (edit.replacement as NSString).length, length: 0)
