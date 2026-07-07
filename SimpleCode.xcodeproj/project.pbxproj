@@ -898,3 +898,183 @@
 				1AA8D0DAD646696BED7C86CC /* FileOperationError.swift */,
 				51EDABE4BB7317248A5430E3 /* GitCloneModels.swift */,
 				D1F57EEDA37EED731A5CA61D /* LineEndingMode.swift */,
+				1B799E0709EC0BDAB88EE2F2 /* RunCommandSuggestion.swift */,
+				2B2459AB17F802CECC94C013 /* RunConfiguration.swift */,
+				CA9AA2962CC11F6FA6AC212F /* RunExecutionState.swift */,
+				029A384FEC049138715F7FEA /* SyntaxToken.swift */,
+				D864491492D6EB5F3A837C66 /* TextEncodingMode.swift */,
+				B27FBE02744FBEDB0CD5BA6C /* WorkspaceOpenProvenance.swift */,
+				F964D60D1DFB200AD75C65D4 /* WorkspaceRecord.swift */,
+				BA407D1A3F7B9066750F461F /* WorkspaceTrustState.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		D42609AA09F6604868338813 /* Git */ = {
+			isa = PBXGroup;
+			children = (
+				553564A772EDFEBBA322F7CC /* CloneDestinationOwnership.swift */,
+				40961672B58C8CCF64C03737 /* GitCloneErrorClassifier.swift */,
+				2A8844B30F88209F9664C3FE /* GitCloneInvocation.swift */,
+				FD83B6BB16B8BB598EA980D9 /* GitCloneProgressParser.swift */,
+				823573E97A9242590C7894EC /* GitCloneService.swift */,
+				54F04746246F0BE628E2B69D /* GitCredentialRedactor.swift */,
+				1FEE0CFD88DC7927146A4F92 /* GitExecutableResolver.swift */,
+				5094C2F58491D4C3D7744F8E /* GitURLParser.swift */,
+			);
+			path = Git;
+			sourceTree = "<group>";
+		};
+		D9F1AA9C088CE57C7F1E1315 /* refs */ = {
+			isa = PBXGroup;
+			children = (
+				501979D5D853A8498CBDFDB3 /* heads */,
+				6AF67786CE8B4035EBA30776 /* tags */,
+			);
+			path = refs;
+			sourceTree = "<group>";
+		};
+		DC2230607265484F0AC5A732 /* Editor */ = {
+			isa = PBXGroup;
+			children = (
+				FE2458C5EEB6C830FF55CFFB /* Commands */,
+				172BF46F8BAE7585088CC310 /* Find */,
+				33B701FB48C72127580C25E4 /* Visual */,
+			);
+			path = Editor;
+			sourceTree = "<group>";
+		};
+		EE626DD948CA86B1B4C50977 /* info */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = info;
+			sourceTree = "<group>";
+		};
+		FE2458C5EEB6C830FF55CFFB /* Commands */ = {
+			isa = PBXGroup;
+			children = (
+				D0535A230F16B5F93184AC62 /* BracketMatcher.swift */,
+				040536D756EC660CBC3077C2 /* CommentToggleEngine.swift */,
+				128BE6C6E6182D2BF3B57D25 /* EditorCommandController.swift */,
+				04DCFB75484EE86691245821 /* EditorCommandTypes.swift */,
+				3CDDA33CC68F8048AD607EA1 /* EditorTextSupport.swift */,
+				CBF0537EAB6D91213F031E86 /* IndentationEngine.swift */,
+				9CF1DD9043A0518EF517BC8D /* LineCommandEngine.swift */,
+				406BEA22CDAE9573B63FF727 /* PairInsertionEngine.swift */,
+				7D3B7D1FEE846E377C59F092 /* SmartBackspaceEngine.swift */,
+				0E9D689F303A86F013AE6129 /* SmartHomeEngine.swift */,
+			);
+			path = Commands;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		20590A39C1C16D6DACEBD330 /* SimpleCode */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4A1D494B567E696BEBB5127C /* Build configuration list for PBXNativeTarget "SimpleCode" */;
+			buildPhases = (
+				CD9F3293BEA4A9C4641DF9AF /* Sources */,
+				17C4C9DAB0E2538AD7659EC3 /* Resources */,
+				7FE402A500D8E411AA076386 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SimpleCode;
+			packageProductDependencies = (
+				5D39F7D2F703B5979B7ADD79 /* SwiftTerm */,
+				DA96939C76C4E31B50D53A61 /* SwiftTreeSitter */,
+				F2ED46D9A61EC960FB7F3EC8 /* TreeSitterSwift */,
+				A5388AB12E12F6BF467D6366 /* TreeSitterC */,
+				9690AA8A3FF12009836B0347 /* TreeSitterCPP */,
+				07EDAEF165375C041CD0D755 /* TreeSitterJSON */,
+				D80C68C92BF9D5DCBC0EDEAF /* TreeSitterMarkdown */,
+				874C3479285B41B39A30DC5B /* TreeSitterBash */,
+			);
+			productName = SimpleCode;
+			productReference = B66AA4D4AD42ED926BFCDE5B /* SimpleCode.app */;
+			productType = "com.apple.product-type.application";
+		};
+		436276CF7CA4DA94D22106E6 /* SimpleCodeUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2B83117DB600DED45F19D673 /* Build configuration list for PBXNativeTarget "SimpleCodeUITests" */;
+			buildPhases = (
+				FFA811E7566D986D8BCF1388 /* Sources */,
+				1D9249F864A590539A1F15A9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A582B1CF866FFAFFC6A1B899 /* PBXTargetDependency */,
+			);
+			name = SimpleCodeUITests;
+			packageProductDependencies = (
+			);
+			productName = SimpleCodeUITests;
+			productReference = E11E21E0160648A19118BECF /* SimpleCodeUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		71FA74615C01E8A1560AC07A /* SimpleCodeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 38155B7750A457B2AD524B68 /* Build configuration list for PBXNativeTarget "SimpleCodeTests" */;
+			buildPhases = (
+				D19F102624227FF7B92A7951 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3DB756E0DA30A6926A9D8B40 /* PBXTargetDependency */,
+			);
+			name = SimpleCodeTests;
+			packageProductDependencies = (
+			);
+			productName = SimpleCodeTests;
+			productReference = BF1CD8E21F9C9CAABF2088D6 /* SimpleCodeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		66907698F747F27A99D266E1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					20590A39C1C16D6DACEBD330 = {
+						ProvisioningStyle = Automatic;
+					};
+					436276CF7CA4DA94D22106E6 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 20590A39C1C16D6DACEBD330;
+					};
+					71FA74615C01E8A1560AC07A = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = F11D716864938F41D815C10B /* Build configuration list for PBXProject "SimpleCode" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 02F828BE5B4B134C193B4E8F;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5039525DF961D34F2FD168DE /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				5CAF2DECC7E7CEA890269D98 /* XCRemoteSwiftPackageReference "swift-tree-sitter" */,
+				6DEDA8FBE247CCA7842DE8A4 /* XCRemoteSwiftPackageReference "tree-sitter-bash" */,
+				A9C8E027FBBE66B0BA198C70 /* XCRemoteSwiftPackageReference "tree-sitter-c" */,
+				80D8D396545380074167D4FB /* XCRemoteSwiftPackageReference "tree-sitter-cpp" */,
+				B04F5F73350060D22B1FFB76 /* XCRemoteSwiftPackageReference "tree-sitter-json" */,
+				C2798A22B62907BC3B4C2231 /* XCRemoteSwiftPackageReference "tree-sitter-markdown" */,
+				9B6F1BA59A79372EB55FA77C /* XCRemoteSwiftPackageReference "tree-sitter-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = B0D13A2DB467351DE66D162F /* Products */;
+			projectDirPath = "";
