@@ -178,3 +178,150 @@ final class OpenDocumentsStore {
             guard let fileURL = session.fileURL else { continue }
             let path = fileURL.standardizedFileURL.path
             if path == oldURL.standardizedFileURL.path {
+                session.updateFileURL(newURL)
+                watcherRegistry.retarget(session: session)
+            } else if path.hasPrefix(oldPrefix) {
+                let suffix = String(path.dropFirst(oldPrefix.count))
+                session.updateFileURL(newURL.appendingPathComponent(suffix))
+                watcherRegistry.retarget(session: session)
+            }
+        }
+    }
+
+    func saveActive() async throws {
+        guard let session = activeSession, let url = session.fileURL else { return }
+        try await save(session: session, to: url)
+    }
+
+    func save(session: EditorDocumentSession, to url: URL) async throws {
+        let snapshot = await fileOperations.fileSnapshot(at: url)
+        if let lastDate = session.lastKnownModificationDate,
+           let currentDate = snapshot.modificationDate,
+           currentDate > lastDate,
+           session.lastKnownByteCount != snapshot.byteCount,
+           session.externalChangeState == .none {
+            session.setExternalChangeState(session.isDirty ? .dirtyConflict : .cleanReloadAvailable)
+            throw FileOperationError.externalModificationConflict
+        }
+
+        let serialized = serializedText(for: session)
+        let request = FileContentWriter.WriteRequest(
+            url: url,
+            text: serialized,
+            encoding: session.encoding,
+            includeBOM: session.hadBOM || session.encoding.includesBOM,
+            lineEnding: session.lineEnding
+        )
+        _ = try await fileOperations.save(request: request)
+        if serialized != session.textStorage.string {
+            session.applySavedText(serialized)
+        }
+        let newSnapshot = await fileOperations.fileSnapshot(at: url)
+        session.markClean(snapshot: newSnapshot)
+        watcherRegistry.updateSnapshot(for: session)
+    }
+
+    func saveAll() async throws {
+        for session in sessions where session.isDirty {
+            guard let url = session.fileURL else { continue }
+            try await save(session: session, to: url)
+        }
+    }
+
+    func saveAs(session: EditorDocumentSession) async throws {
+        guard let sourceURL = session.fileURL else { return }
+        let directory = sourceURL.deletingLastPathComponent()
+        let ext = sourceURL.pathExtension
+        let types: [UTType] = ext.isEmpty ? [.plainText] : (UTType(filenameExtension: ext).map { [$0] } ?? [.plainText])
+        guard let destination = await saveAsCoordinator.presentSavePanel(
+            suggestedDirectory: directory,
+            suggestedName: sourceURL.lastPathComponent,
+            allowedContentTypes: types
+        ) else {
+            throw FileOperationError.cancelled
+        }
+        if FileManager.default.fileExists(atPath: destination.path) {
+            let confirmed = await saveAsCoordinator.confirmOverwrite(for: destination)
+            guard confirmed else { throw FileOperationError.cancelled }
+        }
+        try await saveAs(session: session, to: destination)
+    }
+
+    func saveAs(session: EditorDocumentSession, to destination: URL) async throws {
+        let destinationIdentity = FileIdentity(url: destination)
+        if let existing = self.session(for: destinationIdentity), existing.id != session.id {
+            activate(existing)
+            throw FileOperationError.nameCollision
+        }
+
+        let previousURL = session.fileURL
+        let wasDirty = session.isDirty
+        do {
+            try await save(session: session, to: destination)
+            session.updateFileURL(destination)
+            watcherRegistry.retarget(session: session)
+        } catch {
+            if let previousURL {
+                session.updateFileURL(previousURL)
+            }
+            if wasDirty { session.markDirty() }
+            throw error
+        }
+    }
+
+    func reloadFromDisk(session: EditorDocumentSession) async {
+        guard let url = session.fileURL else { return }
+        do {
+            let content = try await loader.load(url: url)
+            let selection = session.selectionRange
+            let scroll = session.scrollOffset
+            session.reloadFromDisk(content)
+            session.selectionRange = selection
+            session.scrollOffset = scroll
+            if session.enablesSyntaxHighlighting && session.highlighter == nil {
+                session.highlighter = HighlightProviderFactory.makeHighlighter(for: session.language)
+            }
+            watcherRegistry.updateSnapshot(for: session)
+        } catch {
+            session.setLoadError("Could not reload file.", url: url)
+        }
+    }
+
+    func tearDown() {
+        watcherRegistry.stopAll()
+        for session in sessions {
+            session.releaseSyntaxResources()
+        }
+    }
+
+    private func serializedText(for session: EditorDocumentSession) -> String {
+        let raw = session.textStorage.string
+        guard let settings = appSettings else { return raw }
+        return SaveTransformService.transform(
+            text: raw,
+            language: session.language,
+            lineEnding: session.lineEnding,
+            trimTrailingWhitespace: settings.editor.trimTrailingWhitespaceOnSave,
+            ensureFinalNewline: settings.editor.ensureFinalNewlineOnSave
+        )
+    }
+
+    private func startWatching(session: EditorDocumentSession) {
+        watcherRegistry.startWatching(session: session) { [weak self] session, event in
+            self?.handleWatchEvent(session: session, event: event)
+        }
+    }
+
+    private func handleWatchEvent(session: EditorDocumentSession, event: FileWatchEvent) {
+        switch event {
+        case .deleted:
+            session.setExternalChangeState(.deleted)
+        case .modified, .replaced:
+            if session.isDirty {
+                session.setExternalChangeState(.dirtyConflict)
+            } else {
+                session.setExternalChangeState(.cleanReloadAvailable)
+            }
+        }
+    }
+}
