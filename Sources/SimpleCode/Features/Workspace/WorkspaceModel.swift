@@ -538,3 +538,128 @@ final class WorkspaceModel {
     }
 
     private func activeCommandController() -> EditorCommandController {
+        guard let session = openDocuments.activeSession else {
+            return activeEditorCommandController(for: EditorDocumentSession())
+        }
+        return activeEditorCommandController(for: session)
+    }
+
+    private func effectiveInsertSpaces(for session: EditorDocumentSession) -> Bool {
+        let definition = LanguageRegistry.definition(for: session.language)
+        if let override = definition.insertSpacesOverride { return override }
+        return appSettings.editor.insertSpaces
+    }
+
+    private func effectiveInsertSpaces() -> Bool {
+        guard let session = openDocuments.activeSession else { return appSettings.editor.insertSpaces }
+        return effectiveInsertSpaces(for: session)
+    }
+
+    private func commandLanguage(for session: EditorDocumentSession?) -> EditorCommandLanguage {
+        guard let session else { return .plainText }
+        switch session.language {
+        case .swift: return .swift
+        case .c, .cpp, .javascript, .typescript, .tsx, .json: return .cStyle
+        case .python: return .python
+        case .shell: return .shell
+        case .assembly: return .plainText
+        case .markdown, .plainText: return .plainText
+        }
+    }
+
+    func toggleLineComment() {
+        guard let session = openDocuments.activeSession else { return }
+        let controller = activeCommandController()
+        guard let result = controller.toggleComment(text: session.textStorage.string, selection: session.selectionRange) else { return }
+        applyCommandResult(result, session: session)
+    }
+
+    func duplicateLine() {
+        guard let session = openDocuments.activeSession else { return }
+        let result = activeCommandController().duplicateLine(text: session.textStorage.string, selection: session.selectionRange)
+        applyCommandResult(result, session: session)
+    }
+
+    func moveLineUp() {
+        guard let session = openDocuments.activeSession else { return }
+        guard let result = activeCommandController().moveLineUp(text: session.textStorage.string, selection: session.selectionRange) else { return }
+        applyCommandResult(result, session: session)
+    }
+
+    func moveLineDown() {
+        guard let session = openDocuments.activeSession else { return }
+        guard let result = activeCommandController().moveLineDown(text: session.textStorage.string, selection: session.selectionRange) else { return }
+        applyCommandResult(result, session: session)
+    }
+
+    func deleteLine() {
+        guard let session = openDocuments.activeSession else { return }
+        let result = activeCommandController().deleteLine(text: session.textStorage.string, selection: session.selectionRange)
+        applyCommandResult(result, session: session)
+    }
+
+    func indentSelection() {
+        guard let session = openDocuments.activeSession else { return }
+        let result = activeCommandController().indent(text: session.textStorage.string, selection: session.selectionRange)
+        applyCommandResult(result, session: session)
+    }
+
+    func outdentSelection() {
+        guard let session = openDocuments.activeSession else { return }
+        let result = activeCommandController().outdent(text: session.textStorage.string, selection: session.selectionRange)
+        applyCommandResult(result, session: session)
+    }
+
+    func convertIndentToSpaces() {
+        guard let session = openDocuments.activeSession else { return }
+        let result = activeCommandController().convertIndentToSpaces(text: session.textStorage.string, selection: session.selectionRange)
+        applyCommandResult(result, session: session)
+    }
+
+    func convertIndentToTabs() {
+        guard let session = openDocuments.activeSession else { return }
+        let result = activeCommandController().convertIndentToTabs(text: session.textStorage.string, selection: session.selectionRange)
+        applyCommandResult(result, session: session)
+    }
+
+    func trimTrailingWhitespace() {
+        guard let session = openDocuments.activeSession else { return }
+        let result = activeCommandController().trimTrailingWhitespace(text: session.textStorage.string, selection: session.selectionRange)
+        applyCommandResult(result, session: session)
+    }
+
+    func toggleWordWrap() {
+        appSettings.editor.wordWrap.toggle()
+    }
+
+    func toggleWhitespace() {
+        appSettings.editor.showWhitespace.toggle()
+        appSettings.editor.showTrailingWhitespace = appSettings.editor.showWhitespace
+    }
+
+    func toggleLineNumbers() {
+        appSettings.editor.showLineNumbers.toggle()
+    }
+
+    func showLanguagePicker() {
+        showLanguagePickerSheet = true
+    }
+
+    func setLanguage(_ language: LanguageID) {
+        guard let session = openDocuments.activeSession else { return }
+        session.setLanguageOverride(language)
+        showLanguagePickerSheet = false
+    }
+
+    private func uniqueName(base: String, in directory: URL) -> String {
+        var candidate = base
+        var index = 1
+        while FileManager.default.fileExists(atPath: directory.appendingPathComponent(candidate).path) {
+            let ext = (base as NSString).pathExtension
+            let stem = (base as NSString).deletingPathExtension
+            candidate = ext.isEmpty ? "\(stem) \(index)" : "\(stem) \(index).\(ext)"
+            index += 1
+        }
+        return candidate
+    }
+}
