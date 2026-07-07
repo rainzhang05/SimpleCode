@@ -178,3 +178,48 @@ private struct RecentWorkspacesList: View {
         }
         .accessibilityIdentifier("welcome.recentWorkspaces")
     }
+}
+
+private struct RecentWorkspaceRow: View {
+    let record: WorkspaceRecord
+    let appModel: AppModel
+
+    var body: some View {
+        Button {
+            open()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(record.displayName)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    Text(record.path)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer()
+                if record.isUnavailable {
+                    Text("Unavailable")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(.horizontal, Spacing.small)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Remove from Recents") {
+                appModel.recentWorkspaces.remove(id: record.id)
+            }
+        }
+    }
+
+    private func open() {
+        guard let url = appModel.recentWorkspaces.resolvedURL(for: record.id) else { return }
+        appModel.openWorkspace(at: url, provenance: .openedExisting)
+    }
+}
