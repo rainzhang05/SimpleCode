@@ -178,3 +178,38 @@ struct RunCommandSuggestionTests {
         let root = try makeRoot()
         let huge = String(repeating: " ", count: 70_000)
         try huge.write(to: root.appendingPathComponent("package.json"), atomically: true, encoding: .utf8)
+        let s = await service.suggest(rootURL: root)
+        #expect(s == nil)
+    }
+
+    @Test func pyprojectWithoutEntryReturnsNil() async throws {
+        let root = try makeRoot()
+        try "[project]".write(to: root.appendingPathComponent("pyproject.toml"), atomically: true, encoding: .utf8)
+        try "a".write(to: root.appendingPathComponent("a.py"), atomically: true, encoding: .utf8)
+        try "b".write(to: root.appendingPathComponent("b.py"), atomically: true, encoding: .utf8)
+        let s = await service.suggest(rootURL: root)
+        #expect(s == nil)
+    }
+
+    @Test func xcodeWorkspaceGuidanceOnly() async throws {
+        let root = try makeRoot()
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("App.xcworkspace"), withIntermediateDirectories: true)
+        let s = await service.suggest(rootURL: root)
+        #expect(s?.isRunnable == false)
+    }
+
+    @Test func noRecognizedProjectType() async throws {
+        let root = try makeRoot()
+        try "readme".write(to: root.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        let s = await service.suggest(rootURL: root)
+        #expect(s == nil)
+    }
+
+    @Test func guidanceSuggestionNotRunnable() async throws {
+        let root = try makeRoot()
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("App.xcodeproj"), withIntermediateDirectories: true)
+        let s = await service.suggest(rootURL: root)
+        #expect(s?.command == nil)
+        #expect(s?.isRunnable == false)
+    }
+}
