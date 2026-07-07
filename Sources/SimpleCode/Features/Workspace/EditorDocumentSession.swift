@@ -178,3 +178,48 @@ final class EditorDocumentSession: Identifiable {
         loadState = .loaded
         enablesSyntaxHighlighting = true
         highlighter = HighlightProviderFactory.makeHighlighter(for: .swift)
+        clearSyntaxContext()
+    }
+
+    func mergeSyntaxTokens(_ tokens: [SyntaxToken], replacingCoveredRanges coveredRanges: [NSRange]) {
+        if coveredRanges.contains(where: { $0.location == 0 && $0.length >= textStorage.length }) {
+            semanticTokens = tokens
+        } else {
+            semanticTokens.removeAll { token in
+                coveredRanges.contains { NSIntersectionRange(token.range, $0).length > 0 }
+            }
+            semanticTokens.append(contentsOf: tokens)
+        }
+        rebuildSyntaxContext()
+    }
+
+    func clearSyntaxContext() {
+        semanticTokens = []
+        syntaxContext = .empty
+    }
+
+    func releaseSyntaxResources() {
+        highlighter = nil
+        clearSyntaxContext()
+    }
+
+    func applySavedText(_ text: String) {
+        textStorage.setAttributedString(NSAttributedString(string: text))
+        lineStartIndex.rebuild(from: text)
+        let clampedLocation = min(selectionRange.location, textStorage.length)
+        let maxLength = max(0, textStorage.length - clampedLocation)
+        selectionRange = NSRange(location: clampedLocation, length: min(selectionRange.length, maxLength))
+        pendingSelectionRange = selectionRange
+        clearSyntaxContext()
+    }
+
+    private func rebuildSyntaxContext() {
+        let stringRanges = semanticTokens
+            .filter { $0.category == .string }
+            .map(\.range)
+        let commentRanges = semanticTokens
+            .filter { $0.category == .comment || $0.category == .documentationComment }
+            .map(\.range)
+        syntaxContext = SyntaxContext(stringRanges: stringRanges, commentRanges: commentRanges)
+    }
+}
