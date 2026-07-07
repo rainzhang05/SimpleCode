@@ -178,3 +178,54 @@ actor GitCloneService {
         ownership = owned
     }
 
+    private func waitForProcessExit(_ process: Process, timeoutNanoseconds: UInt64 = 0) async {
+        if !process.isRunning { return }
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let prior = process.terminationHandler
+            process.terminationHandler = { proc in
+                prior?(proc)
+                continuation.resume()
+            }
+        }
+
+        if timeoutNanoseconds > 0, process.isRunning {
+            let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
+            while process.isRunning, DispatchTime.now().uptimeNanoseconds < deadline {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+    }
+
+    private func cleanupPartialDestinationIfOwned(processHasExited: Bool) async {
+        guard var owned = ownership else { return }
+        owned.captureIdentityIfDestinationAppeared()
+        ownership = owned
+        guard owned.canRemovePartialDestination(processHasExited: processHasExited) else { return }
+
+        let destination = owned.destinationURL
+        do {
+            try FileManager.default.removeItem(at: destination)
+        } catch {
+            AppLog.git.error("Failed to remove partial clone destination")
+        }
+    }
+
+    private func appendDiagnostics(_ data: Data) {
+        let chunk = String(decoding: data, as: UTF8.self)
+        guard !chunk.isEmpty else { return }
+        diagnostics += chunk
+        if diagnostics.utf8.count > maxDiagnosticsBytes {
+            diagnostics = String(diagnostics.suffix(maxDiagnosticsBytes / 2))
+        }
+    }
+
+    private func makeGitEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        if env["PATH"] == nil {
+            env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+        }
+        return env
+    }
+}
