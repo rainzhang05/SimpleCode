@@ -178,3 +178,70 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
 
     private func registerMatches(in line: String) -> [NSTextCheckingResult] {
         let x86 = #"(?i)\b(%?(?:r(?:ax|bx|cx|dx|si|di|bp|sp|8|9|10|11|12|13|14|15)(?:d|w|b)?|e(?:ax|bx|cx|dx|si|di|bp|sp)|a(?:x|h|l)|b(?:x|h|l)|c(?:x|h|l)|d(?:x|h|l)|si|di|bp|sp|r\d+b?))\b"#
+        let aarch64 = #"(?i)\b(x\d{1,2}|w\d{1,2}|sp|lr|pc|xzr|wzr)\b"#
+        return matches(for: x86, in: line) + matches(for: aarch64, in: line)
+    }
+
+    private func numberMatches(in line: String) -> [NSTextCheckingResult] {
+        matches(for: #"(?i)(?:\$|#)?0x[0-9a-f]+|\b\d+\b"#, in: line)
+    }
+
+    private func stringMatches(in line: NSString) -> [NSRange] {
+        let ranges: [NSRange] = []
+        let pattern = #""([^"\\]|\\.)*""#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return ranges }
+        let matches = regex.matches(in: line as String, range: NSRange(location: 0, length: line.length))
+        return matches.map(\.range)
+    }
+
+    private func matches(for pattern: String, in line: String) -> [NSTextCheckingResult] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        return regex.matches(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+    }
+
+    private func lineRange(containingUTF16Edit edit: TextEditDescriptor, in text: String) -> ClosedRange<Int> {
+        let editStart = max(0, edit.startUTF16)
+        let editEnd = max(editStart, edit.newEndUTF16)
+        let startLine = lineNumber(atUTF16Offset: editStart, in: text)
+        let endLine = lineNumber(atUTF16Offset: max(editStart, editEnd - 1), in: text)
+        return startLine...endLine
+    }
+
+    private func utf16Range(forLines lines: ClosedRange<Int>, in text: String) -> NSRange {
+        var lineNumber = 1
+        var lineStart = text.startIndex
+        var rangeStart: Int?
+        var rangeEnd = 0
+
+        while lineStart <= text.endIndex {
+            if lines.contains(lineNumber) {
+                let offset = text.utf16.distance(from: text.utf16.startIndex, to: lineStart.samePosition(in: text.utf16) ?? text.utf16.endIndex)
+                if rangeStart == nil { rangeStart = offset }
+                let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+                rangeEnd = text.utf16.distance(from: text.utf16.startIndex, to: lineEnd.samePosition(in: text.utf16) ?? text.utf16.endIndex)
+            }
+            if lineStart == text.endIndex { break }
+            if let lineEnd = text[lineStart...].firstIndex(of: "\n") {
+                lineStart = text.index(after: lineEnd)
+            } else {
+                break
+            }
+            lineNumber += 1
+        }
+
+        let start = rangeStart ?? 0
+        return NSRange(location: start, length: max(0, rangeEnd - start))
+    }
+
+    private func lineNumber(atUTF16Offset offset: Int, in text: String) -> Int {
+        let clamped = max(0, min(offset, text.utf16.count))
+        var line = 1
+        var current = 0
+        for unit in text.utf16 {
+            if current >= clamped { break }
+            if unit == 10 { line += 1 }
+            current += 1
+        }
+        return line
+    }
+}
