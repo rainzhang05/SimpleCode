@@ -1,0 +1,14 @@
+(comment) @comment
+(string_literal) @string
+(number_literal) @number
+(primitive_type) @type
+(type_identifier) @type
+(identifier) @variable
+(preproc_include) @preprocessor
+(preproc_def) @preprocessor
+(preproc_function_def) @preprocessor
+(preproc_call) @preprocessor
+(preproc_if) @preprocessor
+(preproc_ifdef) @preprocessor
+(preproc_else) @preprocessor
+(preproc_elif) @preprocessor
