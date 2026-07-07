@@ -178,3 +178,56 @@ final class GitCloneController {
             }
         }
     }
+
+    private func scheduleProgressUpdate(_ update: GitCloneProgress) {
+        pendingProgress = update
+        guard progressThrottleTask == nil else { return }
+        progressThrottleTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            flushProgressUpdate()
+            progressThrottleTask = nil
+        }
+    }
+
+    private func flushProgressUpdate() {
+        if let pendingProgress {
+            progress = pendingProgress
+            self.pendingProgress = nil
+        }
+        progressThrottleTask?.cancel()
+        progressThrottleTask = nil
+    }
+
+    func cancelClone() {
+        guard sheetState == .cloning else { return }
+        sheetState = .cancelling
+        Task {
+            await cloneService.cancel()
+            sheetState = .editing
+            cloneTask = nil
+        }
+    }
+
+    func resetToEditing() {
+        sheetState = .editing
+        progress = .initial
+        diagnostics = ""
+        credentialWarning = nil
+    }
+
+    func tearDown() async {
+        if sheetState == .cloning || sheetState == .cancelling {
+            await cloneService.cancel()
+        }
+        cloneTask?.cancel()
+        cloneTask = nil
+        progressThrottleTask?.cancel()
+        progressThrottleTask = nil
+    }
+
+    func handleSheetDismiss() {
+        if sheetState == .cloning {
+            cancelClone()
+        }
+    }
+}
