@@ -178,3 +178,90 @@ struct EditorBehaviorSettings: Codable, Equatable, Sendable {
 
     static var defaults: EditorBehaviorSettings {
         EditorBehaviorSettings(
+            tabWidth: 4,
+            insertSpaces: true,
+            autoIndent: true,
+            autoClosingPairs: true,
+            smartPairDeletion: true,
+            smartHome: true,
+            smartBackspace: true,
+            wordWrap: false,
+            showLineNumbers: true,
+            highlightCurrentLine: true,
+            showWhitespace: false,
+            showTrailingWhitespace: false,
+            showLongLineGuide: true,
+            longLineGuideColumn: 100,
+            automaticSyntaxHighlighting: true,
+            restoreOpenEditors: true,
+            trimTrailingWhitespaceOnSave: false,
+            ensureFinalNewlineOnSave: true
+        )
+    }
+}
+
+// MARK: - Files
+
+struct FileDisplaySettings: Codable, Equatable, Sendable {
+    var showHiddenFiles: Bool
+    var confirmBeforeTrash: Bool
+    var userExclusions: [String]
+    var defaultEncoding: TextEncodingMode
+    var defaultLineEnding: LineEndingMode
+    var confirmBeforeOpeningLargeFiles: Bool
+    var restoreRecentWorkspaces: Bool
+    var maximumRecentWorkspaceCount: Int
+
+    static var defaults: FileDisplaySettings {
+        FileDisplaySettings(
+            showHiddenFiles: false,
+            confirmBeforeTrash: true,
+            userExclusions: [],
+            defaultEncoding: .utf8,
+            defaultLineEnding: .lf,
+            confirmBeforeOpeningLargeFiles: true,
+            restoreRecentWorkspaces: true,
+            maximumRecentWorkspaceCount: 10
+        )
+    }
+}
+
+// MARK: - Terminal
+
+enum TerminalCursorStyle: String, Codable, Equatable, Sendable {
+    case block
+    case underline
+    case bar
+}
+
+struct TerminalAppearanceSettings: Codable, Equatable, Sendable {
+    var fontFamily: String
+    var fontSize: Double
+    var background: StoredColorPair
+    var foreground: StoredColorPair
+    var scrollbackLimit: Int
+    var cursorStyle: TerminalCursorStyle
+    var cursorBlink: Bool
+    var audibleBell: Bool
+    var visualBell: Bool
+    var copyOnSelection: Bool
+    var clearTerminalBeforeRun: Bool
+    var revealTerminalOnRun: Bool
+
+    static var defaults: TerminalAppearanceSettings {
+        TerminalAppearanceSettings(
+            fontFamily: Typography.systemMonospacedFamilyName,
+            fontSize: Double(Typography.defaultEditorFontSize),
+            background: StoredColorPair(pair: ColorRoleDefaults.terminalBackground),
+            foreground: StoredColorPair(pair: ColorRoleDefaults.terminalForeground),
+            scrollbackLimit: 10_000,
+            cursorStyle: .block,
+            cursorBlink: true,
+            audibleBell: true,
+            visualBell: false,
+            copyOnSelection: false,
+            clearTerminalBeforeRun: false,
+            revealTerminalOnRun: true
+        )
+    }
+}
