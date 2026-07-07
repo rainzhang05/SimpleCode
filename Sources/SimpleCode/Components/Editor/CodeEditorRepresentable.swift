@@ -178,3 +178,183 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
         @objc func boundsDidChange() {
             gutter?.invalidate()
+            scheduleViewportHighlight()
+        }
+
+        func textStorage(
+            _ textStorage: NSTextStorage,
+            didProcessEditing editedMask: NSTextStorageEditActions,
+            range editedRange: NSRange,
+            changeInLength delta: Int
+        ) {
+            guard editedMask.contains(.editedCharacters) else { return }
+            guard !isApplyingHighlighting else { return }
+            guard !isApplyingCommand else { return }
+
+            let revision = session.bumpRevision()
+            session.markDirty()
+            onTextChanged()
+
+            let insertedText = (textStorage.string as NSString).substring(with: editedRange)
+            session.lineStartIndex.applyEdit(
+                editedRange: editedRange,
+                changeInLength: delta,
+                insertedText: insertedText,
+                fullText: textStorage.string
+            )
+            gutter?.lineStartIndex = session.lineStartIndex
+            gutter?.invalidate()
+
+            guard session.enablesSyntaxHighlighting, let highlighter = session.highlighter else { return }
+            let descriptor = TextEditDescriptor(
+                startUTF16: editedRange.location,
+                oldEndUTF16: editedRange.location + editedRange.length - delta,
+                newEndUTF16: editedRange.location + editedRange.length
+            )
+            let visibleRange = currentVisibleUTF16Range(fallbackAround: editedRange.location)
+            pendingHighlightTask?.cancel()
+            pendingHighlightTask = Task { [weak self] in
+                guard let self else { return }
+                let result = await highlighter.applyEdit(
+                    fullText: textStorage.string,
+                    edit: descriptor,
+                    revision: revision,
+                    priorityUTF16Range: visibleRange
+                )
+                guard !Task.isCancelled else { return }
+                self.apply(batch: result.priority)
+                if let remainder = result.remainder { self.apply(batch: remainder) }
+            }
+        }
+
+        private func scheduleViewportHighlight() {
+            viewportHighlightTask?.cancel()
+            viewportHighlightTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(50))
+                await self?.highlightVisibleViewport()
+            }
+        }
+
+        private func highlightVisibleViewport() async {
+            guard session.enablesSyntaxHighlighting, let highlighter = session.highlighter, let textView else { return }
+            let visibleRange = currentVisibleUTF16Range(fallbackAround: 0)
+            if let lastAppliedViewportRange, NSEqualRanges(lastAppliedViewportRange, visibleRange) { return }
+            let result = await highlighter.scheduleViewport(
+                fullText: textView.string,
+                revision: session.revision,
+                visibleUTF16Range: visibleRange
+            )
+            apply(batch: result.priority)
+            if let remainder = result.remainder { apply(batch: remainder) }
+            lastAppliedViewportRange = visibleRange
+        }
+
+        private func currentVisibleUTF16Range(fallbackAround offset: Int) -> NSRange {
+            guard let textView, let scrollView else {
+                return NSRange(location: max(0, offset), length: 0)
+            }
+            return EditorVisibleRange.visibleUTF16Range(in: textView, scrollView: scrollView)
+                ?? NSRange(location: max(0, offset), length: 0)
+        }
+
+        private func apply(batch: HighlightBatch) {
+            guard HighlightBatchApplicator.shouldApply(batchRevision: batch.revision, currentRevision: session.revision) else { return }
+            guard let textStorage = textView?.textStorage else { return }
+            session.mergeSyntaxTokens(batch.tokens, replacingCoveredRanges: batch.coveredRanges)
+            let isDark = textView?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let appearance: EditorAppearance = isDark ? .dark : .light
+            isApplyingHighlighting = true
+            textStorage.beginEditing()
+            for range in batch.coveredRanges where range.location >= 0 && NSMaxRange(range) <= textStorage.length {
+                textStorage.addAttribute(.foregroundColor, value: ColorRole.editorForegroundNSColor, range: range)
+            }
+            for token in batch.tokens where token.range.location >= 0 && NSMaxRange(token.range) <= textStorage.length {
+                textStorage.addAttribute(.foregroundColor, value: HighlightTheme.color(for: token.category, appearance: appearance), range: token.range)
+            }
+            textStorage.endEditing()
+            isApplyingHighlighting = false
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            gutter?.invalidate()
+            overlay?.needsDisplay = true
+            guard let textView else { return }
+            let selectedLocation = textView.selectedRange().location
+            let line = session.lineStartIndex.lineNumber(atUTF16Offset: selectedLocation)
+            let lineStart = session.lineStartIndex.lineStartUTF16Offset(forLine: line)
+            session.updateCursor(line: line, column: selectedLocation - lineStart + 1)
+            session.selectionRange = textView.selectedRange()
+            updateBracketHighlight(in: textView)
+            resetSmartHomeIfMoved(from: line, column: selectedLocation - lineStart + 1)
+        }
+
+        // MARK: CodeTextViewCommandDelegate
+
+        func codeTextViewHandleReturn(_ textView: CodeTextView) -> Bool {
+            guard settings.editor.autoIndent else { return false }
+            guard let result = workspace.editorReturnResult(for: session, selection: textView.selectedRange()) else { return false }
+            applyCommand(result, in: textView)
+            return true
+        }
+
+        func codeTextViewHandleTab(_ textView: CodeTextView, shift: Bool) -> Bool {
+            guard settings.editor.autoIndent else { return false }
+            guard let result = workspace.editorTabResult(for: session, selection: textView.selectedRange(), shift: shift) else { return false }
+            applyCommand(result, in: textView)
+            return true
+        }
+
+        func codeTextViewHandleDeleteBackward(_ textView: CodeTextView) -> Bool {
+            guard settings.editor.smartBackspace else { return false }
+            guard let result = workspace.editorBackspaceResult(for: session, selection: textView.selectedRange()) else { return false }
+            applyCommand(result, in: textView)
+            return true
+        }
+
+        func codeTextViewHandleMoveToBeginningOfLine(_ textView: CodeTextView, extendSelection: Bool) -> Bool {
+            guard settings.editor.smartHome else { return false }
+            let selection = textView.selectedRange()
+            let line = session.lineStartIndex.lineNumber(atUTF16Offset: selection.location)
+            let column = selection.location - session.lineStartIndex.lineStartUTF16Offset(forLine: line) + 1
+            let isSecondPress = smartHomePressLine == line && smartHomePressColumn == column
+            guard let result = workspace.editorHomeResult(
+                for: session,
+                selection: selection,
+                isSecondPress: isSecondPress,
+                extendSelection: extendSelection
+            ) else { return false }
+            applyCommand(result, in: textView)
+            if let target = result.resultingSelections.first {
+                let targetLine = session.lineStartIndex.lineNumber(atUTF16Offset: target.location)
+                let targetColumn = target.location - session.lineStartIndex.lineStartUTF16Offset(forLine: targetLine) + 1
+                smartHomePressLine = targetLine
+                smartHomePressColumn = targetColumn
+            }
+            return true
+        }
+
+        func codeTextView(_ textView: CodeTextView, shouldInsertCharacter character: Character) -> Bool {
+            guard settings.editor.autoClosingPairs else { return false }
+            guard let result = workspace.editorPairInsertResult(
+                for: session,
+                character: character,
+                selection: textView.selectedRange()
+            ) else { return false }
+            applyCommand(result, in: textView)
+            return true
+        }
+
+        private func applyCommand(_ result: EditorCommandResult, in textView: CodeTextView) {
+            if !result.edits.isEmpty {
+                applyTextEdits(result.edits, in: textView)
+            }
+            if let selection = result.resultingSelections.first {
+                textView.setSelectedRange(selection)
+                session.selectionRange = selection
+            }
+            updateBracketHighlight(in: textView)
+            textView.needsDisplay = true
+            overlay?.needsDisplay = true
+        }
+
+        private func applyTextEdits(_ edits: [TextEdit], in textView: CodeTextView) {
