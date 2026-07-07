@@ -178,3 +178,69 @@ final class FindReplaceController {
         let options: NSString.CompareOptions = matchCase ? [] : [.caseInsensitive]
         let nsText = text as NSString
 
+        while location < NSMaxRange(searchRange) {
+            let remaining = NSRange(location: location, length: NSMaxRange(searchRange) - location)
+            let range = nsText.range(of: searchText, options: options, range: remaining)
+            guard range.location != NSNotFound else { break }
+            if wholeWord, !isWholeWord(range, in: nsText) {
+                location = range.location + max(1, range.length)
+                continue
+            }
+            found.append(FindMatch(range: range))
+            location = range.location + max(1, range.length)
+        }
+        return found
+    }
+
+    private func regexMatches(in text: String, range: NSRange) -> [FindMatch] {
+        let options: NSRegularExpression.Options = matchCase ? [] : [.caseInsensitive]
+        guard let regex = try? NSRegularExpression(pattern: searchText, options: options) else {
+            searchErrorMessage = "Invalid regular expression"
+            return []
+        }
+        return regex.matches(in: text, range: range)
+            .filter { $0.range.length > 0 }
+            .map { FindMatch(range: $0.range) }
+    }
+
+    private func isWholeWord(_ range: NSRange, in text: NSString) -> Bool {
+        let left = range.location > 0 ? text.character(at: range.location - 1) : 0
+        let right = NSMaxRange(range) < text.length ? text.character(at: NSMaxRange(range)) : 0
+        return !isWordCharacter(left) && !isWordCharacter(right)
+    }
+
+    private func isWordCharacter(_ codeUnit: unichar) -> Bool {
+        guard let scalar = UnicodeScalar(codeUnit) else { return false }
+        return CharacterSet.alphanumerics.contains(scalar) || scalar == "_"
+    }
+
+    private func replacementString(for match: FindMatch, in text: String) -> String {
+        guard useRegex else { return replaceText }
+        let options: NSRegularExpression.Options = matchCase ? [] : [.caseInsensitive]
+        guard let regex = try? NSRegularExpression(pattern: searchText, options: options) else { return replaceText }
+        let matched = (text as NSString).substring(with: match.range)
+        let matchedRange = NSRange(location: 0, length: (matched as NSString).length)
+        return regex.stringByReplacingMatches(
+            in: matched,
+            options: [],
+            range: matchedRange,
+            withTemplate: replaceText
+        )
+    }
+
+    private func firstMatchIndex(atOrAfter offset: Int) -> Int? {
+        matches.firstIndex { $0.range.location >= offset }
+    }
+
+    private func lastMatchIndex(before offset: Int) -> Int? {
+        matches.lastIndex { $0.range.location < offset }
+    }
+
+    private func matchStatus(replacedCount: Int? = nil) -> String? {
+        if let replacedCount {
+            return "\(replacedCount) replaced"
+        }
+        guard let currentMatchIndex, !matches.isEmpty else { return "No matches" }
+        return "\(currentMatchIndex + 1) of \(matches.count)"
+    }
+}
