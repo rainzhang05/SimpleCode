@@ -178,3 +178,35 @@ struct SimpleCodeApp: App {
             }
 
             CommandGroup(replacing: .help) {
+                Button("SimpleCode Help") {
+                    AppDocumentation.openBundledMarkdown(named: "README")
+                }
+                Button("Acknowledgments") {
+                    AppDocumentation.openBundledMarkdown(named: "ACKNOWLEDGMENTS")
+                }
+                Button("License") {
+                    AppDocumentation.openBundledLicense()
+                }
+            }
+        }
+
+        Settings {
+            SettingsRootView(settings: appModel.appSettings)
+        }
+    }
+}
+
+private struct RootView: View {
+    @Bindable var appModel: AppModel
+
+    var body: some View {
+        switch appModel.route {
+        case .welcome:
+            WelcomeView(appModel: appModel)
+        case .workspace(let workspace):
+            WorkspaceView(workspace: workspace) {
+                appModel.closeWorkspace()
+            }
+        }
+    }
+}
