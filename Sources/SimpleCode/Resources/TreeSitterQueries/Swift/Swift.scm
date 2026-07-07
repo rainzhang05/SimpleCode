@@ -178,3 +178,174 @@
   (key_path_string_expression)
   (selector_expression)
   (external_macro_definition)
+] @function.macro
+
+(special_literal) @constant.macro
+
+; Statements
+(for_statement
+  "for" @keyword.repeat)
+
+(for_statement
+  "in" @keyword.repeat)
+
+[
+  "while"
+  "repeat"
+  "continue"
+  "break"
+] @keyword.repeat
+
+(guard_statement
+  "guard" @keyword.conditional)
+
+(if_statement
+  "if" @keyword.conditional)
+
+(switch_statement
+  "switch" @keyword.conditional)
+
+(switch_entry
+  "case" @keyword)
+
+(switch_entry
+  "fallthrough" @keyword)
+
+(switch_entry
+  (default_keyword) @keyword)
+
+"return" @keyword.return
+
+(ternary_expression
+  [
+    "?"
+    ":"
+  ] @keyword.conditional.ternary)
+
+[
+  (try_operator)
+  "do"
+  (throw_keyword)
+  (catch_keyword)
+] @keyword.exception
+
+(statement_label) @label
+
+; Comments
+[
+  (comment)
+  (multiline_comment)
+] @comment @spell
+
+((comment) @comment.documentation
+  (#match? @comment.documentation "^///[^/]"))
+
+((comment) @comment.documentation
+  (#match? @comment.documentation "^///$"))
+
+((multiline_comment) @comment.documentation
+  (#match? @comment.documentation "^/[*][*][^*].*[*]/$"))
+
+; String literals
+(line_str_text) @string
+
+(str_escaped_char) @string.escape
+
+(multi_line_str_text) @string
+
+(raw_str_part) @string
+
+(raw_str_end_part) @string
+
+(line_string_literal
+  [
+    "\\("
+    ")"
+  ] @punctuation.special)
+
+(multi_line_string_literal
+  [
+    "\\("
+    ")"
+  ] @punctuation.special)
+
+(raw_str_interpolation
+  [
+    (raw_str_interpolation_start)
+    ")"
+  ] @punctuation.special)
+
+[
+  "\""
+  "\"\"\""
+] @string
+
+; Lambda literals
+(lambda_literal
+  "in" @keyword.operator)
+
+; Basic literals
+[
+  (integer_literal)
+  (hex_literal)
+  (oct_literal)
+  (bin_literal)
+] @number
+
+(real_literal) @number.float
+
+(boolean_literal) @boolean
+
+"nil" @constant.builtin
+
+(wildcard_pattern) @character.special
+
+; Regex literals
+(regex_literal) @string.regexp
+
+; Operators
+(custom_operator) @operator
+
+[
+  "+"
+  "-"
+  "*"
+  "/"
+  "%"
+  "="
+  "+="
+  "-="
+  "*="
+  "/="
+  "<"
+  ">"
+  "<<"
+  ">>"
+  "<="
+  ">="
+  "++"
+  "--"
+  "^"
+  "&"
+  "&&"
+  "|"
+  "||"
+  "~"
+  "%="
+  "!="
+  "!=="
+  "=="
+  "==="
+  "?"
+  "??"
+  "->"
+  "..<"
+  "..."
+  (bang)
+] @operator
+
+(type_arguments
+  [
+    "<"
+    ">"
+  ] @punctuation.bracket)
