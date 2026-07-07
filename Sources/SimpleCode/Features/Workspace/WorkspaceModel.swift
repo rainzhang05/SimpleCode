@@ -178,3 +178,183 @@ final class WorkspaceModel {
             return
         case .success:
             do {
+                let result = try await fileOperations.move(item: source, to: destinationDirectory)
+                openDocuments.updatePathsForMove(from: source, to: result.url)
+                await fileTree.refresh()
+                fileTree.selectedNodeID = FileTreeNodeID(url: result.url)
+            } catch {
+                errorAlertMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func saveAsActive() async {
+        guard let session = openDocuments.activeSession else { return }
+        do {
+            try await openDocuments.saveAs(session: session)
+            if let url = session.fileURL {
+                fileTree.activeFileURL = url
+                fileTree.selectedNodeID = FileTreeNodeID(url: url)
+            }
+            await fileTree.refresh()
+        } catch FileOperationError.cancelled {
+            // User cancelled panel.
+        } catch FileOperationError.nameCollision {
+            // Activated existing tab.
+        } catch {
+            errorAlertMessage = error.localizedDescription
+        }
+    }
+
+    func reloadActiveFromDisk() async {
+        guard let session = openDocuments.activeSession else { return }
+        await openDocuments.reloadFromDisk(session: session)
+    }
+
+    func dismissExternalChange(for session: EditorDocumentSession) {
+        session.dismissExternalChange()
+    }
+
+    func duplicate(item: URL) async {
+        do {
+            let result = try await fileOperations.duplicate(item: item)
+            await fileTree.refresh()
+            if !item.hasDirectoryPath {
+                await openFile(url: result.url)
+            }
+        } catch {
+            errorAlertMessage = error.localizedDescription
+        }
+    }
+
+    func requestDelete(item: URL, isDirectory: Bool) {
+        let message = isDirectory ? "Move folder to Trash?" : "Move file to Trash?"
+        // Present via alert binding in view — store pending action
+        pendingDeleteURL = item
+        pendingDeleteIsDirectory = isDirectory
+        errorAlertMessage = message
+    }
+
+    var pendingDeleteURL: URL?
+    var pendingDeleteIsDirectory = false
+
+    func confirmDelete() async {
+        guard let url = pendingDeleteURL else { return }
+        pendingDeleteURL = nil
+        do {
+            _ = try await fileOperations.trash(item: url)
+            if let session = openDocuments.session(for: url) {
+                if session.isDirty {
+                    session.updateFileURL(url) // keep content as recovered untitled-like
+                } else {
+                    openDocuments.close(sessionID: session.id, force: true)
+                }
+            }
+            await fileTree.refresh()
+        } catch {
+            errorAlertMessage = error.localizedDescription
+        }
+    }
+
+    func save(session: EditorDocumentSession) async throws {
+        try await openDocuments.save(session: session, to: session.fileURL!)
+    }
+
+    func saveActive() async throws { try await openDocuments.saveActive() }
+    func saveAll() async throws { try await openDocuments.saveAll() }
+
+    func requestCloseTab(sessionID: UUID) {
+        guard let session = openDocuments.sessions.first(where: { $0.id == sessionID }) else { return }
+        if session.isDirty {
+            unsavedSessionsForSheet = [session]
+            pendingCloseAction = { [weak self] in
+                self?.openDocuments.close(sessionID: sessionID, force: true)
+            }
+            return
+        }
+        openDocuments.close(sessionID: sessionID)
+    }
+
+    func requestCloseOthers(than sessionID: UUID) {
+        let dirty = openDocuments.closeOthers(than: sessionID, force: false)
+        if dirty.isEmpty {
+            _ = openDocuments.closeOthers(than: sessionID, force: true)
+            return
+        }
+        unsavedSessionsForSheet = dirty
+        pendingCloseAction = { [weak self] in
+            _ = self?.openDocuments.closeOthers(than: sessionID, force: true)
+        }
+    }
+
+    func requestCloseToRight(of sessionID: UUID) {
+        let dirty = openDocuments.closeToRight(of: sessionID, force: false)
+        if dirty.isEmpty {
+            _ = openDocuments.closeToRight(of: sessionID, force: true)
+            return
+        }
+        unsavedSessionsForSheet = dirty
+        pendingCloseAction = { [weak self] in
+            _ = self?.openDocuments.closeToRight(of: sessionID, force: true)
+        }
+    }
+
+    func handleUnsavedSheet(_ action: UnsavedCloseAction) async {
+        let sessions = unsavedSessionsForSheet ?? []
+        unsavedSessionsForSheet = nil
+        switch action {
+        case .cancel:
+            pendingCloseAction = nil
+        case .dontSave:
+            pendingCloseAction?()
+            pendingCloseAction = nil
+        case .save:
+            do {
+                for session in sessions {
+                    if let url = session.fileURL { try await openDocuments.save(session: session, to: url) }
+                }
+                pendingCloseAction?()
+                pendingCloseAction = nil
+            } catch {
+                errorAlertMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func canCloseWorkspace() -> Bool {
+        !openDocuments.dirtySessions().isEmpty
+    }
+
+    func requestCloseWorkspace(onConfirmed: @escaping () -> Void) {
+        let dirty = openDocuments.dirtySessions()
+        if dirty.isEmpty {
+            tearDown()
+            onConfirmed()
+            return
+        }
+        unsavedSessionsForSheet = dirty
+        pendingCloseAction = { [weak self] in
+            self?.tearDown()
+            onConfirmed()
+        }
+    }
+
+    func tearDown() {
+        runExecution.resetStateForNewRun()
+        openDocuments.tearDown()
+        terminal.terminate()
+    }
+
+    func activateNextTab() {
+        guard let active = openDocuments.activeSessionID,
+              let index = openDocuments.sessions.firstIndex(where: { $0.id == active }) else { return }
+        let next = openDocuments.sessions[(index + 1) % openDocuments.sessions.count]
+        openDocuments.activate(next)
+    }
+
+    func activatePreviousTab() {
+        guard let active = openDocuments.activeSessionID,
+              let index = openDocuments.sessions.firstIndex(where: { $0.id == active }) else { return }
+        let count = openDocuments.sessions.count
+        let previous = openDocuments.sessions[(index + count - 1) % count]
+        openDocuments.activate(previous)
