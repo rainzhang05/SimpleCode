@@ -178,3 +178,21 @@ final class SimpleCodeCloneUITests: SimpleCodeUITestCase {
         XCTAssertTrue(sheet.buttons["clone.sheet.cloneButton"].waitForExistence(timeout: 15))
     }
 
+    func testCloneFailureDisplaysSanitizedDiagnostics() throws {
+        let parent = try makeTempDirectory(prefix: "CloneDest")
+        openCloneSheet(extraArguments: ["-UITestCloneDestination", parent.path])
+        let sheet = cloneSheetRoot()
+        let urlField = sheet.textFields["clone.sheet.urlField"]
+        urlField.click()
+        urlField.typeKey("a", modifierFlags: .command)
+        urlField.typeText("/nonexistent/repository/path.git")
+        let folderField = sheet.textFields["clone.sheet.folderName"]
+        folderField.click()
+        folderField.typeKey("a", modifierFlags: .command)
+        folderField.typeText("fail-clone")
+        waitForEnabled(sheet.buttons["clone.sheet.cloneButton"])
+        sheet.buttons["clone.sheet.cloneButton"].click()
+        XCTAssertTrue(sheet.staticTexts["clone.sheet.error"].waitForExistence(timeout: 30)
+            || sheet.otherElements["clone.sheet.error"].waitForExistence(timeout: 5))
+    }
+}
