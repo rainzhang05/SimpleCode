@@ -1618,3 +1618,135 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		4A1D494B567E696BEBB5127C /* Build configuration list for PBXNativeTarget "SimpleCode" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E6D767A50FD1729A209212A1 /* Debug */,
+				615F3B4D73E5BD51ED93D126 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F11D716864938F41D815C10B /* Build configuration list for PBXProject "SimpleCode" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DA462DC9142F811307420DB9 /* Debug */,
+				5CE181B27C9946D737A72412 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5039525DF961D34F2FD168DE /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = exactVersion;
+				version = 1.13.0;
+			};
+		};
+		5CAF2DECC7E7CEA890269D98 /* XCRemoteSwiftPackageReference "swift-tree-sitter" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tree-sitter/swift-tree-sitter";
+			requirement = {
+				kind = exactVersion;
+				version = 0.10.0;
+			};
+		};
+		6DEDA8FBE247CCA7842DE8A4 /* XCRemoteSwiftPackageReference "tree-sitter-bash" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tree-sitter/tree-sitter-bash";
+			requirement = {
+				kind = exactVersion;
+				version = 0.25.1;
+			};
+		};
+		80D8D396545380074167D4FB /* XCRemoteSwiftPackageReference "tree-sitter-cpp" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tree-sitter/tree-sitter-cpp";
+			requirement = {
+				kind = exactVersion;
+				version = 0.23.4;
+			};
+		};
+		9B6F1BA59A79372EB55FA77C /* XCRemoteSwiftPackageReference "tree-sitter-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/alex-pinkus/tree-sitter-swift";
+			requirement = {
+				kind = exactVersion;
+				version = "0.7.3-with-generated-files";
+			};
+		};
+		A9C8E027FBBE66B0BA198C70 /* XCRemoteSwiftPackageReference "tree-sitter-c" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tree-sitter/tree-sitter-c";
+			requirement = {
+				kind = exactVersion;
+				version = 0.24.2;
+			};
+		};
+		B04F5F73350060D22B1FFB76 /* XCRemoteSwiftPackageReference "tree-sitter-json" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tree-sitter/tree-sitter-json";
+			requirement = {
+				kind = exactVersion;
+				version = 0.24.8;
+			};
+		};
+		C2798A22B62907BC3B4C2231 /* XCRemoteSwiftPackageReference "tree-sitter-markdown" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tree-sitter-grammars/tree-sitter-markdown";
+			requirement = {
+				kind = exactVersion;
+				version = 0.5.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		07EDAEF165375C041CD0D755 /* TreeSitterJSON */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B04F5F73350060D22B1FFB76 /* XCRemoteSwiftPackageReference "tree-sitter-json" */;
+			productName = TreeSitterJSON;
+		};
+		5D39F7D2F703B5979B7ADD79 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5039525DF961D34F2FD168DE /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+		874C3479285B41B39A30DC5B /* TreeSitterBash */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6DEDA8FBE247CCA7842DE8A4 /* XCRemoteSwiftPackageReference "tree-sitter-bash" */;
+			productName = TreeSitterBash;
+		};
+		9690AA8A3FF12009836B0347 /* TreeSitterCPP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 80D8D396545380074167D4FB /* XCRemoteSwiftPackageReference "tree-sitter-cpp" */;
+			productName = TreeSitterCPP;
+		};
+		A5388AB12E12F6BF467D6366 /* TreeSitterC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A9C8E027FBBE66B0BA198C70 /* XCRemoteSwiftPackageReference "tree-sitter-c" */;
+			productName = TreeSitterC;
+		};
+		D80C68C92BF9D5DCBC0EDEAF /* TreeSitterMarkdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C2798A22B62907BC3B4C2231 /* XCRemoteSwiftPackageReference "tree-sitter-markdown" */;
+			productName = TreeSitterMarkdown;
+		};
+		DA96939C76C4E31B50D53A61 /* SwiftTreeSitter */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5CAF2DECC7E7CEA890269D98 /* XCRemoteSwiftPackageReference "swift-tree-sitter" */;
+			productName = SwiftTreeSitter;
+		};
+		F2ED46D9A61EC960FB7F3EC8 /* TreeSitterSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9B6F1BA59A79372EB55FA77C /* XCRemoteSwiftPackageReference "tree-sitter-swift" */;
+			productName = TreeSitterSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 66907698F747F27A99D266E1 /* Project object */;
+}
