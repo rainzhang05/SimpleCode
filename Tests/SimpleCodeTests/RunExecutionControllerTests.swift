@@ -178,3 +178,20 @@ struct TerminalCommandQueueTests {
 
     @Test func workspaceTeardownResetsRunState() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let suiteName = "com.simplecode.tests.td.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        let store = WorkspaceStateStore(defaults: defaults, storageKey: "td.\(UUID())")
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: AppSettingsStore(defaults: defaults),
+            workspaceStateStore: store,
+            provenance: .userCreated
+        )
+        workspace.runCommands.setCommand("sleep 60", explicit: true)
+        workspace.runExecution.run()
+        workspace.tearDown()
+        #expect(workspace.runExecution.state == .idle)
+    }
+}
