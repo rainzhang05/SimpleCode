@@ -358,3 +358,69 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         private func applyTextEdits(_ edits: [TextEdit], in textView: CodeTextView) {
+            guard let textStorage = textView.textStorage else { return }
+            let sortedEdits = edits.sorted { lhs, rhs in
+                if lhs.range.location == rhs.range.location {
+                    return lhs.range.length > rhs.range.length
+                }
+                return lhs.range.location > rhs.range.location
+            }
+
+            isApplyingCommand = true
+            let undoManager = textView.undoManager
+            undoManager?.beginUndoGrouping()
+            textStorage.beginEditing()
+            for edit in sortedEdits where edit.range.location >= 0 && NSMaxRange(edit.range) <= textStorage.length {
+                textView.replaceCharacters(in: edit.range, with: edit.replacement)
+            }
+            textStorage.endEditing()
+            undoManager?.endUndoGrouping()
+            isApplyingCommand = false
+
+            recordProgrammaticSourceEdit(in: textView)
+        }
+
+        private func recordProgrammaticSourceEdit(in textView: CodeTextView) {
+            let revision = session.bumpRevision()
+            session.markDirty()
+            onTextChanged()
+
+            session.lineStartIndex.rebuild(from: textView.string)
+            gutter?.lineStartIndex = session.lineStartIndex
+            gutter?.invalidate()
+
+            guard session.enablesSyntaxHighlighting, let highlighter = session.highlighter else { return }
+            pendingHighlightTask?.cancel()
+            let text = textView.string
+            pendingHighlightTask = Task { [weak self] in
+                let batch = await highlighter.load(text: text, revision: revision)
+                guard !Task.isCancelled else { return }
+                self?.apply(batch: batch)
+            }
+        }
+
+        private func updateBracketHighlight(in textView: CodeTextView) {
+            let caret = textView.selectedRange().location
+            let text = textView.string
+            let controller = workspace.activeEditorCommandController(for: session)
+            if let match = controller.matchingBracket(at: caret, in: text, syntaxContext: session.syntaxContext) {
+                let open = min(caret, match)
+                let close = max(caret, match)
+                textView.bracketPair = (open, close)
+            } else if caret > 0, let match = controller.matchingBracket(at: caret - 1, in: text, syntaxContext: session.syntaxContext) {
+                let open = min(caret - 1, match)
+                let close = max(caret - 1, match)
+                textView.bracketPair = (open, close)
+            } else {
+                textView.bracketPair = nil
+            }
+        }
+
+        private func resetSmartHomeIfMoved(from line: Int, column: Int) {
+            if smartHomePressLine != line || smartHomePressColumn != column {
+                smartHomePressLine = nil
+                smartHomePressColumn = nil
+            }
+        }
+    }
+}
