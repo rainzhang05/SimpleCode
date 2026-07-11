@@ -50,16 +50,19 @@ struct AppearanceSettingsView: View {
                 Button("Reset Syntax Palette") {
                     settings.resetSyntaxPalette()
                 }
+                .pointingHandCursor()
             }
 
             Section {
                 Button("Restore Appearance Defaults") {
                     settings.restoreDefaults(for: .appearance)
                 }
+                .pointingHandCursor()
             }
         }
         .formStyle(.grouped)
         .padding()
+        .accessibilityIdentifier("settings.section.appearance")
     }
 
     private func colorRow(_ title: String, pair: WritableKeyPath<AppearanceSettings, StoredColorPair>) -> some View {

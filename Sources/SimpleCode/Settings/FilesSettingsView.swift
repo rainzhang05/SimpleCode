@@ -7,7 +7,9 @@ struct FilesSettingsView: View {
     var body: some View {
         Form {
             Section("File Tree") {
-                Toggle("Show Hidden Files", isOn: $settings.files.showHiddenFiles)
+                Text("Hidden files and folders are always shown in the workspace tree.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Confirm Before Moving to Trash", isOn: $settings.files.confirmBeforeTrash)
             }
 
@@ -26,6 +28,7 @@ struct FilesSettingsView: View {
                             Image(systemName: "minus.circle")
                         }
                         .buttonStyle(.borderless)
+                        .pointingHandCursor()
                     }
                 }
 
@@ -41,11 +44,13 @@ struct FilesSettingsView: View {
                         newExclusion = ""
                     }
                     .disabled(!ExclusionPatternValidator.isValid(newExclusion.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    .pointingHandCursor()
                 }
 
                 Button("Reset Exclusions") {
                     settings.files.userExclusions = []
                 }
+                .pointingHandCursor()
             }
 
             Section("New Files") {
@@ -75,10 +80,12 @@ struct FilesSettingsView: View {
                 Button("Restore Files Defaults") {
                     settings.restoreDefaults(for: .files)
                 }
+                .pointingHandCursor()
             }
         }
         .formStyle(.grouped)
         .padding()
+        .accessibilityIdentifier("settings.section.files")
     }
 }
 

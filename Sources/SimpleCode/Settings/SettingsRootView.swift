@@ -17,5 +17,7 @@ struct SettingsRootView: View {
                 .tabItem { Label("Terminal", systemImage: "terminal") }
         }
         .frame(minWidth: 520, minHeight: 420)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings.root")
     }
 }

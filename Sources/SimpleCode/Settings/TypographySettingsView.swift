@@ -18,6 +18,7 @@ struct TypographySettingsView: View {
                     value: $settings.typography.editorFontSize,
                     in: Double(Typography.minimumEditorFontSize)...Double(Typography.maximumEditorFontSize)
                 )
+                .accessibilityIdentifier("settings.typography.editorFontSize")
 
                 Slider(
                     value: $settings.typography.editorLineHeight,
@@ -53,24 +54,21 @@ struct TypographySettingsView: View {
                     in: Double(Typography.minimumEditorFontSize)...Double(Typography.maximumEditorFontSize)
                 )
 
-                Slider(
-                    value: $settings.typography.terminalLineSpacing,
-                    in: 1.0...2.0,
-                    step: 0.05
-                ) {
-                    Text("Line Spacing")
-                }
-                .accessibilityLabel("Terminal line spacing")
+                Text("Terminal line spacing follows the selected terminal font for reliable cell alignment.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
                 Button("Restore Typography Defaults") {
                     settings.restoreDefaults(for: .typography)
                 }
+                .pointingHandCursor()
             }
         }
         .formStyle(.grouped)
         .padding()
+        .accessibilityIdentifier("settings.section.typography")
     }
 }
 

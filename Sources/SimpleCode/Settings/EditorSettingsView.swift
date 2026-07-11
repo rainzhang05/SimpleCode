@@ -30,6 +30,7 @@ struct EditorSettingsView: View {
             Section("Display") {
                 Toggle("Word Wrap", isOn: $settings.editor.wordWrap)
                 Toggle("Line Numbers", isOn: $settings.editor.showLineNumbers)
+                    .accessibilityIdentifier("settings.editor.lineNumbers")
                 Toggle("Highlight Current Line", isOn: $settings.editor.highlightCurrentLine)
                 Toggle("Show Whitespace", isOn: $settings.editor.showWhitespace)
                 Toggle("Show Trailing Whitespace", isOn: $settings.editor.showTrailingWhitespace)
@@ -52,9 +53,11 @@ struct EditorSettingsView: View {
                 Button("Restore Editor Defaults") {
                     settings.restoreDefaults(for: .editor)
                 }
+                .pointingHandCursor()
             }
         }
         .formStyle(.grouped)
         .padding()
+        .accessibilityIdentifier("settings.section.editor")
     }
 }
