@@ -9,13 +9,18 @@ final class OpenDocumentsStore {
     private(set) var recentlyClosed: [EditorDocumentSession] = []
     private let maxRecentlyClosed = 10
 
-    private let loader = FileContentLoader()
+    private let loader: any FileContentLoading
     private let fileOperations = FileOperationService()
     private let watcherRegistry = DocumentWatcherRegistry()
+    private var latestOpenRequest = 0
     var saveAsCoordinator: SavePanelCoordinating = SaveAsCoordinator()
     var appSettings: AppSettingsStore?
 
     var pendingLargeFileOpen: PendingLargeFileOpen?
+
+    init(loader: any FileContentLoading = FileContentLoader()) {
+        self.loader = loader
+    }
 
     var activeSession: EditorDocumentSession? {
         guard let activeSessionID else { return nil }
@@ -39,15 +44,18 @@ final class OpenDocumentsStore {
     }
 
     func open(url: URL) async {
+        let request = beginOpenRequest()
         do {
             let metadata = try await loader.metadata(for: url)
+            guard isLatestOpenRequest(request) else { return }
             if metadata.openPolicy != .normal {
                 pendingLargeFileOpen = PendingLargeFileOpen(url: url, byteCount: metadata.byteCount, policy: metadata.openPolicy)
                 return
             }
-            await open(url: url, choice: nil)
+            await open(url: url, choice: nil, request: request)
         } catch {
-            await open(url: url, choice: nil)
+            guard isLatestOpenRequest(request) else { return }
+            await open(url: url, choice: nil, request: request)
         }
     }
 
@@ -55,12 +63,19 @@ final class OpenDocumentsStore {
         guard let pending = pendingLargeFileOpen else { return }
         pendingLargeFileOpen = nil
         guard choice != .cancel else { return }
-        await open(url: pending.url, choice: choice)
+        let request = beginOpenRequest()
+        await open(url: pending.url, choice: choice, request: request)
     }
 
     func open(url: URL, choice: LargeFileOpenChoice?) async {
+        let request = beginOpenRequest()
+        await open(url: url, choice: choice, request: request)
+    }
+
+    private func open(url: URL, choice: LargeFileOpenChoice?, request: Int) async {
+        guard isLatestOpenRequest(request) else { return }
         let identity = FileIdentity(url: url)
-        if let existing = session(for: identity) {
+        if let existing = session(for: identity), existing.loadState != .loading {
             activate(existing)
             return
         }
@@ -72,20 +87,40 @@ final class OpenDocumentsStore {
 
         do {
             let content = try await loader.load(url: url, choice: choice)
+            guard isCurrentOpenRequest(request, session: session) else {
+                discardLoadingSession(session)
+                return
+            }
             session.applyLoadedContent(content, url: url, choice: choice)
             if session.enablesSyntaxHighlighting {
                 session.highlighter = HighlightProviderFactory.makeHighlighter(for: session.language)
             }
             startWatching(session: session)
         } catch FileLoadError.binary {
+            guard isCurrentOpenRequest(request, session: session) else {
+                discardLoadingSession(session)
+                return
+            }
             let values = try? url.resourceValues(forKeys: [.fileSizeKey])
             session.setBinaryPlaceholder(url: url, byteCount: Int64(values?.fileSize ?? 0))
             startWatching(session: session)
         } catch FileLoadError.permissionDenied {
+            guard isCurrentOpenRequest(request, session: session) else {
+                discardLoadingSession(session)
+                return
+            }
             session.setLoadError("Permission denied.", url: url)
         } catch FileLoadError.unsupportedEncoding {
+            guard isCurrentOpenRequest(request, session: session) else {
+                discardLoadingSession(session)
+                return
+            }
             session.setLoadError("Unsupported text encoding.", url: url)
         } catch {
+            guard isCurrentOpenRequest(request, session: session) else {
+                discardLoadingSession(session)
+                return
+            }
             session.setLoadError("Could not open file.", url: url)
         }
     }
@@ -272,12 +307,13 @@ final class OpenDocumentsStore {
     func reloadFromDisk(session: EditorDocumentSession) async {
         guard let url = session.fileURL else { return }
         do {
-            let content = try await loader.load(url: url)
+            let content = try await loader.load(url: url, choice: nil)
             let selection = session.selectionRange
             let scroll = session.scrollOffset
             session.reloadFromDisk(content)
             session.selectionRange = selection
             session.scrollOffset = scroll
+            session.pendingSelectionRange = selection
             if session.enablesSyntaxHighlighting && session.highlighter == nil {
                 session.highlighter = HighlightProviderFactory.makeHighlighter(for: session.language)
             }
@@ -288,10 +324,16 @@ final class OpenDocumentsStore {
     }
 
     func tearDown() {
+        _ = beginOpenRequest()
         watcherRegistry.stopAll()
         for session in sessions {
+            session.textStorage.delegate = nil
             session.releaseSyntaxResources()
         }
+        sessions.removeAll()
+        activeSessionID = nil
+        recentlyClosed.removeAll()
+        pendingLargeFileOpen = nil
     }
 
     private func serializedText(for session: EditorDocumentSession) -> String {
@@ -309,6 +351,29 @@ final class OpenDocumentsStore {
     private func startWatching(session: EditorDocumentSession) {
         watcherRegistry.startWatching(session: session) { [weak self] session, event in
             self?.handleWatchEvent(session: session, event: event)
+        }
+    }
+
+    private func beginOpenRequest() -> Int {
+        latestOpenRequest &+= 1
+        return latestOpenRequest
+    }
+
+    private func isLatestOpenRequest(_ request: Int) -> Bool {
+        request == latestOpenRequest
+    }
+
+    private func isCurrentOpenRequest(_ request: Int, session: EditorDocumentSession) -> Bool {
+        isLatestOpenRequest(request) && sessions.contains { $0.id == session.id }
+    }
+
+    private func discardLoadingSession(_ session: EditorDocumentSession) {
+        guard let index = sessions.firstIndex(where: { $0.id == session.id }) else { return }
+        watcherRegistry.stopWatching(sessionID: session.id)
+        sessions.remove(at: index)
+        session.releaseSyntaxResources()
+        if activeSessionID == session.id {
+            activeSessionID = sessions.last?.id
         }
     }
 
