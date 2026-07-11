@@ -15,6 +15,11 @@ final class WorkspaceModel {
     let runExecution: RunExecutionController
     let useSyntaxStressSample: Bool
     private let launchConfiguration: LaunchConfiguration
+    private var bootstrapTask: Task<Void, Never>?
+    private weak var editorMutationApplier: (any EditorTextMutationApplying)?
+    private var editorMutationSessionID: UUID?
+    private(set) var hasBootstrapped = false
+    private(set) var isTornDown = false
 
     var findReplace = FindReplaceController()
     var goToLine = GoToLineController()
@@ -36,10 +41,27 @@ final class WorkspaceModel {
     var pendingCloseAction: (() -> Void)?
     var errorAlertMessage: String?
     var pendingRename: PendingRename?
+    var pendingCreation: PendingCreation?
 
     struct PendingRename: Identifiable {
         let id = UUID()
         let url: URL
+        var name: String
+    }
+
+    enum CreationKind: String, Identifiable {
+        case file
+        case folder
+
+        var id: String { rawValue }
+        var title: String { self == .file ? "New File" : "New Folder" }
+        var defaultName: String { self == .file ? "Untitled.swift" : "New Folder" }
+    }
+
+    struct PendingCreation: Identifiable {
+        let id = UUID()
+        let kind: CreationKind
+        let directory: URL
         var name: String
     }
 
@@ -80,30 +102,40 @@ final class WorkspaceModel {
             self?.runExecution.resetStateForNewRun()
         }
         self.openDocuments.appSettings = appSettings
-        fileTree.showHiddenFiles = appSettings.files.showHiddenFiles
+        fileTree.showHiddenFiles = true
         fileTree.userExclusions = appSettings.files.userExclusions
     }
 
     func bootstrapAfterOpen() async {
-        syncFileTreeFromSettings()
-        await fileTree.loadRoot()
-        await runCommands.refreshSuggestion(rootURL: rootURL)
-        if let command = launchConfiguration.uiTestRunCommand {
-            runCommands.setCommand(command, explicit: true)
-        }
-        if launchConfiguration.uiTestTrustDecision == "trusted" {
-            trust.markTrusted()
-        }
-    }
-
-    func bootstrapDocumentsIfNeeded() async {
-        if useSyntaxStressSample {
-            openDocuments.openSample(text: SampleSwiftSource.generateLarge(), displayName: "StressSample.swift")
+        guard !isTornDown, !hasBootstrapped else { return }
+        if let bootstrapTask {
+            await bootstrapTask.value
             return
         }
-        if openDocuments.sessions.isEmpty {
-            // No sample in normal flow — workspace opens empty until user picks a file.
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.syncFileTreeFromSettings()
+            await self.fileTree.loadRoot()
+            guard !Task.isCancelled, !self.isTornDown else { return }
+
+            await self.runCommands.refreshSuggestion(rootURL: self.rootURL)
+            guard !Task.isCancelled, !self.isTornDown else { return }
+
+            if self.useSyntaxStressSample, self.openDocuments.sessions.isEmpty {
+                self.openDocuments.openSample(text: SampleSwiftSource.generateLarge(), displayName: "StressSample.swift")
+            }
+            if let command = self.launchConfiguration.uiTestRunCommand {
+                self.runCommands.setCommand(command, explicit: true)
+            }
+            if self.launchConfiguration.uiTestTrustDecision == "trusted" {
+                self.trust.markTrusted()
+            }
+            self.hasBootstrapped = true
         }
+        bootstrapTask = task
+        await task.value
+        bootstrapTask = nil
     }
 
     func toggleSidebar() { isSidebarVisible.toggle() }
@@ -119,13 +151,34 @@ final class WorkspaceModel {
         await openDocuments.open(url: url)
     }
 
+    func beginCreateNewFile(in directory: URL? = nil) {
+        beginCreation(kind: .file, in: directory)
+    }
+
+    func beginCreateNewFolder(in directory: URL? = nil) {
+        beginCreation(kind: .folder, in: directory)
+    }
+
+    private func beginCreation(kind: CreationKind, in directory: URL?) {
+        let destination = directory ?? fileTree.destinationDirectoryForCreation()
+        pendingCreation = PendingCreation(
+            kind: kind,
+            directory: destination,
+            name: uniqueName(base: kind.defaultName, in: destination)
+        )
+    }
+
     func createNewFile(in directory: URL? = nil) async {
         let dir = directory ?? fileTree.destinationDirectoryForCreation()
-        let name = "Untitled.swift"
+        await createNewFile(named: uniqueName(base: CreationKind.file.defaultName, in: dir), in: dir)
+    }
+
+    func createNewFile(named name: String, in directory: URL) async {
         do {
-            let result = try await fileOperations.createFile(at: dir, name: uniqueName(base: name, in: dir))
+            let result = try await fileOperations.createFile(at: directory, name: name)
             await fileTree.refresh()
             await openFile(url: result.url)
+            pendingCreation = nil
         } catch {
             errorAlertMessage = error.localizedDescription
         }
@@ -133,14 +186,43 @@ final class WorkspaceModel {
 
     func createNewFolder(in directory: URL? = nil) async {
         let dir = directory ?? fileTree.destinationDirectoryForCreation()
+        await createNewFolder(named: uniqueName(base: CreationKind.folder.defaultName, in: dir), in: dir)
+    }
+
+    func createNewFolder(named name: String, in directory: URL) async {
         do {
-            let result = try await fileOperations.createFolder(at: dir, name: uniqueName(base: "New Folder", in: dir))
+            let result = try await fileOperations.createFolder(at: directory, name: name)
             await fileTree.refresh()
             fileTree.selectedNodeID = FileTreeNodeID(url: result.url)
-            fileTree.expandedNodeIDs.insert(FileTreeNodeID(url: dir))
+            fileTree.expandedNodeIDs.insert(FileTreeNodeID(url: directory))
+            pendingCreation = nil
         } catch {
             errorAlertMessage = error.localizedDescription
         }
+    }
+
+    func createPendingItem(named rawName: String) async {
+        guard let pendingCreation else { return }
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let validation = creationValidationError(for: name, in: pendingCreation.directory) {
+            errorAlertMessage = validation
+            return
+        }
+        switch pendingCreation.kind {
+        case .file:
+            await createNewFile(named: name, in: pendingCreation.directory)
+        case .folder:
+            await createNewFolder(named: name, in: pendingCreation.directory)
+        }
+    }
+
+    func creationValidationError(for rawName: String, in directory: URL) -> String? {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let error = FilenameValidator.validate(name) { return error }
+        if FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).path) {
+            return "An item named \"\(name)\" already exists."
+        }
+        return nil
     }
 
     func rename(item: URL, to newName: String) async {
@@ -321,11 +403,11 @@ final class WorkspaceModel {
         }
     }
 
-    func canCloseWorkspace() -> Bool {
-        !openDocuments.dirtySessions().isEmpty
-    }
-
     func requestCloseWorkspace(onConfirmed: @escaping () -> Void) {
+        if isTornDown {
+            onConfirmed()
+            return
+        }
         let dirty = openDocuments.dirtySessions()
         if dirty.isEmpty {
             tearDown()
@@ -340,6 +422,12 @@ final class WorkspaceModel {
     }
 
     func tearDown() {
+        guard !isTornDown else { return }
+        isTornDown = true
+        bootstrapTask?.cancel()
+        bootstrapTask = nil
+        pendingCloseAction = nil
+        unsavedSessionsForSheet = nil
         runExecution.resetStateForNewRun()
         openDocuments.tearDown()
         terminal.terminate()
@@ -361,13 +449,13 @@ final class WorkspaceModel {
     }
 
     func showFind() {
-        findReplace.showFind()
         syncFindBinding()
+        findReplace.showFind()
     }
 
     func showReplace() {
-        findReplace.showReplace()
         syncFindBinding()
+        findReplace.showReplace()
     }
 
     func findNext() {
@@ -384,13 +472,19 @@ final class WorkspaceModel {
         guard let session = openDocuments.activeSession else { return }
         let text = session.textStorage.string
         guard let result = findReplace.replaceCurrentEdit(in: text, selection: session.selectionRange) else { return }
-        applyTextEdits([result.edit], selection: result.selection, session: session)
+        applyEditorCommand(
+            EditorCommandResult(edits: [result.edit], resultingSelections: [result.selection]),
+            session: session
+        )
     }
 
     func replaceAll() {
         guard let session = openDocuments.activeSession else { return }
         guard let result = findReplace.replaceAllEdits(in: session.textStorage.string) else { return }
-        applyTextEdits(result.edits, selection: result.selection, session: session)
+        applyEditorCommand(
+            EditorCommandResult(edits: result.edits, resultingSelections: [result.selection]),
+            session: session
+        )
     }
 
     func showGoToLine() {
@@ -405,14 +499,8 @@ final class WorkspaceModel {
     }
 
     func syncFileTreeFromSettings() {
-        fileTree.showHiddenFiles = appSettings.files.showHiddenFiles
+        fileTree.showHiddenFiles = true
         fileTree.userExclusions = appSettings.files.userExclusions
-    }
-
-    func setShowHiddenFiles(_ visible: Bool) async {
-        appSettings.files.showHiddenFiles = visible
-        fileTree.showHiddenFiles = visible
-        await fileTree.refresh()
     }
 
     func refreshFileTreeIfSettingsChanged() async {
@@ -434,23 +522,25 @@ final class WorkspaceModel {
         session.updateCursor(line: line, column: range.location - lineStart + 1)
     }
 
-    private func applyEditorText(_ text: String, selection: NSRange, session: EditorDocumentSession) {
-        session.textStorage.setAttributedString(NSAttributedString(string: text))
-        session.lineStartIndex.rebuild(from: text)
-        session.pendingSelectionRange = selection
-        session.selectionRange = selection
-        session.bumpRevision()
-        session.markDirty()
-        findReplace.bind(text: text, selection: selection)
-    }
-
     func applyEditorCommand(_ result: EditorCommandResult, session: EditorDocumentSession) {
-        applyCommandResult(result, session: session)
+        if editorMutationSessionID == session.id,
+           editorMutationApplier?.applyEditorMutation(result, to: session) == true {
+            return
+        }
+        applyTextEdits(
+            result.edits,
+            selection: result.resultingSelections.first ?? session.selectionRange,
+            session: session
+        )
     }
 
     private func applyCommandResult(_ result: EditorCommandResult, session: EditorDocumentSession) {
-        let selection = result.resultingSelections.first ?? session.selectionRange
-        applyTextEdits(result.edits, selection: selection, session: session)
+        applyEditorCommand(result, session: session)
+    }
+
+    func registerEditorMutationApplier(_ applier: any EditorTextMutationApplying, for session: EditorDocumentSession) {
+        editorMutationApplier = applier
+        editorMutationSessionID = session.id
     }
 
     private func applyTextEdits(_ edits: [TextEdit], selection: NSRange, session: EditorDocumentSession) {
@@ -492,7 +582,8 @@ final class WorkspaceModel {
     }
 
     func editorReturnResult(for session: EditorDocumentSession, selection: NSRange) -> EditorCommandResult? {
-        activeEditorCommandController(for: session).returnKey(
+        guard selection.length == 0 else { return nil }
+        return activeEditorCommandController(for: session).returnKey(
             text: session.textStorage.string,
             cursorLocation: selection.location
         )
@@ -561,7 +652,9 @@ final class WorkspaceModel {
         case .swift: return .swift
         case .c, .cpp, .javascript, .typescript, .tsx, .json: return .cStyle
         case .python: return .python
-        case .shell: return .shell
+        case .shell:
+            let name = session.fileURL?.lastPathComponent.lowercased()
+            return name == "makefile" || name == "gnumakefile" ? .makefile : .shell
         case .assembly: return .plainText
         case .markdown, .plainText: return .plainText
         }
