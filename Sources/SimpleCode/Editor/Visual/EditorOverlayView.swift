@@ -13,23 +13,48 @@ final class EditorOverlayView: NSView {
 
     override var isOpaque: Bool { false }
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func accessibilityIsIgnored() -> Bool {
+        true
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        configureTransparency()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        configureTransparency()
+    }
+
+    private func configureTransparency() {
+        wantsLayer = false
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let textView else { return }
         if showLongLineGuide, let font = textView.font {
-            let columnX = 6 + CGFloat(guideColumn) * ("0" as NSString).size(withAttributes: [.font: font]).width
+            let columnWidth = ("0" as NSString).size(withAttributes: [.font: font]).width
+            let columnX = textView.textContainerOrigin.x + CGFloat(guideColumn) * columnWidth
             ColorRole.longLineGuideNSColor.setFill()
-            NSRect(x: columnX, y: 0, width: 1, height: bounds.height).fill()
-        }
-        if showWhitespace || showTrailingWhitespace {
-            drawWhitespaceMarkers(in: textView, dirtyRect: dirtyRect)
+            NSRect(x: columnX, y: dirtyRect.minY, width: 1, height: dirtyRect.height).fill()
         }
         if !findMatches.isEmpty {
             drawFindMatches(in: textView, dirtyRect: dirtyRect)
         }
+        if showWhitespace || showTrailingWhitespace {
+            drawWhitespaceMarkers(in: textView, dirtyRect: dirtyRect)
+        }
     }
 
     private func drawFindMatches(in textView: NSTextView, dirtyRect: NSRect) {
-        for range in findMatches where range.length > 0 {
+        let visibleRange = visibleCharacterRange(in: textView)
+        for range in findMatches
+        where range.length > 0 && NSIntersectionRange(range, visibleRange).length > 0 {
             let isActive = activeFindMatch == range
             let color = isActive
                 ? NSColor.systemOrange.withAlphaComponent(0.34)
@@ -109,16 +134,31 @@ final class EditorOverlayView: NSView {
     }
 
     private func visibleCharacterRange(in textView: NSTextView) -> NSRange {
-        guard let layoutManager = textView.layoutManager,
-              let textContainer = textView.textContainer else {
-            return NSRange(location: 0, length: (textView.string as NSString).length)
+        let fallback = NSRange(location: 0, length: (textView.string as NSString).length)
+        guard let layoutManager = textView.textLayoutManager,
+              let contentManager = layoutManager.textContentManager,
+              fallback.length > 0 else { return fallback }
+
+        let visibleRect = textView.visibleRect
+        let topPoint = CGPoint(x: 1, y: max(0, visibleRect.minY))
+        let bottomPoint = CGPoint(x: 1, y: max(0, visibleRect.maxY - 1))
+        guard let topFragment = layoutManager.textLayoutFragment(for: topPoint),
+              let bottomFragment = layoutManager.textLayoutFragment(for: bottomPoint) else {
+            return fallback
         }
-        let glyphRange = layoutManager.glyphRange(forBoundingRect: textView.visibleRect, in: textContainer)
-        let charRange = layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
-        if charRange.location == NSNotFound {
-            return NSRange(location: 0, length: (textView.string as NSString).length)
-        }
-        return charRange
+
+        let start = contentManager.offset(
+            from: contentManager.documentRange.location,
+            to: topFragment.rangeInElement.location
+        )
+        let end = contentManager.offset(
+            from: contentManager.documentRange.location,
+            to: bottomFragment.rangeInElement.endLocation
+        )
+        guard start >= 0, end >= start else { return fallback }
+        let lower = min(start, fallback.length)
+        let upper = min(max(lower, end), fallback.length)
+        return NSRange(location: lower, length: upper - lower)
     }
 
     private func contentRangeExcludingLineEnding(_ lineRange: NSRange, in text: NSString) -> NSRange {

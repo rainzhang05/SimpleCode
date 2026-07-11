@@ -2,33 +2,26 @@
 
 ## TextKit decision
 
-`CodeTextView` (`Sources/SimpleCode/Components/Editor/CodeTextView.swift`) is constructed
-by explicitly building the TextKit 2 object graph rather than relying on whichever
-default `NSTextView()` happens to pick:
+`CodeTextView` (`Sources/SimpleCode/Components/Editor/CodeTextView.swift`) opts into
+one TextKit 2 object graph with AppKit's dedicated initializer:
 
 ```
-NSTextContentStorage → NSTextLayoutManager → NSTextContainer → NSTextView(frame:textContainer:)
+NSTextView(usingTextLayoutManager: true)
 ```
 
-`CodeTextView.isUsingTextKit2` exposes `textLayoutManager != nil` as the reproducible
-check for which TextKit generation is active. All layout queries used elsewhere
-(`LineNumberGutterView`, the current-line highlight in `CodeTextView.draw(_:)`) go
-through `NSTextLayoutManager` APIs (`enumerateTextLayoutFragments`,
-`textLayoutFragment(for:)`) exclusively — nothing in this phase mixes TextKit 1
-(`NSLayoutManager`) and TextKit 2 (`NSTextLayoutManager`) APIs on the same view.
+The resulting `NSTextContentStorage` owns the session's `NSTextStorage`, preserving
+one storage/layout/view path when tabs change. Do not construct this editor with
+`NSTextView(frame:textContainer:)`: it takes the legacy compatibility path even when
+given a TextKit 2 container. Likewise, do not read `textView.layoutManager` or use
+glyph-range APIs on this view; use `textLayoutManager`, `NSTextContentManager`, and
+layout fragments only. `CodeTextView.isUsingTextKit2` exposes
+`textLayoutManager != nil` as the non-destructive runtime check.
 
-**No concrete TextKit 2 blocker was hit that required falling back to TextKit 1.**
-The APIs needed for a line-number gutter and current-line highlight
-(`enumerateTextLayoutFragments`, `textLayoutFragment(for:)`,
-`NSTextContentManager.offset(from:to:)`, `NSTextContentManager.documentRange`) are all
-present and used in this codebase and have existed since TextKit 2 shipped (macOS
-14), well within the macOS 26 floor. This matches Apple's own WWDC26 guidance
-("Elevate your app's text experience with TextKit," session 370) that framework text
-views can be extended for gutters without abandoning TextKit 2 — the *only* piece of
-that session's guidance not used here is the macOS-27-only public conformance to
-`NSTextViewportLayoutControllerDelegate` directly on `NSTextView`, which is
-deliberately deferred (see the comment at the bottom of `LineNumberGutterView.swift`)
-because it does not exist in the macOS 26 SDK this phase targets.
+**No fallback to TextKit 1 is required.** The legacy `layoutManager` accessor and
+`NSScrollView.verticalRulerView` / `NSRulerView` integration must be avoided: the
+latter suppressed visible glyph rendering in the real UI screenshot test. The gutter
+therefore draws from TextKit 2 fragments as a noninteractive `NSTextView` subview in
+space reserved by `textContainerInset`, rather than as a vertical ruler.
 
 ## What works
 
@@ -37,19 +30,20 @@ because it does not exist in the macOS 26 SDK this phase targets.
 - Monospaced system font (`Typography.editorFont(size:)`), configurable size via
   `EditorSettingsStore`, wired to a toolbar stepper — a one-way flow from SwiftUI into
   the view (`updateNSView` only ever *reads* `fontSize`, never text).
-- Standard selection, copy/cut/paste, undo/redo, Return/Backspace — all supplied by
-  `NSTextView`/TextKit itself; this phase adds no key-event interception, so none of
-  this native behavior is at risk of being accidentally overridden.
+- Standard selection, copy/cut/paste, and undo/redo remain on `NSTextView`'s native
+  responder path. The code-specific Return/Tab/Backspace/Home hooks preserve marked
+  text and delegate only the edits that require editor semantics.
 - Unicode text storage — `NSTextStorage`/`NSTextContentStorage` are Unicode-native;
   nothing in this phase re-encodes or transforms the text.
-- Marked text/IME — not intercepted anywhere; `insertText(_:replacementRange:)` and
-  marked-text handling are left entirely to `NSTextView`'s defaults.
+- Marked text/IME — command hooks defer to `NSTextView` whenever marked text is
+  active, so composition stays on AppKit's native path.
 - Light/dark adaptation — `ColorRole` dynamic `NSColor`s re-resolve automatically on
   every draw pass (`setFill()`/property reads inside `draw(_:)` and
   `configureForCodeEditing()`); no manual appearance-change observer is needed for the
   editor surface.
-- Line-number gutter (`LineNumberGutterView`, an `NSRulerView`) and current-line
-  highlight (`CodeTextView.drawCurrentLineHighlight()`), both TextKit-2-driven.
+- Line-number gutter (`LineNumberGutterView`, a noninteractive editor subview in the
+  reserved inset) and current-line highlight (`CodeTextView.drawCurrentLineHighlight()`),
+  both TextKit-2-driven.
 - A change callback that does not replace the whole view: `NSTextStorageDelegate`
   fires per edit with a `NSRange`/`changeInLength`, and only `.editedCharacters`
   edits are treated as real edits (see Syntax spike notes for why this guard exists).
@@ -65,30 +59,33 @@ Full auto-indentation beyond "no active behavior," pair insertion, find and repl
 multiple tabs, saving, bracket matching, comment toggling, whitespace rendering,
 large-file optimization. The editor loads `SampleSwiftSource.short` in memory only.
 
-## Known limitation to flag for the next phase
+## Line-number indexing
 
-`LineNumberGutterView`'s line-counting (`LineCounting.lineNumber(atUTF16Offset:in:)`)
-is a plain O(document length) scan from the start of the string up to the first
-visible offset, run on every ruler redraw. This is a deliberate simplification (see
-`LineNumberGutterView.swift`'s doc comment) — a production implementation should
-cache line-start offsets incrementally rather than rescanning. At the sizes exercised
-in this phase (see `SyntaxSpikeNotes.md` for the ~6,000-line stress file) this was not
-observed to be a problem, but it has not been profiled with a real display attached
-(see "Build and validation environment" below).
+`LineStartIndex` shifts UTF-16 line starts incrementally for ordinary character edits
+and rebuilds only structural line-ending edits. That deliberately includes
+equal-length replacements, CRLF boundaries, and deletions, where a small full-index
+scan is safer than fragile boundary arithmetic. The gutter enumerates only visible
+TextKit 2 fragments, so it does not rescan the full document on every redraw.
 
-## Build and validation environment (read this before judging "it wasn't tested live")
+## Build and validation environment
 
-This sandbox has **only Xcode Command Line Tools installed, not full Xcode** (no
-`Xcode.app`; `xcodebuild` is unavailable; there is no Metal compiler and no
-`SwiftUIMacros` compiler plugin — both ship only with Xcode.app). Concretely, SwiftUI
-property-wrapper macros (`@State`, etc.) fail to expand under the bare Command Line
-Tools `swift-frontend`, which blocks a full `swift build`/`swift test` of this SwiftUI
-app in this sandbox specifically (not a defect in this codebase — see the
-implementation report's "Test and build results" section for the exact reproduced
-error and root cause). Everything above was verified by careful manual review of the
-TextKit/AppKit API usage against fetched, tag-pinned source of `swift-tree-sitter`,
-and by the portion of the build that *did* succeed (dependency resolution, and
-compiling the bulk of this module up to the SwiftUI-macro wall). Live, on-screen
-interactive verification (actually typing, scrolling, and confirming pixel-level
-gutter alignment) requires a machine with full Xcode 26 and has not been performed by
-this agent. This is stated plainly rather than implied to have passed.
+The repair was built and tested with full Xcode beta:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer xcodebuild test \
+  -project SimpleCode.xcodeproj -scheme SimpleCode -destination 'platform=macOS' \
+  -only-testing:SimpleCodeTests/EditorVisibleRangeTests \
+  -only-testing:SimpleCodeTests/LineStartIndexTests
+
+DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer xcodebuild test \
+  -project SimpleCode.xcodeproj -scheme SimpleCode -destination 'platform=macOS' \
+  -only-testing:SimpleCodeUITests/SimpleCodeUITests/testEditorPaintsGlyphsForSwiftAndPlainTextFiles
+```
+
+The focused unit run passed 17 tests, including equal-length newline replacement and
+partial-CRLF deletion. The UI regression test opens both Swift and plain-text files,
+then inspects screenshots for painted source glyphs (excluding the gutter) and visible
+line-number labels; it does not rely on accessibility text alone. Its direct run is
+currently deferred because a separately opened user-owned SimpleCode document has
+unsaved changes and the runner must not terminate it. Manual free-form typing and
+long horizontal-scroll inspection remain useful follow-up checks.
