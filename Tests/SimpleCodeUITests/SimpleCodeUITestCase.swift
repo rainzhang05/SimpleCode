@@ -79,38 +79,35 @@ class SimpleCodeUITestCase: XCTestCase {
         print(greeting)
         """.write(to: mainFile, atomically: true, encoding: .utf8)
         try """
-        [core]
-            repositoryformatversion = 0
-            filemode = true
-            bare = true
-            logallrefupdates = false
-        """.write(to: repo.appending(path: "config"), atomically: true, encoding: .utf8)
-        try "Unnamed repository; edit this file to name it for gitweb.\n"
-            .write(to: repo.appending(path: "description"), atomically: true, encoding: .utf8)
-        try "# exclude patterns\n".write(to: repo.appending(path: "info/exclude"), atomically: true, encoding: .utf8)
+        # SimpleCode UI fixture
+        """.write(to: root.appending(path: "README.md"), atomically: true, encoding: .utf8)
+        return WorkspaceFixture(root: root, mainFile: mainFile)
     }
 
     @MainActor
-    func waitForWelcome(timeout: TimeInterval = 30) {
-        let clone = app.buttons["welcome.Clone a Git Repository"]
-        if clone.waitForExistence(timeout: timeout) { return }
+    func waitForWelcome(timeout: TimeInterval = 8) {
+        XCTAssertTrue(element("welcome.root").waitForExistence(timeout: timeout), debugSnapshot())
+        XCTAssertTrue(welcomeAction(id: "welcome.action.createFolder", label: "Create a New Folder").exists)
+        XCTAssertTrue(welcomeAction(id: "welcome.action.openFolder", label: "Open an Existing Folder").exists)
+        XCTAssertTrue(welcomeAction(id: "welcome.action.cloneRepository", label: "Clone a Git Repository").exists)
+    }
+
+    @MainActor
+    func waitForWorkspace(timeout: TimeInterval = 10) {
         XCTAssertTrue(
-            app.staticTexts["welcome.title"].waitForExistence(timeout: 5)
-            || app.staticTexts["SimpleCode"].waitForExistence(timeout: 5)
+            element("workspace.root").waitForExistence(timeout: timeout)
+                || app.buttons["workspace.terminalToggle"].waitForExistence(timeout: 1),
+            debugSnapshot()
         )
     }
 
     @MainActor
-    func waitForWorkspace(timeout: TimeInterval = 20) {
-        XCTAssertTrue(app.buttons["workspace.terminalToggle"].waitForExistence(timeout: timeout))
-    }
-
-    @MainActor
     func openWorkspace(at url: URL, extraArguments: [String] = []) {
-        launchApp(extraArguments: ["-UITestOpenFolder", url.path] + extraArguments)
+        launchApp(extraArguments: ["-UITestFixtureWorkspace", url.path] + extraArguments)
         waitForWorkspace()
     }
 
+    @discardableResult
     @MainActor
     func openRunFixture(extraArguments: [String] = []) throws -> URL {
         let fixture = try makeRunFixture()
