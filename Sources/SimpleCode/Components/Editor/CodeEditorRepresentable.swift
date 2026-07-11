@@ -705,32 +705,41 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
             session.lineStartIndex.rebuild(from: textView.string)
             gutter?.lineStartIndex = session.lineStartIndex
+            if gutter?.updateMetrics(font: textView.font, lineCount: session.lineStartIndex.lineCount) == true {
+                textView.configureLineNumberGutter(
+                    visible: settings.editor.showLineNumbers,
+                    width: gutter?.width ?? LineNumberGutterView.minimumWidth
+                )
+            }
             gutter?.invalidate()
 
-            guard session.enablesSyntaxHighlighting, let highlighter = session.highlighter else { return }
+            guard session.enablesSyntaxHighlighting,
+                  let highlighter = session.highlighter,
+                  let storage = textView.textStorage else { return }
             pendingHighlightTask?.cancel()
             let text = textView.string
+            let sessionID = session.id
+            let generation = attachmentGeneration
             pendingHighlightTask = Task { [weak self] in
+                do {
+                    try await Task.sleep(for: .milliseconds(40))
+                } catch {
+                    return
+                }
+                guard let self,
+                      !Task.isCancelled,
+                      self.session.id == sessionID,
+                      self.attachmentGeneration == generation,
+                      self.session.revision == revision,
+                      self.textView?.textStorage === storage else { return }
                 let batch = await highlighter.load(text: text, revision: revision)
                 guard !Task.isCancelled else { return }
-                self?.apply(batch: batch)
-            }
-        }
-
-        private func updateBracketHighlight(in textView: CodeTextView) {
-            let caret = textView.selectedRange().location
-            let text = textView.string
-            let controller = workspace.activeEditorCommandController(for: session)
-            if let match = controller.matchingBracket(at: caret, in: text, syntaxContext: session.syntaxContext) {
-                let open = min(caret, match)
-                let close = max(caret, match)
-                textView.bracketPair = (open, close)
-            } else if caret > 0, let match = controller.matchingBracket(at: caret - 1, in: text, syntaxContext: session.syntaxContext) {
-                let open = min(caret - 1, match)
-                let close = max(caret - 1, match)
-                textView.bracketPair = (open, close)
-            } else {
-                textView.bracketPair = nil
+                self.apply(
+                    batch: batch,
+                    expectedSessionID: sessionID,
+                    expectedAttachmentGeneration: generation,
+                    expectedTextStorage: storage
+                )
             }
         }
 
@@ -740,5 +749,44 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 smartHomePressColumn = nil
             }
         }
+    }
+}
+
+private struct EditorAppliedSettings: Equatable {
+    var highlightCurrentLine = true
+    var showLongLineGuide = true
+    var guideColumn = 100
+    var showWhitespace = false
+    var showTrailingWhitespace = false
+    var wordWrap = false
+    var showLineNumbers = true
+    var findVisible = false
+    var findMatches: [NSRange] = []
+    var activeFindMatch: NSRange?
+
+    var overlayDecorationSettings: OverlayDecorationSettings {
+        OverlayDecorationSettings(
+            showLongLineGuide: showLongLineGuide,
+            guideColumn: guideColumn,
+            showWhitespace: showWhitespace,
+            showTrailingWhitespace: showTrailingWhitespace
+        )
+    }
+
+    var findState: FindState {
+        FindState(findVisible: findVisible, findMatches: findMatches, activeFindMatch: activeFindMatch)
+    }
+
+    struct OverlayDecorationSettings: Equatable {
+        var showLongLineGuide: Bool
+        var guideColumn: Int
+        var showWhitespace: Bool
+        var showTrailingWhitespace: Bool
+    }
+
+    struct FindState: Equatable {
+        var findVisible: Bool
+        var findMatches: [NSRange]
+        var activeFindMatch: NSRange?
     }
 }
