@@ -7,7 +7,6 @@ struct WelcomeView: View {
     @Bindable var appModel: AppModel
 
     @State private var isShowingNewFolderSheet = false
-    @State private var isShowingCloneSheet = false
     @State private var isChoosingExistingFolder = false
     @State private var errorMessage: String?
     var body: some View {
@@ -31,7 +30,7 @@ struct WelcomeView: View {
                     isChoosingExistingFolder = true
                 }
                 WelcomeActionCard(title: "Clone a Git Repository", systemImage: "arrow.down.doc") {
-                    isShowingCloneSheet = true
+                    appModel.showCloneSheet = true
                 }
             }
             .padding(.horizontal, Spacing.xLarge)
@@ -48,18 +47,9 @@ struct WelcomeView: View {
             Spacer(minLength: Spacing.xLarge)
         }
         .frame(minWidth: 640, minHeight: 480)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear {
-            configureCloneController()
-            if appModel.launchConfiguration.showCloneSheet
-                || ProcessInfo.processInfo.environment["SIMPLECODE_SHOW_CLONE_SHEET"] == "1"
-                || appModel.showCloneSheet {
-                isShowingCloneSheet = true
-            }
-        }
-        .onChange(of: appModel.showCloneSheet) { _, show in
-            if show { isShowingCloneSheet = true }
-        }
+        .background(ColorRole.chromeFallback)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("welcome.root")
         .fileImporter(isPresented: $isChoosingExistingFolder, allowedContentTypes: [.folder]) { result in
             switch result {
             case .success(let url):
@@ -76,26 +66,6 @@ struct WelcomeView: View {
                 },
                 onCancel: { isShowingNewFolderSheet = false }
             )
-        }
-        .sheet(isPresented: $isShowingCloneSheet, onDismiss: {
-            appModel.gitClone.handleSheetDismiss()
-            appModel.showCloneSheet = false
-        }) {
-            CloneRepositorySheet(
-                controller: appModel.gitClone,
-                onCancel: {
-                    appModel.gitClone.handleSheetDismiss()
-                    isShowingCloneSheet = false
-                    appModel.showCloneSheet = false
-                }
-            )
-            .onAppear { configureCloneController() }
-        }
-    }
-
-    private func configureCloneController() {
-        appModel.gitClone.onCloneSuccess = { [appModel] destination in
-            appModel.handleCloneSuccess(destination: destination)
         }
     }
 }
@@ -114,8 +84,6 @@ private struct WelcomeActionCard: View {
     let systemImage: String
     let action: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
         Button(action: action) {
             VStack(spacing: Spacing.small) {
@@ -126,10 +94,23 @@ private struct WelcomeActionCard: View {
                     .multilineTextAlignment(.center)
             }
             .frame(width: 168, height: 124)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .glassPanel(cornerRadius: CornerRadius.card, interactive: !reduceMotion)
-        .accessibilityIdentifier("welcome.\(title)")
+        .contentShape(RoundedRectangle(cornerRadius: CornerRadius.card, style: .continuous))
+        .glassPanel(cornerRadius: CornerRadius.card, interactive: true)
+        .pointingHandCursor()
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("welcome.action.\(identifierSuffix)")
+    }
+
+    private var identifierSuffix: String {
+        switch title {
+        case "Create a New Folder": "createFolder"
+        case "Open an Existing Folder": "openFolder"
+        case "Clone a Git Repository": "cloneRepository"
+        default: title.replacingOccurrences(of: " ", with: "")
+        }
     }
 }
 
@@ -148,6 +129,7 @@ private struct RecentWorkspacesList: View {
                         appModel.recentWorkspaces.clearAll()
                     }
                     .buttonStyle(.borderless)
+                    .pointingHandCursor()
                     .font(.system(size: 11))
                     .accessibilityIdentifier("welcome.clearRecentWorkspaces")
                 }
@@ -171,11 +153,13 @@ private struct RecentWorkspacesList: View {
                         }
                     }
                     .frame(maxHeight: 176)
+                    .accessibilityIdentifier("welcome.recentWorkspaces.scroll")
                 }
             }
-            .background(Color(nsColor: .controlBackgroundColor))
+            .glassPanel(cornerRadius: CornerRadius.control)
             .clipShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("welcome.recentWorkspaces")
     }
 }
@@ -211,6 +195,8 @@ private struct RecentWorkspaceRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointingHandCursor()
+        .accessibilityIdentifier("welcome.recentWorkspaces.row.\(record.displayName)")
         .contextMenu {
             Button("Remove from Recents") {
                 appModel.recentWorkspaces.remove(id: record.id)
