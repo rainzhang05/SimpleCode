@@ -153,32 +153,107 @@ private struct FileTreeRowView: View {
                     .help("Open")
             }
         }
+        .frame(height: 28)
+        .padding(.leading, CGFloat(row.depth) * 16 + Spacing.xSmall)
+        .padding(.trailing, Spacing.xSmall)
+        .contentShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
+        .onHover(perform: onHover)
+        .onTapGesture { activateRow() }
+        .pointingHandCursor()
+        .contextMenu { contextMenu }
+        .onDrag { NSItemProvider(object: node.url as NSURL) }
+        .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
+            handleDrop(providers: providers, destination: node.url)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(relativePath)
+        .accessibilityIdentifier("fileTree.row.\(relativePath)")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    @ViewBuilder
+    private var disclosure: some View {
+        if node.isDirectory {
+            Button {
+                Task { await toggleExpansion() }
+            } label: {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: 14, height: 14)
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+            .foregroundStyle(isSelected ? .white.opacity(0.9) : .secondary)
+            .accessibilityIdentifier("fileTree.disclosure.\(relativePath)")
+        } else {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 14, height: 14)
+                .hidden()
+        }
+    }
+
+    private var rowBackground: Color {
+        if isDropTarget { return ColorRole.chromeAccent.opacity(0.24) }
+        if isSelected { return ColorRole.chromeAccent }
+        if isActiveFile { return ColorRole.chromeAccent.opacity(0.16) }
+        if isHovered { return ColorRole.chromeAccent.opacity(0.09) }
+        return .clear
+    }
+
+    private var textColor: Color {
+        if isSelected { return .white }
+        if isActiveFile { return ColorRole.chromeAccent }
+        return .primary
+    }
+
+    private var iconColor: Color {
+        if isSelected { return .white.opacity(0.92) }
+        if node.isDirectory { return ColorRole.chromeAccent }
+        return .secondary
+    }
+
+    private var iconName: String {
+        if node.isDirectory { return isExpanded ? "folder.fill" : "folder" }
+        if node.name.hasSuffix(".swift") { return "swift" }
+        if node.name.hasSuffix(".md") { return "doc.richtext" }
+        if node.name.hasSuffix(".json") { return "curlybraces" }
+        return "doc.text"
+    }
+
+    private var isExpanded: Bool {
+        workspace.fileTree.expandedNodeIDs.contains(node.id)
+    }
+
+    private var isSelected: Bool {
+        workspace.fileTree.selectedNodeID == node.id
+    }
+
+    private var isActiveFile: Bool {
+        guard let active = workspace.fileTree.activeFileURL else { return false }
+        return active.standardizedFileURL == node.url.standardizedFileURL
+    }
+
+    private var isOpen: Bool {
+        openFilePaths.contains(node.url.standardizedFileURL.path)
+    }
+
+    private var isDirty: Bool {
+        dirtyFilePaths.contains(node.url.standardizedFileURL.path)
+    }
+
+    private func activateRow() {
+        workspace.fileTree.selectedNodeID = node.id
+        if node.isDirectory {
+            Task { await toggleExpansion() }
+        } else {
+            Task { await workspace.openFile(url: node.url) }
+        }
     }
 
     private func toggleExpansion() async {
-        if workspace.fileTree.expandedNodeIDs.contains(node.id) {
-            workspace.fileTree.expandedNodeIDs.remove(node.id)
-        } else {
-            workspace.fileTree.expandedNodeIDs.insert(node.id)
-            await workspace.fileTree.loadChildrenIfNeeded(for: node.id)
-        }
-    }
-
-    private var rowLabel: some View {
-        HStack(spacing: 6) {
-            Image(systemName: iconName)
-                .foregroundStyle(node.isDirectory ? Color.accentColor : .secondary)
-            Text(node.name)
-                .font(.system(size: 12))
-                .foregroundStyle(isActiveFile ? Color.accentColor : .primary)
-            if node.isSymlink {
-                Image(systemName: "link").font(.system(size: 9)).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.leading, CGFloat(depth) * 12)
-        .contextMenu { contextMenu }
-        .tag(node.id)
-        .onDrag { NSItemProvider(object: node.url as NSURL) }
+        await workspace.fileTree.toggleExpansion(for: node.id)
     }
 
     private func handleDrop(providers: [NSItemProvider], destination: URL) -> Bool {
