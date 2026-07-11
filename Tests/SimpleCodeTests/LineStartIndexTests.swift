@@ -34,6 +34,29 @@ struct LineStartIndexTests {
         #expect(index.lineNumber(atUTF16Offset: 3) == 2)
     }
 
+    @Test func trailingLineEndingHasAnAddressableFinalLine() {
+        var index = LineStartIndex()
+        index.rebuild(from: "first\n")
+
+        #expect(index.lineCount == 2)
+        #expect(index.lineNumber(atUTF16Offset: 6) == 2)
+        #expect(index.lineStartUTF16Offset(forLine: 2) == 6)
+    }
+
+    @Test func deletingTrailingLineEndingRemovesTheFinalEmptyLine() {
+        var index = LineStartIndex()
+        index.rebuild(from: "first\n")
+        index.applyEdit(
+            editedRange: NSRange(location: 5, length: 0),
+            changeInLength: -1,
+            insertedText: "",
+            fullText: "first"
+        )
+
+        #expect(index.lineCount == 1)
+        #expect(index.lineNumber(atUTF16Offset: 5) == 1)
+    }
+
     @Test func incrementalInsertCreatesNewLine() {
         var index = LineStartIndex()
         index.rebuild(from: "ab")
@@ -58,5 +81,37 @@ struct LineStartIndexTests {
         )
         #expect(index.lineCount == 1)
         #expect(index.lineNumber(atUTF16Offset: 1) == 1)
+    }
+
+    @Test func equalLengthReplacementThatIntroducesANewlineUpdatesTheIndex() {
+        var index = LineStartIndex()
+        index.rebuild(from: "abcd")
+
+        index.applyEdit(
+            editedRange: NSRange(location: 2, length: 1),
+            changeInLength: 0,
+            insertedText: "\n",
+            fullText: "ab\nd"
+        )
+
+        #expect(index.lineCount == 2)
+        #expect(index.lineStartUTF16Offset(forLine: 2) == 3)
+        #expect(index.lineNumber(atUTF16Offset: 3) == 2)
+    }
+
+    @Test func deletingOnlyTheLineFeedFromCRLFKeepsTheCarriageReturnLineStart() {
+        var index = LineStartIndex()
+        index.rebuild(from: "a\r\nb")
+
+        index.applyEdit(
+            editedRange: NSRange(location: 2, length: 0),
+            changeInLength: -1,
+            insertedText: "",
+            fullText: "a\rb"
+        )
+
+        #expect(index.lineCount == 2)
+        #expect(index.lineStartUTF16Offset(forLine: 2) == 2)
+        #expect(index.lineNumber(atUTF16Offset: 2) == 2)
     }
 }

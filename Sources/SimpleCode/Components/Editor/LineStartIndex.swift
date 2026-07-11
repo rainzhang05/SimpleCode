@@ -18,42 +18,35 @@ struct LineStartIndex: Equatable, Sendable {
         insertedText: String,
         fullText: String
     ) {
-        guard delta != 0 else { return }
-
-        let editStart = editedRange.location
-        let oldLength = editedRange.length - delta
+        let fullLength = (fullText as NSString).length
+        let editStart = max(0, min(editedRange.location, fullLength))
+        let oldLength = max(0, editedRange.length - delta)
         let editEnd = editStart + max(0, oldLength)
 
-        var index = 1
-        while index < lineStartOffsets.count {
-            let offset = lineStartOffsets[index]
-            if offset > editStart && offset < editEnd {
-                lineStartOffsets.remove(at: index)
-            } else {
-                index += 1
-            }
+        // Newline edits are comparatively rare, and rebuilding them is both fast
+        // enough and substantially safer than trying to stitch CRLF boundary cases
+        // incrementally. Ordinary character edits retain the cheap offset shift.
+        let removedLineStart = lineStartOffsets.contains { $0 > editStart && $0 <= editEnd }
+        if insertedText.contains(where: { $0 == "\n" || $0 == "\r" })
+            || removedLineStart
+            || Self.touchesLineEndingBoundary(
+                in: fullText,
+                editStart: editStart,
+                postEditLength: editedRange.length
+            ) {
+            rebuild(from: fullText)
+            return
         }
 
-        for i in 1..<lineStartOffsets.count where lineStartOffsets[i] > editStart {
-            lineStartOffsets[i] += delta
+        guard delta != 0 else { return }
+
+        for index in 1..<lineStartOffsets.count where lineStartOffsets[index] > editEnd {
+            lineStartOffsets[index] += delta
         }
 
-        if delta > 0 {
-            var scanOffset = 0
-            let utf16 = Array(insertedText.utf16)
-            while scanOffset < utf16.count {
-                if utf16[scanOffset] == 10 {
-                    insertLineStart(editStart + scanOffset + 1)
-                } else if utf16[scanOffset] == 13 {
-                    let nextIsLF = scanOffset + 1 < utf16.count && utf16[scanOffset + 1] == 10
-                    insertLineStart(editStart + scanOffset + (nextIsLF ? 2 : 1))
-                    if nextIsLF { scanOffset += 1 }
-                }
-                scanOffset += 1
-            }
-        }
-
-        if lineStartOffsets.first != 0 || lineStartOffsets != lineStartOffsets.sorted() {
+        if lineStartOffsets.first != 0
+            || lineStartOffsets.last.map({ $0 > fullLength }) == true
+            || lineStartOffsets != lineStartOffsets.sorted() {
             rebuild(from: fullText)
         }
     }
@@ -83,11 +76,23 @@ struct LineStartIndex: Equatable, Sendable {
         return lineStartOffsets[line - 1]
     }
 
-    private mutating func insertLineStart(_ offset: Int) {
-        guard offset > 0 else { return }
-        if lineStartOffsets.contains(offset) { return }
-        let insertionIndex = lineStartOffsets.firstIndex(where: { $0 > offset }) ?? lineStartOffsets.endIndex
-        lineStartOffsets.insert(offset, at: insertionIndex)
+    private static func touchesLineEndingBoundary(
+        in text: String,
+        editStart: Int,
+        postEditLength: Int
+    ) -> Bool {
+        let string = text as NSString
+        let length = string.length
+        let newEnd = min(length, editStart + max(0, postEditLength))
+        let offsets = [editStart - 1, editStart, newEnd - 1, newEnd]
+
+        for offset in Set(offsets) where offset >= 0 && offset < length {
+            let codeUnit = string.character(at: offset)
+            if codeUnit == 10 || codeUnit == 13 {
+                return true
+            }
+        }
+        return false
     }
 
     static func scanLineStarts(in text: String) -> [Int] {
@@ -98,19 +103,15 @@ struct LineStartIndex: Equatable, Sendable {
             let codeUnit = utf16[index]
             if codeUnit == 10 {
                 let next = utf16.index(after: index)
-                if next < utf16.endIndex {
-                    starts.append(utf16.distance(from: utf16.startIndex, to: next))
-                }
+                starts.append(utf16.distance(from: utf16.startIndex, to: next))
             } else if codeUnit == 13 {
                 let next = utf16.index(after: index)
                 if next < utf16.endIndex, utf16[next] == 10 {
                     let afterPair = utf16.index(after: next)
-                    if afterPair < utf16.endIndex {
-                        starts.append(utf16.distance(from: utf16.startIndex, to: afterPair))
-                    }
+                    starts.append(utf16.distance(from: utf16.startIndex, to: afterPair))
                     index = afterPair
                     continue
-                } else if next < utf16.endIndex {
+                } else {
                     starts.append(utf16.distance(from: utf16.startIndex, to: next))
                 }
             }

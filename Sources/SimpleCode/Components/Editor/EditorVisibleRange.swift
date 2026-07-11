@@ -20,7 +20,6 @@ enum EditorVisibleRange {
 
         let topPoint = CGPoint(x: 1, y: max(0, visibleRect.minY))
         let bottomPoint = CGPoint(x: 1, y: max(0, visibleRect.maxY - 1))
-
         guard let topFragment = layoutManager.textLayoutFragment(for: topPoint),
               let bottomFragment = layoutManager.textLayoutFragment(for: bottomPoint) else {
             return NSRange(location: 0, length: min(documentLength, marginUTF16 * 2))
@@ -30,12 +29,10 @@ enum EditorVisibleRange {
             from: contentManager.documentRange.location,
             to: topFragment.rangeInElement.location
         )
-        let endLocation = bottomFragment.rangeInElement.endLocation
         let endOffset = contentManager.offset(
             from: contentManager.documentRange.location,
-            to: endLocation
+            to: bottomFragment.rangeInElement.endLocation
         )
-
         guard startOffset >= 0, endOffset >= startOffset else { return nil }
 
         let lower = max(0, startOffset - marginUTF16)
