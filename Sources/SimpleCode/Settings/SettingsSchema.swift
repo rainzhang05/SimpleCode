@@ -8,9 +8,9 @@ enum SettingsSection: String, CaseIterable, Sendable {
     case terminal
 }
 
-/// Versioned root settings blob persisted under `com.simplecode.settings.v1`.
+/// Versioned root settings blob persisted under the stable legacy storage key.
 struct AppSettingsBlob: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     var schemaVersion: Int
     var appearance: AppearanceSettings
@@ -214,7 +214,7 @@ struct FileDisplaySettings: Codable, Equatable, Sendable {
 
     static var defaults: FileDisplaySettings {
         FileDisplaySettings(
-            showHiddenFiles: false,
+            showHiddenFiles: true,
             confirmBeforeTrash: true,
             userExclusions: [],
             defaultEncoding: .utf8,
@@ -235,6 +235,8 @@ enum TerminalCursorStyle: String, Codable, Equatable, Sendable {
 }
 
 struct TerminalAppearanceSettings: Codable, Equatable, Sendable {
+    /// Deprecated compatibility fields. Typography and colors now live in their
+    /// dedicated settings sections; these values are read only during migration.
     var fontFamily: String
     var fontSize: Double
     var background: StoredColorPair

@@ -3,15 +3,22 @@ import Foundation
 enum SettingsMigration {
     /// Migrates a decoded blob to the current schema, merging unknown future keys safely.
     static func migrate(_ blob: AppSettingsBlob) -> AppSettingsBlob {
-        var result = blob
-        switch blob.schemaVersion {
-        case ..<1:
-            result = AppSettingsBlob.defaults
-        default:
-            result.schemaVersion = AppSettingsBlob.currentSchemaVersion
+        guard blob.schemaVersion >= 1 else {
+            return AppSettingsBlob.defaults
         }
-        result = clamp(result)
-        return result
+
+        // Keep the version intact for a blob written by a newer app. The store
+        // will expose the compatible fields, but must not overwrite unknown data.
+        guard blob.schemaVersion <= AppSettingsBlob.currentSchemaVersion else {
+            return clamp(blob)
+        }
+
+        var result = blob
+        if blob.schemaVersion == 1 {
+            result = migrateVersionOne(result)
+        }
+        result.schemaVersion = AppSettingsBlob.currentSchemaVersion
+        return clamp(result)
     }
 
     /// Applies legacy `editor.fontSize.v1` when the new blob is absent.
@@ -19,6 +26,59 @@ enum SettingsMigration {
         let legacy = defaults.double(forKey: "editor.fontSize.v1")
         if legacy > 0 {
             blob.typography.editorFontSize = legacy
+        }
+    }
+
+    private static func migrateVersionOne(_ blob: AppSettingsBlob) -> AppSettingsBlob {
+        var result = blob
+
+        // v1 exposed terminal typography and colors twice. A deliberate value
+        // in the old Terminal pane wins only when the dedicated v1 counterpart
+        // is still its default, so a newer explicit choice is never discarded.
+        if result.typography.terminalFontFamily == TypographySettings.defaults.terminalFontFamily,
+           result.terminal.fontFamily != VersionOneDefaults.terminalFontFamily {
+            result.typography.terminalFontFamily = result.terminal.fontFamily
+        }
+        if result.typography.terminalFontSize == VersionOneDefaults.terminalFontSize,
+           result.terminal.fontSize != VersionOneDefaults.terminalFontSize {
+            result.typography.terminalFontSize = result.terminal.fontSize
+        }
+        if result.appearance.terminalBackground == VersionOneDefaults.terminalBackground,
+           result.terminal.background != VersionOneDefaults.terminalBackground {
+            result.appearance.terminalBackground = result.terminal.background
+        }
+        if result.appearance.terminalForeground == VersionOneDefaults.terminalForeground,
+           result.terminal.foreground != VersionOneDefaults.terminalForeground {
+            result.appearance.terminalForeground = result.terminal.foreground
+        }
+
+        migrateVersionOnePaletteDefaults(in: &result.appearance)
+        result.files.showHiddenFiles = true
+        return result
+    }
+
+    private static func migrateVersionOnePaletteDefaults(in appearance: inout AppearanceSettings) {
+        let current = AppearanceSettings.defaults
+        replaceVersionOneDefault(&appearance.editorBackground, with: current.editorBackground, legacy: VersionOneDefaults.editorBackground)
+        replaceVersionOneDefault(&appearance.editorForeground, with: current.editorForeground, legacy: VersionOneDefaults.editorForeground)
+        replaceVersionOneDefault(&appearance.editorCurrentLine, with: current.editorCurrentLine, legacy: VersionOneDefaults.editorCurrentLine)
+        replaceVersionOneDefault(&appearance.editorSelection, with: current.editorSelection, legacy: VersionOneDefaults.editorSelection)
+        replaceVersionOneDefault(&appearance.gutterBackground, with: current.gutterBackground, legacy: VersionOneDefaults.gutterBackground)
+        replaceVersionOneDefault(&appearance.lineNumber, with: current.lineNumber, legacy: VersionOneDefaults.lineNumber)
+        replaceVersionOneDefault(&appearance.activeLineNumber, with: current.activeLineNumber, legacy: VersionOneDefaults.activeLineNumber)
+        replaceVersionOneDefault(&appearance.longLineGuide, with: current.longLineGuide, legacy: VersionOneDefaults.longLineGuide)
+        replaceVersionOneDefault(&appearance.whitespaceMarker, with: current.whitespaceMarker, legacy: VersionOneDefaults.whitespaceMarker)
+        replaceVersionOneDefault(&appearance.terminalBackground, with: current.terminalBackground, legacy: VersionOneDefaults.terminalBackground)
+        replaceVersionOneDefault(&appearance.terminalForeground, with: current.terminalForeground, legacy: VersionOneDefaults.terminalForeground)
+    }
+
+    private static func replaceVersionOneDefault(
+        _ value: inout StoredColorPair,
+        with current: StoredColorPair,
+        legacy: StoredColorPair
+    ) {
+        if value == legacy {
+            value = current
         }
     }
 
@@ -114,5 +174,32 @@ enum SettingsMigration {
         color.green = clampFinite(color.green, min: 0, max: 1, fallback: 0)
         color.blue = clampFinite(color.blue, min: 0, max: 1, fallback: 0)
         color.alpha = clampFinite(color.alpha, min: 0, max: 1, fallback: 1)
+    }
+}
+
+private enum VersionOneDefaults {
+    static let terminalFontFamily = Typography.systemMonospacedFamilyName
+    static let terminalFontSize = Double(Typography.defaultEditorFontSize)
+
+    static let editorBackground = pair(light: (0.99, 0.99, 0.99, 1), dark: (0.11, 0.11, 0.12, 1))
+    static let editorForeground = pair(light: (0.09, 0.09, 0.10, 1), dark: (0.92, 0.93, 0.94, 1))
+    static let editorCurrentLine = pair(light: (0, 0, 0, 0.045), dark: (1, 1, 1, 0.06))
+    static let editorSelection = pair(light: (0.20, 0.47, 0.95, 0.22), dark: (0.28, 0.55, 1, 0.30))
+    static let gutterBackground = pair(light: (0.97, 0.97, 0.97, 1), dark: (0.09, 0.09, 0.10, 1))
+    static let lineNumber = pair(light: (0.55, 0.55, 0.58, 1), dark: (0.50, 0.51, 0.55, 1))
+    static let activeLineNumber = pair(light: (0.20, 0.20, 0.22, 1), dark: (0.88, 0.89, 0.91, 1))
+    static let longLineGuide = pair(light: (0, 0, 0, 0.08), dark: (1, 1, 1, 0.10))
+    static let whitespaceMarker = pair(light: (0, 0, 0, 0.18), dark: (1, 1, 1, 0.20))
+    static let terminalBackground = pair(light: (0.98, 0.98, 0.98, 1), dark: (0.08, 0.08, 0.09, 1))
+    static let terminalForeground = pair(light: (0.10, 0.10, 0.10, 1), dark: (0.90, 0.90, 0.90, 1))
+
+    private static func pair(
+        light: (Double, Double, Double, Double),
+        dark: (Double, Double, Double, Double)
+    ) -> StoredColorPair {
+        StoredColorPair(
+            light: StoredColor(red: light.0, green: light.1, blue: light.2, alpha: light.3),
+            dark: StoredColor(red: dark.0, green: dark.1, blue: dark.2, alpha: dark.3)
+        )
     }
 }

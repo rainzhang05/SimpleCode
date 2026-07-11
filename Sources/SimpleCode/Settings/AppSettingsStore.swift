@@ -8,6 +8,7 @@ final class AppSettingsStore {
     static let storageKey = "com.simplecode.settings.v1"
 
     private let defaults: UserDefaults
+    private let permitsPersistence: Bool
     private(set) var revision: Int = 0
 
     var appearance: AppearanceSettings { didSet { SettingsColorResolver.updateSnapshot(appearance); persist() } }
@@ -17,9 +18,14 @@ final class AppSettingsStore {
     var terminal: TerminalAppearanceSettings { didSet { persist() } }
 
     init(defaults: UserDefaults = .standard) {
+        let loaded = Self.load(from: defaults)
+        var blob = loaded.blob
+        if !loaded.hasPersistedBlob {
+            SettingsMigration.applyLegacyFontSize(from: defaults, into: &blob)
+        }
+
         self.defaults = defaults
-        var blob = Self.load(from: defaults)
-        SettingsMigration.applyLegacyFontSize(from: defaults, into: &blob)
+        self.permitsPersistence = loaded.permitsPersistence
         self.appearance = blob.appearance
         self.typography = blob.typography
         self.editor = blob.editor
@@ -80,6 +86,11 @@ final class AppSettingsStore {
     }
 
     private func persist() {
+        guard permitsPersistence else {
+            bumpRevision()
+            return
+        }
+
         let blob = AppSettingsBlob(
             schemaVersion: AppSettingsBlob.currentSchemaVersion,
             appearance: appearance,
@@ -95,17 +106,35 @@ final class AppSettingsStore {
         bumpRevision()
     }
 
-    private static func load(from defaults: UserDefaults) -> AppSettingsBlob {
+    private struct LoadedSettings {
+        var blob: AppSettingsBlob
+        var hasPersistedBlob: Bool
+        var permitsPersistence: Bool
+    }
+
+    private static func load(from defaults: UserDefaults) -> LoadedSettings {
         guard let data = defaults.data(forKey: storageKey) else {
-            return AppSettingsBlob.defaults
+            return LoadedSettings(
+                blob: AppSettingsBlob.defaults,
+                hasPersistedBlob: false,
+                permitsPersistence: true
+            )
         }
         let decoder = JSONDecoder()
 
         guard let mergedData = mergedSettingsData(from: data),
               let blob = try? decoder.decode(AppSettingsBlob.self, from: mergedData) else {
-            return AppSettingsBlob.defaults
+            return LoadedSettings(
+                blob: AppSettingsBlob.defaults,
+                hasPersistedBlob: true,
+                permitsPersistence: true
+            )
         }
-        return SettingsMigration.migrate(blob)
+        return LoadedSettings(
+            blob: SettingsMigration.migrate(blob),
+            hasPersistedBlob: true,
+            permitsPersistence: blob.schemaVersion <= AppSettingsBlob.currentSchemaVersion
+        )
     }
 
     private static func mergedSettingsData(from data: Data) -> Data? {

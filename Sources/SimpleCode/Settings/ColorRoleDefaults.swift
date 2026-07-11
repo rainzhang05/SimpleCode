@@ -3,48 +3,48 @@ import AppKit
 /// Built-in default color pairs used before settings load and for restore-defaults.
 enum ColorRoleDefaults {
     static let editorBackground = ColorRolePair(
-        light: NSColor(srgbRed: 0.99, green: 0.99, blue: 0.99, alpha: 1),
-        dark: NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+        light: NSColor(srgbRed: 1.0, green: 0.988, blue: 1.0, alpha: 1),
+        dark: NSColor(srgbRed: 0.090, green: 0.078, blue: 0.129, alpha: 1)
     )
     static let editorForeground = ColorRolePair(
-        light: NSColor(srgbRed: 0.09, green: 0.09, blue: 0.10, alpha: 1),
-        dark: NSColor(srgbRed: 0.92, green: 0.93, blue: 0.94, alpha: 1)
+        light: NSColor(srgbRed: 0.114, green: 0.094, blue: 0.188, alpha: 1),
+        dark: NSColor(srgbRed: 0.957, green: 0.941, blue: 1.0, alpha: 1)
     )
     static let editorCurrentLine = ColorRolePair(
-        light: NSColor(srgbRed: 0.0, green: 0.0, blue: 0.0, alpha: 0.045),
-        dark: NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.06)
+        light: NSColor(srgbRed: 0.404, green: 0.341, blue: 0.914, alpha: 0.075),
+        dark: NSColor(srgbRed: 0.706, green: 0.659, blue: 1.0, alpha: 0.14)
     )
     static let editorSelection = ColorRolePair(
-        light: NSColor(srgbRed: 0.20, green: 0.47, blue: 0.95, alpha: 0.22),
-        dark: NSColor(srgbRed: 0.28, green: 0.55, blue: 1.0, alpha: 0.30)
+        light: NSColor(srgbRed: 0.404, green: 0.341, blue: 0.914, alpha: 0.24),
+        dark: NSColor(srgbRed: 0.706, green: 0.659, blue: 1.0, alpha: 0.36)
     )
     static let gutterBackground = ColorRolePair(
-        light: NSColor(srgbRed: 0.97, green: 0.97, blue: 0.97, alpha: 1),
-        dark: NSColor(srgbRed: 0.09, green: 0.09, blue: 0.10, alpha: 1)
+        light: NSColor(srgbRed: 0.961, green: 0.945, blue: 1.0, alpha: 1),
+        dark: NSColor(srgbRed: 0.125, green: 0.106, blue: 0.173, alpha: 1)
     )
     static let lineNumber = ColorRolePair(
-        light: NSColor(srgbRed: 0.55, green: 0.55, blue: 0.58, alpha: 1),
-        dark: NSColor(srgbRed: 0.50, green: 0.51, blue: 0.55, alpha: 1)
+        light: NSColor(srgbRed: 0.400, green: 0.365, blue: 0.490, alpha: 1),
+        dark: NSColor(srgbRed: 0.690, green: 0.647, blue: 0.780, alpha: 1)
     )
     static let activeLineNumber = ColorRolePair(
-        light: NSColor(srgbRed: 0.20, green: 0.20, blue: 0.22, alpha: 1),
-        dark: NSColor(srgbRed: 0.88, green: 0.89, blue: 0.91, alpha: 1)
+        light: NSColor(srgbRed: 0.231, green: 0.192, blue: 0.341, alpha: 1),
+        dark: NSColor(srgbRed: 0.925, green: 0.898, blue: 1.0, alpha: 1)
     )
     static let longLineGuide = ColorRolePair(
-        light: NSColor(srgbRed: 0.0, green: 0.0, blue: 0.0, alpha: 0.08),
-        dark: NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.10)
+        light: NSColor(srgbRed: 0.404, green: 0.341, blue: 0.914, alpha: 0.22),
+        dark: NSColor(srgbRed: 0.706, green: 0.659, blue: 1.0, alpha: 0.32)
     )
     static let whitespaceMarker = ColorRolePair(
-        light: NSColor(srgbRed: 0.0, green: 0.0, blue: 0.0, alpha: 0.18),
-        dark: NSColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.20)
+        light: NSColor(srgbRed: 0.424, green: 0.365, blue: 0.600, alpha: 0.34),
+        dark: NSColor(srgbRed: 0.710, green: 0.659, blue: 0.835, alpha: 0.38)
     )
     static let terminalBackground = ColorRolePair(
-        light: NSColor(srgbRed: 0.98, green: 0.98, blue: 0.98, alpha: 1),
-        dark: NSColor(srgbRed: 0.08, green: 0.08, blue: 0.09, alpha: 1)
+        light: NSColor(srgbRed: 0.090, green: 0.067, blue: 0.157, alpha: 1),
+        dark: NSColor(srgbRed: 0.055, green: 0.039, blue: 0.094, alpha: 1)
     )
     static let terminalForeground = ColorRolePair(
-        light: NSColor(srgbRed: 0.10, green: 0.10, blue: 0.10, alpha: 1),
-        dark: NSColor(srgbRed: 0.90, green: 0.90, blue: 0.90, alpha: 1)
+        light: NSColor(srgbRed: 0.965, green: 0.941, blue: 1.0, alpha: 1),
+        dark: NSColor(srgbRed: 0.965, green: 0.941, blue: 1.0, alpha: 1)
     )
 }
 
