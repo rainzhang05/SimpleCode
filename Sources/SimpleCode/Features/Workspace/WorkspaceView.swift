@@ -101,6 +101,120 @@ struct WorkspaceView: View {
                 Task { await workspace.openDocuments.completeLargeFileOpen(choice: choice) }
             }
         }
+        .sheet(item: Binding(
+            get: { workspace.pendingCreation },
+            set: { workspace.pendingCreation = $0 }
+        )) { pending in
+            FileCreationSheet(
+                pending: pending,
+                validationError: { name in
+                    workspace.creationValidationError(for: name, in: pending.directory)
+                },
+                onCreate: { name in
+                    Task { await workspace.createPendingItem(named: name) }
+                },
+                onCancel: {
+                    workspace.pendingCreation = nil
+                }
+            )
+        }
+    }
+
+    private var workspaceSurface: some View {
+        GeometryReader { proxy in
+            Group {
+                if proxy.size.width >= 980 {
+                    wideWorkspaceSurface
+                } else {
+                    compactWorkspaceSurface
+                }
+            }
+        }
+        .background(ColorRole.editorBackground)
+        .clipped()
+        .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: workspace.isSidebarVisible)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: workspace.isTerminalVisible)
+    }
+
+    @ViewBuilder
+    private var wideWorkspaceSurface: some View {
+        if workspace.isSidebarVisible {
+            HSplitView {
+                sidebar
+                    .frame(minWidth: 240, idealWidth: 280, maxWidth: 360)
+                workspaceContent
+                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            workspaceContent
+        }
+    }
+
+    private var compactWorkspaceSurface: some View {
+        ZStack(alignment: .topLeading) {
+            workspaceContent
+            if workspace.isSidebarVisible {
+                sidebar
+                    .frame(width: 300)
+                    .transition(panelTransition(edge: .leading))
+                    .zIndex(2)
+            }
+        }
+    }
+
+    private var sidebar: some View {
+        FileTreeSidebarView(workspace: workspace)
+            .padding(Spacing.small)
+    }
+
+    private var workspaceContent: some View {
+        VSplitView {
+            editorShell
+                .frame(minHeight: 220, maxHeight: .infinity)
+            // Keep one terminal host in the same view hierarchy while hiding or
+            // revealing the dock. Replacing a live SwiftTerm view can otherwise
+            // leave its local shell process behind without an owner.
+            terminalDock(isVisible: workspace.isTerminalVisible)
+                .frame(
+                    minHeight: workspace.isTerminalVisible ? WorkspaceModel.minimumTerminalHeight : 1,
+                    idealHeight: workspace.isTerminalVisible ? workspace.terminalHeight : 1,
+                    maxHeight: workspace.isTerminalVisible ? WorkspaceModel.maximumTerminalHeight : 1
+                )
+                .opacity(workspace.isTerminalVisible ? 1 : 0.001)
+                .allowsHitTesting(workspace.isTerminalVisible)
+                .accessibilityHidden(!workspace.isTerminalVisible)
+                .clipped()
+        }
+    }
+
+    private func terminalDock(isVisible: Bool) -> some View {
+        TerminalPanelView(
+            session: workspace.terminal,
+            typography: workspace.appSettings.typography,
+            terminalSettings: workspace.appSettings.terminal,
+            isVisible: isVisible
+        ) {
+            workspace.toggleTerminal()
+        }
+        .padding(.horizontal, Spacing.small)
+        .padding(.bottom, isVisible ? Spacing.small : 0)
+    }
+
+    private var editorShell: some View {
+        VStack(spacing: 0) {
+            if !workspace.openDocuments.sessions.isEmpty {
+                EditorTabStripView(workspace: workspace)
+            }
+            editorArea
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func panelTransition(edge: Edge) -> AnyTransition {
+        if reduceMotion {
+            return .opacity
+        }
+        return .move(edge: edge).combined(with: .opacity)
     }
 
     @ViewBuilder
