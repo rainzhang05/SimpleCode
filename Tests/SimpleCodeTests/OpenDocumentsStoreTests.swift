@@ -5,6 +5,39 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct OpenDocumentsStoreTests {
+    private actor DeferredFileContentLoader: FileContentLoading {
+        private var continuations: [URL: CheckedContinuation<LoadedFileContent, Error>] = [:]
+
+        func metadata(for url: URL) throws -> FileMetadata {
+            FileMetadata(byteCount: 64, openPolicy: .normal)
+        }
+
+        func load(url: URL, choice: LargeFileOpenChoice?) async throws -> LoadedFileContent {
+            try await withCheckedThrowingContinuation { continuation in
+                continuations[url] = continuation
+            }
+        }
+
+        func hasPendingLoad(for url: URL) -> Bool {
+            continuations[url] != nil
+        }
+
+        func resolve(_ url: URL, text: String) {
+            let content = LoadedFileContent(
+                text: text,
+                encoding: .utf8,
+                hadBOM: false,
+                lineEnding: .lf,
+                byteCount: Int64(text.utf8.count),
+                modificationDate: nil,
+                fileResourceIdentifier: nil,
+                language: LanguageDetector.detect(url: url, content: text),
+                openPolicy: .normal
+            )
+            continuations.removeValue(forKey: url)?.resume(returning: content)
+        }
+    }
+
     @Test func duplicateOpenActivatesExistingTab() async throws {
         let store = OpenDocumentsStore()
         let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
@@ -38,5 +71,36 @@ struct OpenDocumentsStoreTests {
         _ = store.close(sessionID: id, force: true)
         store.reopenLastClosed()
         #expect(store.sessions.count == 1)
+    }
+
+    @Test func rapidFileSelectionKeepsOnlyTheLatestOpenRequest() async throws {
+        let loader = DeferredFileContentLoader()
+        let store = OpenDocumentsStore(loader: loader)
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let first = directory.appendingPathComponent("First.swift")
+        let second = directory.appendingPathComponent("Second.swift")
+
+        let firstTask = Task { @MainActor in await store.open(url: first) }
+        await waitForPendingLoad(of: first, in: loader)
+        let secondTask = Task { @MainActor in await store.open(url: second) }
+        await waitForPendingLoad(of: second, in: loader)
+
+        await loader.resolve(first, text: "let first = 1")
+        await loader.resolve(second, text: "let second = 2")
+        await firstTask.value
+        await secondTask.value
+
+        #expect(store.sessions.count == 1)
+        #expect(store.activeSession?.fileURL?.standardizedFileURL == second.standardizedFileURL)
+        #expect(store.activeSession?.textStorage.string == "let second = 2")
+    }
+
+    private func waitForPendingLoad(of url: URL, in loader: DeferredFileContentLoader) async {
+        for _ in 0..<100 {
+            if await loader.hasPendingLoad(for: url) { return }
+            await Task.yield()
+        }
+        Issue.record("Timed out waiting for deferred file load")
     }
 }

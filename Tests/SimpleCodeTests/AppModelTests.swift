@@ -94,4 +94,43 @@ struct AppModelTests {
         workspace.terminalHeight = 10_000
         #expect(workspace.terminalHeight == WorkspaceModel.maximumTerminalHeight)
     }
+
+    @Test func workspaceBootstrapIsIdempotentAndTeardownIsSafeToRepeat() async throws {
+        let suiteName = "com.simplecode.tests.bootstrap.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let root = try makeTemporaryDirectory()
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: AppSettingsStore(defaults: defaults),
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "bootstrap.\(UUID().uuidString)")
+        )
+
+        await workspace.bootstrapAfterOpen()
+        await workspace.bootstrapAfterOpen()
+
+        #expect(workspace.hasBootstrapped)
+        workspace.tearDown()
+        workspace.tearDown()
+        #expect(workspace.isTornDown)
+    }
+
+    @Test func workspaceTeardownReleasesOpenDocumentsBeforeTermination() throws {
+        let suiteName = "com.simplecode.tests.termination.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: try makeTemporaryDirectory(),
+            appSettings: AppSettingsStore(defaults: defaults),
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "termination.\(UUID().uuidString)")
+        )
+        workspace.openDocuments.openSample(text: "let unsaved = true", displayName: "Unsaved.swift")
+
+        workspace.tearDown()
+
+        #expect(workspace.openDocuments.sessions.isEmpty)
+        #expect(workspace.openDocuments.activeSessionID == nil)
+    }
 }
