@@ -66,6 +66,7 @@ struct TerminalPanelView: View {
                         resizeStartHeight = nil
                     }
             )
+            .pointingHandCursor()
             .accessibilityElement()
             .accessibilityLabel("Resize Terminal")
             .accessibilityValue("\(Int(panelHeight)) points")

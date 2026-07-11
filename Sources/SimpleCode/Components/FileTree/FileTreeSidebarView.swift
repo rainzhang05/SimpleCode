@@ -96,6 +96,7 @@ struct FileTreeSidebarView: View {
                         resizeStartWidth = nil
                     }
             )
+            .pointingHandCursor()
             .accessibilityElement()
             .accessibilityLabel("Resize Files Sidebar")
             .accessibilityValue("\(Int(workspace.sidebarWidth)) points")
