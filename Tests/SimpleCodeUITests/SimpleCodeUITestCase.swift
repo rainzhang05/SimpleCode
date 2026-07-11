@@ -1,13 +1,28 @@
+import AppKit
 import XCTest
 
 class SimpleCodeUITestCase: XCTestCase {
+    struct WorkspaceFixture {
+        let root: URL
+        let mainFile: URL
+    }
+
     var app: XCUIApplication!
     var defaultsSuite: String?
     var ownedPaths: [URL] = []
+
     private let testedAppBundleID = "com.simplecode.app"
+    private let defaultTimeout: TimeInterval = 8
+    private static let defaultsSuitePrefix = "com.simplecode.uitest."
+
+    override class func tearDown() {
+        removeUITestDefaultsDomains()
+        super.tearDown()
+    }
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        Self.removeUITestDefaultsDomains()
         terminateStaleAppInstances()
         useIsolatedDefaults()
         app = MainActor.assumeIsolated { XCUIApplication() }
@@ -18,10 +33,10 @@ class SimpleCodeUITestCase: XCTestCase {
         MainActor.assumeIsolated {
             launchedApp?.terminate()
         }
-        for path in ownedPaths {
-            try? FileManager.default.removeItem(at: path)
-        }
-        ownedPaths.removeAll()
+        _ = waitForNoRunningApp(timeout: 2)
+        terminateStaleAppInstances()
+        removeOwnedPaths()
+        removeIsolatedDefaults()
         defaultsSuite = nil
     }
 
@@ -29,16 +44,19 @@ class SimpleCodeUITestCase: XCTestCase {
     @MainActor
     func launchApp(extraArguments: [String] = [], activate: Bool = true) -> XCUIApplication {
         app.launchArguments = launchArguments(extraArguments: extraArguments)
+        app.launchEnvironment = launchEnvironment()
         app.launch()
         if activate { app.activate() }
+        XCTAssertTrue(
+            waitForAnyRoot(timeout: defaultTimeout),
+            "SimpleCode launched without exposing Welcome or Workspace UI.\n\(debugSnapshot())"
+        )
         return app
     }
 
     func useIsolatedDefaults() {
         defaultsSuite = "com.simplecode.uitest.\(UUID().uuidString)"
-        if let defaultsSuite, let defaults = UserDefaults(suiteName: defaultsSuite) {
-            defaults.removePersistentDomain(forName: defaultsSuite)
-        }
+        removeIsolatedDefaults()
     }
 
     @discardableResult
@@ -51,58 +69,15 @@ class SimpleCodeUITestCase: XCTestCase {
     }
 
     @discardableResult
-    func makeRunFixture() throws -> URL {
-        let fixture = try makeTempDirectory(prefix: "SimpleCodeRunFixture")
-        try "// swift tools\n".write(
-            to: fixture.appendingPathComponent("Package.swift"),
-            atomically: true,
-            encoding: .utf8
-        )
-        return fixture
-    }
+    func makeWorkspaceFixture(prefix: String = "SimpleCodeWorkspaceFixture") throws -> WorkspaceFixture {
+        let root = try makeTempDirectory(prefix: prefix)
+        let mainFile = root.appending(path: "Main.swift")
+        try """
+        import Foundation
 
-    @discardableResult
-    func makeBareRepo() throws -> URL {
-        if let bundled = bundledBareRepoURL() {
-            let base = try makeTempDirectory(prefix: "SimpleCodeBare")
-            let repo = base.appending(path: "repo.git")
-            try FileManager.default.copyItem(at: bundled, to: repo)
-            return repo
-        }
-        let base = try makeTempDirectory(prefix: "SimpleCodeBare")
-        let repo = base.appending(path: "repo.git")
-        try createMinimalBareRepository(at: repo)
-        return repo
-    }
-
-    private func bundledBareRepoURL() -> URL? {
-        let bundle = Bundle(for: SimpleCodeUITestCase.self)
-        if let url = bundle.url(
-            forResource: "sample",
-            withExtension: "git",
-            subdirectory: "Fixtures"
-        ) {
-            return url
-        }
-
-        let directURL = bundle.resourceURL?
-            .appendingPathComponent("Fixtures", isDirectory: true)
-            .appendingPathComponent("sample.git", isDirectory: true)
-        if let directURL, FileManager.default.fileExists(atPath: directURL.path) {
-            return directURL
-        }
-        return nil
-    }
-
-    private func createMinimalBareRepository(at repo: URL) throws {
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(at: repo.appending(path: "objects/info"), withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: repo.appending(path: "objects/pack"), withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: repo.appending(path: "refs/heads"), withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: repo.appending(path: "refs/tags"), withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: repo.appending(path: "hooks"), withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: repo.appending(path: "info"), withIntermediateDirectories: true)
-        try "ref: refs/heads/main\n".write(to: repo.appending(path: "HEAD"), atomically: true, encoding: .utf8)
+        let greeting = "simplecode"
+        print(greeting)
+        """.write(to: mainFile, atomically: true, encoding: .utf8)
         try """
         [core]
             repositoryformatversion = 0
