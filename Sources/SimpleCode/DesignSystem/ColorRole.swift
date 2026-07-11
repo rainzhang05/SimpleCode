@@ -106,19 +106,22 @@ enum ColorRole {
 
     // MARK: Chrome
 
-    static let chromeFallback = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(srgbRed: 0.15, green: 0.11, blue: 0.23, alpha: 1)
-            : NSColor(srgbRed: 0.96, green: 0.94, blue: 1.0, alpha: 1)
-    })
-    /// Workspace chrome deliberately has its own violet accent rather than
-    /// inheriting the user's system accent (which is commonly blue). This keeps
-    /// selection, hover, and hairline treatments coherent with the glass shell.
-    static let chromeAccent = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(srgbRed: 0.67, green: 0.53, blue: 1.0, alpha: 1)
-            : NSColor(srgbRed: 0.38, green: 0.20, blue: 0.78, alpha: 1)
-    })
-    static let chromeHairline = chromeAccent.opacity(0.16)
-    static let statusBarText = Color.primary.opacity(0.74)
+    static let chromeFallbackPair = ColorRolePair(
+        light: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1),
+        dark: NSColor(srgbRed: 11.0 / 255, green: 12.0 / 255, blue: 14.0 / 255, alpha: 1)
+    )
+    static let chromeInkPair = ColorRolePair(
+        light: NSColor(srgbRed: 21.0 / 255, green: 23.0 / 255, blue: 26.0 / 255, alpha: 1),
+        dark: NSColor(srgbRed: 245.0 / 255, green: 247.0 / 255, blue: 250.0 / 255, alpha: 1)
+    )
+    static let chromeHairlinePair = ColorRolePair(
+        light: NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.08),
+        dark: NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.10)
+    )
+
+    static let chromeFallback = Color(nsColor: chromeFallbackPair.dynamic)
+    static let chromeAccentNSColor = NSColor.systemBlue
+    static let chromeAccent = Color(nsColor: chromeAccentNSColor)
+    static let chromeHairline = Color(nsColor: chromeHairlinePair.dynamic)
+    static let statusBarText = Color(nsColor: chromeInkPair.dynamic).opacity(0.74)
 }

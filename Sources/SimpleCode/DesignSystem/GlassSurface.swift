@@ -34,5 +34,6 @@ extension View {
     /// (panel headers, popovers, action cards). Not intended for large bodies of text.
     func glassPanel(cornerRadius: CGFloat = CornerRadius.panel, interactive: Bool = false) -> some View {
         modifier(GlassPanel(cornerRadius: cornerRadius, isInteractive: interactive))
+            .pointerStyle(interactive ? .link : nil)
     }
 }

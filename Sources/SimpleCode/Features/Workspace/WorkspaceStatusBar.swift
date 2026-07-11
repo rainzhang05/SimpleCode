@@ -25,6 +25,9 @@ struct WorkspaceStatusBar: View {
                 } label: {
                     Text(session.language.displayName)
                 }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .pointingHandCursor()
                 .accessibilityLabel("Language")
                 .accessibilityIdentifier("status.language")
 

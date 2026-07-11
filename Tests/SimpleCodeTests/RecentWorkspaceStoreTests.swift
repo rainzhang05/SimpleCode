@@ -151,4 +151,34 @@ struct WorkspaceRecordCodableTests {
 
         #expect(decoded == original)
     }
+
+    @Test func recentRowPresentationExposesTheSimpleNameInsteadOfThePath() {
+        let record = WorkspaceRecord(
+            displayName: "SimpleCode",
+            path: "/Users/example/Private/Repositories/SimpleCode",
+            bookmarkData: nil
+        )
+
+        let presentation = RecentWorkspacePresentation(record: record)
+
+        #expect(presentation.name == "SimpleCode")
+        #expect(presentation.name != record.path)
+    }
+
+    @Test func recentRowPresentationMapsAvailabilityState() {
+        let available = WorkspaceRecord(
+            displayName: "Available",
+            path: "/tmp/available",
+            bookmarkData: nil
+        )
+        let unavailable = WorkspaceRecord(
+            displayName: "Unavailable",
+            path: "/tmp/unavailable",
+            bookmarkData: nil,
+            isUnavailable: true
+        )
+
+        #expect(RecentWorkspacePresentation(record: available).availability == .available)
+        #expect(RecentWorkspacePresentation(record: unavailable).availability == .unavailable)
+    }
 }

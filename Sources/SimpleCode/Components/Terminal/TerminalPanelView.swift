@@ -121,7 +121,7 @@ struct TerminalPanelView: View {
     private var sessionIndicatorColor: Color {
         switch session.state {
         case .running: .green
-        case .notStarted: .purple
+        case .notStarted: .secondary
         case .terminated: .orange
         }
     }

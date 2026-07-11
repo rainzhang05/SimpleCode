@@ -1,5 +1,20 @@
 import SwiftUI
 
+struct RecentWorkspacePresentation: Equatable, Sendable {
+    enum Availability: Equatable, Sendable {
+        case available
+        case unavailable
+    }
+
+    let name: String
+    let availability: Availability
+
+    init(record: WorkspaceRecord) {
+        name = record.displayName
+        availability = record.isUnavailable ? .unavailable : .available
+    }
+}
+
 /// The welcome screen shown when no workspace is open. The three primary actions
 /// are the strongest visual elements on screen, per the design direction; the
 /// recent-workspaces area stays secondary and bounded even when it has content.
@@ -42,12 +57,13 @@ struct WelcomeView: View {
             }
 
             RecentWorkspacesList(appModel: appModel)
-                .frame(maxWidth: 520)
+                .frame(maxWidth: 560)
 
             Spacer(minLength: Spacing.xLarge)
         }
         .frame(minWidth: 640, minHeight: 480)
-        .background(ColorRole.chromeFallback)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ColorRole.chromeFallback.ignoresSafeArea())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("welcome.root")
         .fileImporter(isPresented: $isChoosingExistingFolder, allowedContentTypes: [.folder]) { result in
@@ -135,30 +151,25 @@ private struct RecentWorkspacesList: View {
                 }
             }
 
-            Group {
-                if appModel.recentWorkspaces.records.isEmpty {
-                    Text("No recent workspaces")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(appModel.recentWorkspaces.records) { record in
-                                RecentWorkspaceRow(record: record, appModel: appModel)
-                                if record.id != appModel.recentWorkspaces.records.last?.id {
-                                    Divider()
-                                }
-                            }
+            if appModel.recentWorkspaces.records.isEmpty {
+                Text("No recent workspaces")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 46, alignment: .center)
+                    .glassPanel(cornerRadius: CornerRadius.control)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: Spacing.xSmall) {
+                        ForEach(appModel.recentWorkspaces.records) { record in
+                            RecentWorkspaceRow(record: record, appModel: appModel)
                         }
                     }
-                    .frame(maxHeight: 176)
-                    .accessibilityIdentifier("welcome.recentWorkspaces.scroll")
                 }
+                .frame(maxHeight: 208)
+                .accessibilityIdentifier("welcome.recentWorkspaces.scroll")
             }
-            .glassPanel(cornerRadius: CornerRadius.control)
-            .clipShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
         }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("welcome.recentWorkspaces")
     }
@@ -168,40 +179,61 @@ private struct RecentWorkspaceRow: View {
     let record: WorkspaceRecord
     let appModel: AppModel
 
+    private var presentation: RecentWorkspacePresentation {
+        RecentWorkspacePresentation(record: record)
+    }
+
     var body: some View {
         Button {
             open()
         } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(record.displayName)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                    Text(record.path)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
+            HStack(spacing: Spacing.small) {
+                Image(systemName: "folder")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+
+                Text(presentation.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
                 Spacer()
-                if record.isUnavailable {
-                    Text("Unavailable")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
-                }
+
+                Circle()
+                    .fill(availabilityColor)
+                    .frame(width: 6, height: 6)
+                    .help(availabilityLabel)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, Spacing.small)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46)
+            .contentShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
         }
         .buttonStyle(.plain)
-        .pointingHandCursor()
-        .accessibilityIdentifier("welcome.recentWorkspaces.row.\(record.displayName)")
+        .contentShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
+        .glassPanel(cornerRadius: CornerRadius.control, interactive: true)
+        .accessibilityLabel(presentation.name)
+        .accessibilityValue(availabilityLabel)
+        .accessibilityIdentifier("welcome.recentWorkspaces.row.\(presentation.name)")
         .contextMenu {
             Button("Remove from Recents") {
                 appModel.recentWorkspaces.remove(id: record.id)
             }
         }
+        .accessibilityAction(named: Text("Remove from Recents")) {
+            appModel.recentWorkspaces.remove(id: record.id)
+        }
+    }
+
+    private var availabilityLabel: String {
+        presentation.availability == .available ? "Available" : "Unavailable"
+    }
+
+    private var availabilityColor: Color {
+        presentation.availability == .available
+            ? Color.secondary.opacity(0.35)
+            : Color.orange.opacity(0.85)
     }
 
     private func open() {
