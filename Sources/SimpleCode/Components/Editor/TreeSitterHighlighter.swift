@@ -13,6 +13,7 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
     private let parser: Parser
     private let query: Query
     private var tree: MutableTree?
+    private var lastParsedText = ""
     private var pendingRetryUTF16Ranges: [NSRange] = []
 
     init?(languageID: LanguageID) {
@@ -61,6 +62,7 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
     func load(text: String, revision: Int) async -> HighlightBatch {
         let newTree = parser.parse(text)
         tree = newTree
+        lastParsedText = text
         pendingRetryUTF16Ranges = []
         let tokens = newTree.map { highlightTokens(in: $0, restrictedTo: nil) } ?? []
         let wholeDocument = NSRange(location: 0, length: text.utf16.count)
@@ -74,12 +76,15 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         priorityUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
         let editPointRange = NSRange(location: edit.startUTF16, length: max(0, edit.newEndUTF16 - edit.startUTF16))
-        let priorityRange = EditorVisibleRange.union(priorityUTF16Range, editPointRange, documentLength: fullText.utf16.count)
+        let priorityRanges = mergedRanges(
+            [priorityUTF16Range, editPointRange],
+            documentLength: fullText.utf16.count
+        )
 
         let parseResult = incrementalParse(fullText: fullText, edit: edit, failedRevision: revision)
         guard let parseResult else {
             return (
-                HighlightBatch(revision: revision, coveredRanges: [priorityRange], tokens: []),
+                HighlightBatch(revision: revision, coveredRanges: priorityRanges, tokens: []),
                 nil
             )
         }
@@ -88,7 +93,8 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
             tree: parseResult.tree,
             changedUTF16Ranges: parseResult.changedUTF16Ranges,
             revision: revision,
-            priorityUTF16Range: priorityRange,
+            priorityUTF16Ranges: priorityRanges,
+            documentUTF16Count: fullText.utf16.count,
             includePendingRetry: true
         )
     }
@@ -109,7 +115,8 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
             tree: tree,
             changedUTF16Ranges: [],
             revision: revision,
-            priorityUTF16Range: visibleUTF16Range,
+            priorityUTF16Ranges: mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count),
+            documentUTF16Count: fullText.utf16.count,
             includePendingRetry: true
         )
     }
@@ -154,25 +161,39 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         edit: TextEditDescriptor,
         failedRevision: Int
     ) -> ParseResult? {
+        let previousText = lastParsedText
         let inputEdit = InputEdit(
             startByte: edit.startUTF16 * 2,
             oldEndByte: edit.oldEndUTF16 * 2,
             newEndByte: edit.newEndUTF16 * 2,
-            startPoint: .zero,
-            oldEndPoint: .zero,
-            newEndPoint: .zero
+            startPoint: point(atUTF16Offset: edit.startUTF16, in: previousText),
+            oldEndPoint: point(atUTF16Offset: edit.oldEndUTF16, in: previousText),
+            newEndPoint: point(atUTF16Offset: edit.newEndUTF16, in: fullText)
         )
 
         let previousTree = tree
         previousTree?.edit(inputEdit)
 
         guard let newTree = parser.parse(tree: previousTree, string: fullText) else {
-            AppLog.syntax.error("Incremental re-parse failed for revision \(failedRevision, privacy: .public); preserving last valid tree.")
-            pendingRetryUTF16Ranges.append(
-                NSRange(location: edit.startUTF16, length: max(0, edit.newEndUTF16 - edit.startUTF16))
+            // An incremental failure must not leave the actor holding a tree whose
+            // offsets no longer match the source. A bounded full parse restores a
+            // coherent base for the next keystroke instead of accumulating invalid
+            // edits and eventually painting stale tokens.
+            AppLog.syntax.error("Incremental re-parse failed for revision \(failedRevision, privacy: .public); rebuilding the parser tree.")
+            guard let rebuiltTree = parser.parse(fullText) else {
+                tree = nil
+                lastParsedText = ""
+                pendingRetryUTF16Ranges.append(
+                    NSRange(location: edit.startUTF16, length: max(0, edit.newEndUTF16 - edit.startUTF16))
+                )
+                return nil
+            }
+            tree = rebuiltTree
+            lastParsedText = fullText
+            return ParseResult(
+                tree: rebuiltTree,
+                changedUTF16Ranges: [NSRange(location: 0, length: fullText.utf16.count)]
             )
-            if let tree { return ParseResult(tree: tree, changedUTF16Ranges: []) }
-            return nil
         }
 
         var changedUTF16Ranges: [NSRange] = []
@@ -181,6 +202,7 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         }
 
         tree = newTree
+        lastParsedText = fullText
         return ParseResult(tree: newTree, changedUTF16Ranges: changedUTF16Ranges)
     }
 
@@ -188,24 +210,34 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         tree: MutableTree,
         changedUTF16Ranges: [NSRange],
         revision: Int,
-        priorityUTF16Range: NSRange,
+        priorityUTF16Ranges: [NSRange],
+        documentUTF16Count: Int,
         includePendingRetry: Bool
     ) -> (priority: HighlightBatch, remainder: HighlightBatch?) {
-        let priorityByteRange = utf16RangeToByteRange(priorityUTF16Range, documentUTF16Count: Int.max / 2)
-        let priorityTokens = highlightTokens(in: tree, restrictedTo: priorityByteRange)
+        var priorityTokens: [SyntaxToken] = []
+        for range in priorityUTF16Ranges {
+            let priorityByteRange = utf16RangeToByteRange(range, documentUTF16Count: documentUTF16Count)
+            priorityTokens.append(contentsOf: highlightTokens(in: tree, restrictedTo: priorityByteRange))
+        }
         let priorityBatch = HighlightBatch(
             revision: revision,
-            coveredRanges: [priorityUTF16Range],
+            coveredRanges: priorityUTF16Ranges,
             tokens: priorityTokens
         )
 
         var remainderRanges: [NSRange] = changedUTF16Ranges
-            .filter { !intersectsUTF16($0, priorityUTF16Range) }
+            .filter { changedRange in
+                !priorityUTF16Ranges.contains { intersectsUTF16(changedRange, $0) }
+            }
 
         if includePendingRetry, !pendingRetryUTF16Ranges.isEmpty {
-            remainderRanges.append(contentsOf: pendingRetryUTF16Ranges)
+            remainderRanges.append(contentsOf: pendingRetryUTF16Ranges.filter { pendingRange in
+                !priorityUTF16Ranges.contains { intersectsUTF16(pendingRange, $0) }
+            })
             pendingRetryUTF16Ranges.removeAll()
         }
+
+        remainderRanges = mergedRanges(remainderRanges, documentLength: documentUTF16Count)
 
         guard !remainderRanges.isEmpty else {
             return (priorityBatch, nil)
@@ -213,7 +245,7 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
 
         var remainderTokens: [SyntaxToken] = []
         for range in remainderRanges {
-            let byteRange = utf16RangeToByteRange(range, documentUTF16Count: Int.max / 2)
+            let byteRange = utf16RangeToByteRange(range, documentUTF16Count: documentUTF16Count)
             remainderTokens.append(contentsOf: highlightTokens(in: tree, restrictedTo: byteRange))
         }
 
@@ -251,6 +283,47 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
 
     private func intersectsUTF16(_ lhs: NSRange, _ rhs: NSRange) -> Bool {
         NSIntersectionRange(lhs, rhs).length > 0
+    }
+
+    private func point(atUTF16Offset offset: Int, in text: String) -> Point {
+        let nsText = text as NSString
+        let limit = max(0, min(offset, nsText.length))
+        var row = 0
+        var lineStart = 0
+        var index = 0
+        while index < limit {
+            if nsText.character(at: index) == 10 { // LF; CRLF is one parser line.
+                row += 1
+                lineStart = index + 1
+            }
+            index += 1
+        }
+        // The parser is fed UTF-16LE, so its line-relative column is expressed in
+        // bytes rather than Swift/String character offsets.
+        return Point(row: row, column: (limit - lineStart) * 2)
+    }
+
+    private func mergedRanges(_ ranges: [NSRange], documentLength: Int) -> [NSRange] {
+        let clamped = ranges.compactMap { range -> NSRange? in
+            let lower = max(0, min(range.location, documentLength))
+            let upper = max(lower, min(NSMaxRange(range), documentLength))
+            return upper > lower ? NSRange(location: lower, length: upper - lower) : nil
+        }.sorted { $0.location < $1.location }
+
+        var merged: [NSRange] = []
+        for range in clamped {
+            guard var previous = merged.last else {
+                merged.append(range)
+                continue
+            }
+            if range.location <= NSMaxRange(previous) {
+                previous.length = max(NSMaxRange(previous), NSMaxRange(range)) - previous.location
+                merged[merged.count - 1] = previous
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
     }
 
     private static func highlightsQueryURL(resourceName: String) -> URL? {
