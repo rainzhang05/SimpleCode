@@ -136,37 +136,112 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         revision: Int,
         visibleUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
-        let batch = await load(text: fullText, revision: revision)
-        return (batch, nil)
+        guard cachedRevision == revision else {
+            let batch = await load(text: fullText, revision: revision)
+            let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count)
+            return (
+                HighlightBatch(
+                    revision: revision,
+                    coveredRanges: visibleRanges,
+                    tokens: tokens(in: visibleRanges, from: batch.tokens)
+                ),
+                nil
+            )
+        }
+
+        let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count)
+        return (
+            HighlightBatch(
+                revision: revision,
+                coveredRanges: visibleRanges,
+                tokens: tokens(in: visibleRanges, from: cachedTokens)
+            ),
+            nil
+        )
     }
 
-    private static func highlight(_ text: String, languageID: LanguageID) -> [SyntaxToken] {
-        let ns = text as NSString
+    private func highlightEntireDocument(_ text: String) -> [SyntaxToken] {
+        highlight(text, restrictedTo: NSRange(location: 0, length: text.utf16.count))
+    }
+
+    private func highlight(_ text: String, restrictedTo range: NSRange) -> [SyntaxToken] {
+        let nsText = text as NSString
+        guard nsText.length > 0, range.length > 0 else { return [] }
         var tokens: [SyntaxToken] = []
-        let lineComment = languageID == .python || languageID == .shell ? "#" : "//"
+        var location = max(0, min(range.location, nsText.length))
+        let end = min(nsText.length, NSMaxRange(range))
 
-        var lineStart = 0
-        while lineStart < ns.length {
-            var lineEnd = lineStart
-            while lineEnd < ns.length {
-                let ch = ns.character(at: lineEnd)
-                if ch == 10 || ch == 13 { break }
-                lineEnd += 1
+        while location < end {
+            let unit = nsText.character(at: location)
+
+            if isWhitespace(unit) || unit == 10 || unit == 13 {
+                location += 1
+                continue
             }
-            let lineRange = NSRange(location: lineStart, length: lineEnd - lineStart)
-            let line = ns.substring(with: lineRange)
 
-            if let commentRange = line.range(of: lineComment) {
-                let offset = line.distance(from: line.startIndex, to: commentRange.lowerBound)
+            let lineEnd = Self.lineEnd(after: location, in: nsText)
+            if configuration.supportsSlashComments,
+               unit == 47,
+               location + 1 < nsText.length {
+                let next = nsText.character(at: location + 1)
+                if next == 47 {
+                    tokens.append(SyntaxToken(range: NSRange(location: location, length: lineEnd - location), category: .comment))
+                    location = lineEnd
+                    continue
+                }
+                if next == 42 {
+                    let closing = nsText.range(
+                        of: "*/",
+                        options: [],
+                        range: NSRange(location: location + 2, length: nsText.length - location - 2)
+                    )
+                    let commentEnd = closing.location == NSNotFound ? nsText.length : NSMaxRange(closing)
+                    tokens.append(SyntaxToken(range: NSRange(location: location, length: commentEnd - location), category: .comment))
+                    location = commentEnd
+                    continue
+                }
+            }
+            if !configuration.supportsSlashComments, unit == configuration.lineComment {
+                tokens.append(SyntaxToken(range: NSRange(location: location, length: lineEnd - location), category: .comment))
+                location = lineEnd
+                continue
+            }
+
+            if (unit == 34 || unit == 39),
+               location + 2 < nsText.length,
+               nsText.character(at: location + 1) == unit,
+               nsText.character(at: location + 2) == unit {
+                let delimiter = String(UnicodeScalar(unit)!) + String(UnicodeScalar(unit)!) + String(UnicodeScalar(unit)!)
+                let closing = nsText.range(
+                    of: delimiter,
+                    options: [],
+                    range: NSRange(location: location + 3, length: nsText.length - location - 3)
+                )
+                let stringEnd = closing.location == NSNotFound ? nsText.length : NSMaxRange(closing)
+                tokens.append(SyntaxToken(range: NSRange(location: location, length: stringEnd - location), category: .string))
+                location = stringEnd
+                continue
+            }
+            if unit == 34 || unit == 39 || (configuration.supportsBackticks && unit == 96) {
+                let limit = unit == 96 ? nsText.length : lineEnd
+                let stringEnd = endOfString(in: nsText, startingAt: location, limit: limit, delimiter: unit)
                 tokens.append(SyntaxToken(
-                    range: NSRange(location: lineRange.location + offset, length: line.count - offset),
-                    category: .comment
+                    range: NSRange(location: location, length: max(1, stringEnd - location)),
+                    category: .string
                 ))
+                location = stringEnd
+                continue
             }
 
-            applyRegex(#""([^"\\]|\\.)*""#, in: line, base: lineRange.location, category: .string, tokens: &tokens)
-            applyRegex(#"'([^'\\]|\\.)*'"#, in: line, base: lineRange.location, category: .string, tokens: &tokens)
-            applyRegex(#"\b\d+(\.\d+)?\b"#, in: line, base: lineRange.location, category: .number, tokens: &tokens)
+            if isDigit(unit) {
+                let numberEnd = endOfNumber(in: nsText, startingAt: location, limit: lineEnd)
+                tokens.append(SyntaxToken(
+                    range: NSRange(location: location, length: numberEnd - location),
+                    category: .number
+                ))
+                location = numberEnd
+                continue
+            }
 
             let keywords: [String]
             switch languageID {
