@@ -7,16 +7,18 @@ struct TerminalPanelView: View {
     @Bindable var session: TerminalSessionController
     let typography: TypographySettings
     let terminalSettings: TerminalAppearanceSettings
+    @Binding var panelHeight: CGFloat
     var isVisible: Bool = true
     var onClose: () -> Void
 
+    @State private var resizeStartHeight: CGFloat?
+    @State private var isResizeHandleHovered = false
+
     var body: some View {
         VStack(spacing: 0) {
-            if isVisible {
-                header
-                Divider()
-                    .opacity(0.35)
-            }
+            header
+            Divider()
+                .opacity(0.35)
             TerminalRepresentable(
                 session: session,
                 typography: typography,
@@ -35,8 +37,49 @@ struct TerminalPanelView: View {
         .glassPanel(cornerRadius: CornerRadius.panel)
         .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
         .clipShape(RoundedRectangle(cornerRadius: CornerRadius.panel, style: .continuous))
+        .overlay(alignment: .top) {
+            resizeHandle
+        }
         .accessibilityIdentifier("terminal.panel")
         .accessibilityHidden(!isVisible)
+    }
+
+    private var resizeHandle: some View {
+        Rectangle()
+            .fill(.clear)
+            .frame(height: 14)
+            .contentShape(Rectangle())
+            .overlay {
+                Capsule()
+                    .fill(.primary.opacity(isResizeHandleHovered ? 0.34 : 0.14))
+                    .frame(width: 32, height: 2)
+            }
+            .onHover { isResizeHandleHovered = $0 }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let startHeight = resizeStartHeight ?? panelHeight
+                        if resizeStartHeight == nil { resizeStartHeight = startHeight }
+                        panelHeight = startHeight - value.translation.height
+                    }
+                    .onEnded { _ in
+                        resizeStartHeight = nil
+                    }
+            )
+            .accessibilityElement()
+            .accessibilityLabel("Resize Terminal")
+            .accessibilityValue("\(Int(panelHeight)) points")
+            .accessibilityIdentifier("terminal.resizeHandle")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment:
+                    panelHeight += 16
+                case .decrement:
+                    panelHeight -= 16
+                @unknown default:
+                    break
+                }
+            }
     }
 
     private var header: some View {

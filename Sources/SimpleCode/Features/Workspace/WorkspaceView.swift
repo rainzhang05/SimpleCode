@@ -122,82 +122,92 @@ struct WorkspaceView: View {
 
     private var workspaceSurface: some View {
         GeometryReader { proxy in
-            Group {
-                if proxy.size.width >= 980 {
-                    wideWorkspaceSurface
-                } else {
-                    compactWorkspaceSurface
-                }
+            let topInset = min(max(0, proxy.safeAreaInsets.top), max(0, proxy.size.height))
+            let contentHeight = WorkspacePanelLayout.contentHeight(
+                containerHeight: proxy.size.height,
+                topInset: topInset
+            )
+
+            ZStack {
+                ColorRole.editorBackground
+
+                workspaceLayers(contentHeight: contentHeight)
+                    .frame(width: max(0, proxy.size.width), height: contentHeight)
+                    .position(
+                        x: max(0, proxy.size.width) / 2,
+                        y: topInset + contentHeight / 2
+                    )
             }
+            .frame(width: max(0, proxy.size.width), height: max(0, proxy.size.height))
         }
-        .background(ColorRole.editorBackground)
+        .ignoresSafeArea(.container, edges: .top)
         .clipped()
-        .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: workspace.isSidebarVisible)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: workspace.isTerminalVisible)
     }
 
-    @ViewBuilder
-    private var wideWorkspaceSurface: some View {
-        if workspace.isSidebarVisible {
-            HSplitView {
-                sidebar
-                    .frame(minWidth: 240, idealWidth: 280, maxWidth: 360)
-                workspaceContent
-                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
-            }
-        } else {
-            workspaceContent
-        }
-    }
+    private func workspaceLayers(contentHeight: CGFloat) -> some View {
+        let terminalHeight = WorkspacePanelLayout.fittedTerminalHeight(
+            configuredHeight: workspace.terminalHeight,
+            availableHeight: contentHeight - (Spacing.small * 2)
+        )
 
-    private var compactWorkspaceSurface: some View {
-        ZStack(alignment: .topLeading) {
-            workspaceContent
-            if workspace.isSidebarVisible {
-                sidebar
-                    .frame(width: 300)
-                    .transition(panelTransition(edge: .leading))
-                    .zIndex(2)
-            }
-        }
-    }
-
-    private var sidebar: some View {
-        FileTreeSidebarView(workspace: workspace)
-            .padding(Spacing.small)
-    }
-
-    private var workspaceContent: some View {
-        VSplitView {
+        return ZStack(alignment: .topLeading) {
             editorShell
-                .frame(minHeight: 220, maxHeight: .infinity)
-            // Keep one terminal host in the same view hierarchy while hiding or
-            // revealing the dock. Replacing a live SwiftTerm view can otherwise
-            // leave its local shell process behind without an owner.
-            terminalDock(isVisible: workspace.isTerminalVisible)
-                .frame(
-                    minHeight: workspace.isTerminalVisible ? WorkspaceModel.minimumTerminalHeight : 1,
-                    idealHeight: workspace.isTerminalVisible ? workspace.terminalHeight : 1,
-                    maxHeight: workspace.isTerminalVisible ? WorkspaceModel.maximumTerminalHeight : 1
-                )
-                .opacity(workspace.isTerminalVisible ? 1 : 0.001)
-                .allowsHitTesting(workspace.isTerminalVisible)
-                .accessibilityHidden(!workspace.isTerminalVisible)
-                .clipped()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            sidebarOverlay(terminalHeight: terminalHeight)
+                .zIndex(2)
+
+            terminalOverlay(height: terminalHeight)
+                .zIndex(3)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func terminalDock(isVisible: Bool) -> some View {
+    private func sidebarOverlay(terminalHeight: CGFloat) -> some View {
+        FileTreeSidebarView(workspace: workspace)
+            .frame(width: workspace.sidebarWidth)
+            .padding(.leading, Spacing.small)
+            .padding(.top, Spacing.small)
+            .padding(
+                .bottom,
+                workspace.isTerminalVisible ? terminalHeight + (Spacing.small * 2) : Spacing.small
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .opacity(workspace.isSidebarVisible ? 1 : 0)
+            .offset(x: reduceMotion || workspace.isSidebarVisible ? 0 : -24)
+            .scaleEffect(
+                reduceMotion || workspace.isSidebarVisible ? 1 : 0.985,
+                anchor: .leading
+            )
+            .allowsHitTesting(workspace.isSidebarVisible)
+            .accessibilityHidden(!workspace.isSidebarVisible)
+            .animation(.easeInOut(duration: 0.22), value: workspace.isSidebarVisible)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: workspace.isTerminalVisible)
+    }
+
+    private func terminalOverlay(height: CGFloat) -> some View {
         TerminalPanelView(
             session: workspace.terminal,
             typography: workspace.appSettings.typography,
             terminalSettings: workspace.appSettings.terminal,
-            isVisible: isVisible
+            panelHeight: $workspace.terminalHeight,
+            isVisible: workspace.isTerminalVisible
         ) {
             workspace.toggleTerminal()
         }
+        .frame(height: height)
         .padding(.horizontal, Spacing.small)
-        .padding(.bottom, isVisible ? Spacing.small : 0)
+        .padding(.bottom, Spacing.small)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .opacity(workspace.isTerminalVisible ? 1 : 0)
+        .offset(y: reduceMotion || workspace.isTerminalVisible ? 0 : 24)
+        .scaleEffect(
+            reduceMotion || workspace.isTerminalVisible ? 1 : 0.985,
+            anchor: .bottom
+        )
+        .allowsHitTesting(workspace.isTerminalVisible)
+        .accessibilityHidden(!workspace.isTerminalVisible)
+        .animation(.easeInOut(duration: 0.22), value: workspace.isTerminalVisible)
     }
 
     private var editorShell: some View {
@@ -208,13 +218,6 @@ struct WorkspaceView: View {
             editorArea
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func panelTransition(edge: Edge) -> AnyTransition {
-        if reduceMotion {
-            return .opacity
-        }
-        return .move(edge: edge).combined(with: .opacity)
     }
 
     @ViewBuilder

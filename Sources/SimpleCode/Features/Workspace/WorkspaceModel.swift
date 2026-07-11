@@ -1,6 +1,35 @@
 import CoreGraphics
 import Foundation
 
+enum WorkspacePanelLayout {
+    static let defaultSidebarWidth: CGFloat = 280
+    static let minimumSidebarWidth: CGFloat = 240
+    static let maximumSidebarWidth: CGFloat = 360
+    static let defaultTerminalHeight: CGFloat = 220
+    static let minimumTerminalHeight: CGFloat = 120
+    static let maximumTerminalHeight: CGFloat = 560
+
+    static func clampedSidebarWidth(_ width: CGFloat) -> CGFloat {
+        guard width.isFinite else { return defaultSidebarWidth }
+        return min(max(width, minimumSidebarWidth), maximumSidebarWidth)
+    }
+
+    static func clampedTerminalHeight(_ height: CGFloat) -> CGFloat {
+        guard height.isFinite else { return defaultTerminalHeight }
+        return min(max(height, minimumTerminalHeight), maximumTerminalHeight)
+    }
+
+    static func contentHeight(containerHeight: CGFloat, topInset: CGFloat) -> CGFloat {
+        let height = max(0, containerHeight)
+        let inset = min(max(0, topInset), height)
+        return height - inset
+    }
+
+    static func fittedTerminalHeight(configuredHeight: CGFloat, availableHeight: CGFloat) -> CGFloat {
+        min(clampedTerminalHeight(configuredHeight), max(0, availableHeight))
+    }
+}
+
 @MainActor
 @Observable
 final class WorkspaceModel {
@@ -30,9 +59,15 @@ final class WorkspaceModel {
 
     var isSidebarVisible: Bool = true
     var isTerminalVisible: Bool = false
-    var terminalHeight: CGFloat = 220 {
+    var sidebarWidth: CGFloat = WorkspacePanelLayout.defaultSidebarWidth {
         didSet {
-            let clamped = min(max(terminalHeight, Self.minimumTerminalHeight), Self.maximumTerminalHeight)
+            let clamped = WorkspacePanelLayout.clampedSidebarWidth(sidebarWidth)
+            if clamped != sidebarWidth { sidebarWidth = clamped }
+        }
+    }
+    var terminalHeight: CGFloat = WorkspacePanelLayout.defaultTerminalHeight {
+        didSet {
+            let clamped = WorkspacePanelLayout.clampedTerminalHeight(terminalHeight)
             if clamped != terminalHeight { terminalHeight = clamped }
         }
     }
@@ -65,8 +100,10 @@ final class WorkspaceModel {
         var name: String
     }
 
-    static let minimumTerminalHeight: CGFloat = 120
-    static let maximumTerminalHeight: CGFloat = 560
+    static let minimumSidebarWidth = WorkspacePanelLayout.minimumSidebarWidth
+    static let maximumSidebarWidth = WorkspacePanelLayout.maximumSidebarWidth
+    static let minimumTerminalHeight = WorkspacePanelLayout.minimumTerminalHeight
+    static let maximumTerminalHeight = WorkspacePanelLayout.maximumTerminalHeight
 
     init(
         id: UUID,

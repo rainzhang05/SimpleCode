@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 struct FileTreeSidebarView: View {
     @Bindable var workspace: WorkspaceModel
     @State private var hoveredNodeID: FileTreeNodeID?
+    @State private var resizeStartWidth: CGFloat?
+    @State private var isResizeHandleHovered = false
 
     private var openFilePaths: Set<String> {
         Set(workspace.openDocuments.sessions.compactMap {
@@ -54,6 +56,9 @@ struct FileTreeSidebarView: View {
         .glassPanel(cornerRadius: CornerRadius.panel)
         .shadow(color: .black.opacity(0.16), radius: 22, y: 10)
         .clipShape(RoundedRectangle(cornerRadius: CornerRadius.panel, style: .continuous))
+        .overlay(alignment: .trailing) {
+            resizeHandle
+        }
         .sheet(item: $workspace.pendingRename) { pending in
             RenameSheet(name: Binding(
                 get: { workspace.pendingRename?.name ?? pending.name },
@@ -67,6 +72,44 @@ struct FileTreeSidebarView: View {
                 workspace.pendingRename = nil
             }
         }
+    }
+
+    private var resizeHandle: some View {
+        Rectangle()
+            .fill(.clear)
+            .frame(width: 14)
+            .contentShape(Rectangle())
+            .overlay {
+                Capsule()
+                    .fill(.primary.opacity(isResizeHandleHovered ? 0.34 : 0.14))
+                    .frame(width: 2, height: 32)
+            }
+            .onHover { isResizeHandleHovered = $0 }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let startWidth = resizeStartWidth ?? workspace.sidebarWidth
+                        if resizeStartWidth == nil { resizeStartWidth = startWidth }
+                        workspace.sidebarWidth = startWidth + value.translation.width
+                    }
+                    .onEnded { _ in
+                        resizeStartWidth = nil
+                    }
+            )
+            .accessibilityElement()
+            .accessibilityLabel("Resize Files Sidebar")
+            .accessibilityValue("\(Int(workspace.sidebarWidth)) points")
+            .accessibilityIdentifier("fileTree.resizeHandle")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment:
+                    workspace.sidebarWidth += 16
+                case .decrement:
+                    workspace.sidebarWidth -= 16
+                @unknown default:
+                    break
+                }
+            }
     }
 
     private func handleRootDrop(providers: [NSItemProvider]) -> Bool {

@@ -95,6 +95,36 @@ struct AppModelTests {
         #expect(workspace.terminalHeight == WorkspaceModel.maximumTerminalHeight)
     }
 
+    @Test func floatingPanelDimensionsUseSpecifiedDefaultsAndClampRanges() throws {
+        let appModel = makeIsolatedAppModel()
+        appModel.openWorkspace(at: try makeTemporaryDirectory())
+        guard case .workspace(let workspace) = appModel.route else {
+            Issue.record("Expected a workspace to be open")
+            return
+        }
+
+        #expect(workspace.sidebarWidth == 280)
+        #expect(workspace.terminalHeight == 220)
+
+        workspace.sidebarWidth = 10
+        #expect(workspace.sidebarWidth == 240)
+        workspace.sidebarWidth = 10_000
+        #expect(workspace.sidebarWidth == 360)
+
+        workspace.terminalHeight = 10
+        #expect(workspace.terminalHeight == 120)
+        workspace.terminalHeight = 10_000
+        #expect(workspace.terminalHeight == 560)
+    }
+
+    @Test func workspacePanelLayoutConsumesTheActualTopInsetWithoutNegativeGeometry() {
+        #expect(WorkspacePanelLayout.contentHeight(containerHeight: 700, topInset: 52) == 648)
+        #expect(WorkspacePanelLayout.contentHeight(containerHeight: 700, topInset: -10) == 700)
+        #expect(WorkspacePanelLayout.contentHeight(containerHeight: 40, topInset: 80) == 0)
+        #expect(WorkspacePanelLayout.fittedTerminalHeight(configuredHeight: 220, availableHeight: 180) == 180)
+        #expect(WorkspacePanelLayout.fittedTerminalHeight(configuredHeight: 220, availableHeight: -1) == 0)
+    }
+
     @Test func workspaceBootstrapIsIdempotentAndTeardownIsSafeToRepeat() async throws {
         let suiteName = "com.simplecode.tests.bootstrap.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
