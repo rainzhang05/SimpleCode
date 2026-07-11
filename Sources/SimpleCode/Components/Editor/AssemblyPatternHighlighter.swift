@@ -210,49 +210,56 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
         }
     }
 
-    private func lineRange(containingUTF16Edit edit: TextEditDescriptor, in text: String) -> ClosedRange<Int> {
-        let editStart = max(0, edit.startUTF16)
-        let editEnd = max(editStart, edit.newEndUTF16)
-        let startLine = lineNumber(atUTF16Offset: editStart, in: text)
-        let endLine = lineNumber(atUTF16Offset: max(editStart, editEnd - 1), in: text)
-        return startLine...endLine
+    private func tokens(in ranges: [NSRange], from tokens: [SyntaxToken]) -> [SyntaxToken] {
+        tokens.filter { token in
+            ranges.contains { NSIntersectionRange(token.range, $0).length > 0 }
+        }
     }
 
-    private func utf16Range(forLines lines: ClosedRange<Int>, in text: String) -> NSRange {
-        var lineNumber = 1
-        var lineStart = text.startIndex
-        var rangeStart: Int?
-        var rangeEnd = 0
+    private static func mergedRanges(_ ranges: [NSRange], documentLength: Int) -> [NSRange] {
+        let clamped = ranges.compactMap { range -> NSRange? in
+            let lower = max(0, min(range.location, documentLength))
+            let upper = max(lower, min(NSMaxRange(range), documentLength))
+            return upper > lower ? NSRange(location: lower, length: upper - lower) : nil
+        }.sorted { $0.location < $1.location }
 
-        while lineStart <= text.endIndex {
-            if lines.contains(lineNumber) {
-                let offset = text.utf16.distance(from: text.utf16.startIndex, to: lineStart.samePosition(in: text.utf16) ?? text.utf16.endIndex)
-                if rangeStart == nil { rangeStart = offset }
-                let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
-                rangeEnd = text.utf16.distance(from: text.utf16.startIndex, to: lineEnd.samePosition(in: text.utf16) ?? text.utf16.endIndex)
+        var merged: [NSRange] = []
+        for range in clamped {
+            guard var previous = merged.last else {
+                merged.append(range)
+                continue
             }
-            if lineStart == text.endIndex { break }
-            if let lineEnd = text[lineStart...].firstIndex(of: "\n") {
-                lineStart = text.index(after: lineEnd)
+            if range.location <= NSMaxRange(previous) {
+                previous.length = max(NSMaxRange(previous), NSMaxRange(range)) - previous.location
+                merged[merged.count - 1] = previous
             } else {
-                break
+                merged.append(range)
             }
-            lineNumber += 1
         }
-
-        let start = rangeStart ?? 0
-        return NSRange(location: start, length: max(0, rangeEnd - start))
+        return merged
     }
 
-    private func lineNumber(atUTF16Offset offset: Int, in text: String) -> Int {
-        let clamped = max(0, min(offset, text.utf16.count))
-        var line = 1
-        var current = 0
-        for unit in text.utf16 {
-            if current >= clamped { break }
-            if unit == 10 { line += 1 }
-            current += 1
+    private static func expandedLineRange(around range: NSRange, in text: String) -> NSRange {
+        let nsText = text as NSString
+        guard nsText.length > 0 else { return NSRange(location: 0, length: 0) }
+        let lower = max(0, min(range.location, nsText.length - 1))
+        let upperProbe = max(lower, min(max(range.location, NSMaxRange(range) - 1), nsText.length - 1))
+        let first = nsText.lineRange(for: NSRange(location: lower, length: 0))
+        let last = nsText.lineRange(for: NSRange(location: upperProbe, length: 0))
+        var end = NSMaxRange(last)
+        if end < nsText.length {
+            end = NSMaxRange(nsText.lineRange(for: NSRange(location: end, length: 0)))
         }
-        return line
+        return NSRange(location: first.location, length: end - first.location)
+    }
+
+    private static func contentRange(of lineRange: NSRange, in text: NSString) -> NSRange {
+        var length = lineRange.length
+        while length > 0 {
+            let unit = text.character(at: lineRange.location + length - 1)
+            guard unit == 10 || unit == 13 else { break }
+            length -= 1
+        }
+        return NSRange(location: lineRange.location, length: length)
     }
 }
