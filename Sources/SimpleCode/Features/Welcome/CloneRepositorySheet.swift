@@ -9,9 +9,23 @@ struct CloneRepositorySheet: View {
     @State private var folderNameEdited = false
 
     var body: some View {
+        if AppTestingSupport.isUITesting(launchConfiguration: .parse()) {
+            sheetContent
+        } else {
+            sheetContent
+                .fileImporter(isPresented: $isChoosingDestination, allowedContentTypes: [.folder]) { result in
+                    if case .success(let url) = result {
+                        controller.parentURL = url
+                    }
+                }
+        }
+    }
+
+    private var sheetContent: some View {
         VStack(alignment: .leading, spacing: Spacing.medium) {
             Text("Clone a Git Repository")
                 .font(.headline)
+                .accessibilityIdentifier("clone.sheet.title")
 
             switch controller.sheetState {
             case .editing, .validating, .failed:
@@ -26,12 +40,12 @@ struct CloneRepositorySheet: View {
         }
         .padding(Spacing.large)
         .frame(width: 480)
+        .background(WindowAccessibilityConfigurator(
+            title: "Clone a Git Repository",
+            identifier: "clone.sheet.window"
+        ))
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("clone.sheet")
-        .fileImporter(isPresented: $isChoosingDestination, allowedContentTypes: [.folder]) { result in
-            if case .success(let url) = result {
-                controller.parentURL = url
-            }
-        }
         .onChange(of: controller.repositoryURLText) { _, _ in
             if !folderNameEdited {
                 controller.folderName = controller.derivedFolderName
@@ -63,6 +77,7 @@ struct CloneRepositorySheet: View {
                 isChoosingDestination = true
             }
             .disabled(isBusy)
+            .pointingHandCursor()
             .accessibilityIdentifier("clone.sheet.chooseParent")
         }
 
@@ -143,6 +158,7 @@ struct CloneRepositorySheet: View {
                     onCancel()
                 }
             }
+            .pointingHandCursor()
             .accessibilityIdentifier("clone.sheet.cancelButton")
 
             switch controller.sheetState {
@@ -150,12 +166,14 @@ struct CloneRepositorySheet: View {
                 Button("Cancel Clone") {
                     controller.cancelClone()
                 }
+                .pointingHandCursor()
                 .accessibilityIdentifier("clone.sheet.cloneButton")
             case .failed:
                 Button("Retry") {
                     controller.resetToEditing()
                     controller.startClone()
                 }
+                .pointingHandCursor()
                 .accessibilityIdentifier("clone.sheet.cloneButton")
             case .succeeded:
                 EmptyView()
@@ -164,6 +182,7 @@ struct CloneRepositorySheet: View {
                     controller.startClone()
                 }
                 .buttonStyle(.borderedProminent)
+                .pointingHandCursor()
                 .disabled(!controller.canClone || isBusy)
                 .accessibilityIdentifier("clone.sheet.cloneButton")
             }

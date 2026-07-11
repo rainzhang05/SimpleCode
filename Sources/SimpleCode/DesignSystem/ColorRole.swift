@@ -106,6 +106,19 @@ enum ColorRole {
 
     // MARK: Chrome
 
-    static let chromeHairline = Color.primary.opacity(0.08)
-    static let statusBarText = Color.secondary
+    static let chromeFallback = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.15, green: 0.11, blue: 0.23, alpha: 1)
+            : NSColor(srgbRed: 0.96, green: 0.94, blue: 1.0, alpha: 1)
+    })
+    /// Workspace chrome deliberately has its own violet accent rather than
+    /// inheriting the user's system accent (which is commonly blue). This keeps
+    /// selection, hover, and hairline treatments coherent with the glass shell.
+    static let chromeAccent = Color(nsColor: NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.67, green: 0.53, blue: 1.0, alpha: 1)
+            : NSColor(srgbRed: 0.38, green: 0.20, blue: 0.78, alpha: 1)
+    })
+    static let chromeHairline = chromeAccent.opacity(0.16)
+    static let statusBarText = Color.primary.opacity(0.74)
 }

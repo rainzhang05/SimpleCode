@@ -30,6 +30,7 @@ struct NewFolderSheet: View {
                 Button("Choose…") {
                     isChoosingLocation = true
                 }
+                .pointingHandCursor()
             }
 
             if let errorMessage {
@@ -43,10 +44,12 @@ struct NewFolderSheet: View {
                 Button("Cancel", role: .cancel) {
                     onCancel()
                 }
+                .pointingHandCursor()
                 Button("Create") {
                     create()
                 }
                 .buttonStyle(.borderedProminent)
+                .pointingHandCursor()
                 .disabled(folderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || parentURL == nil)
             }
         }

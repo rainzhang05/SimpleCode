@@ -11,9 +11,10 @@ struct EditorTabStripView: View {
                 }
             }
             .padding(.horizontal, Spacing.xSmall)
-            .padding(.vertical, Spacing.xxSmall)
+            .padding(.vertical, 4)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(height: 36)
+        .background(ColorRole.chromeFallback)
         .overlay(alignment: .bottom) {
             Rectangle().fill(ColorRole.chromeHairline).frame(height: 1)
         }
@@ -28,7 +29,7 @@ struct EditorTabStripView: View {
                 .lineLimit(1)
                 .font(.system(size: 12, weight: isActive ? .semibold : .regular))
             if session.isDirty {
-                Circle().fill(Color.accentColor).frame(width: 6, height: 6)
+                Circle().fill(ColorRole.chromeAccent).frame(width: 6, height: 6)
             }
             Button {
                 workspace.requestCloseTab(sessionID: session.id)
@@ -38,17 +39,13 @@ struct EditorTabStripView: View {
             }
             .buttonStyle(.plain)
             .opacity(0.7)
+            .pointingHandCursor()
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isActive ? Color(nsColor: .controlBackgroundColor) : Color.clear)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isActive ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 1)
-        )
+        .padding(.vertical, 5)
+        .background(isActive ? ColorRole.chromeAccent.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .glassPanel(cornerRadius: 8, interactive: true)
+        .opacity(isActive ? 1 : 0.78)
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .onTapGesture {
             workspace.openDocuments.activate(session)
@@ -56,6 +53,7 @@ struct EditorTabStripView: View {
                 workspace.fileTree.activeFileURL = url
             }
         }
+        .pointingHandCursor()
         .contextMenu {
             Button("Close") { workspace.requestCloseTab(sessionID: session.id) }
             Button("Close Others") { workspace.requestCloseOthers(than: session.id) }
@@ -74,6 +72,9 @@ struct EditorTabStripView: View {
                 }
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(session.displayName)
+        .accessibilityValue(session.isDirty ? "modified" : "saved")
         .accessibilityIdentifier("editor.tab.\(session.displayName)")
     }
 }

@@ -13,7 +13,6 @@ struct GlassPanel: ViewModifier {
     var cornerRadius: CGFloat = CornerRadius.panel
     var isInteractive: Bool = false
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @ViewBuilder
@@ -21,9 +20,9 @@ struct GlassPanel: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         if reduceTransparency {
             content
-                .background(Color(nsColor: .controlBackgroundColor), in: shape)
+                .background(ColorRole.chromeFallback, in: shape)
         } else {
-            let variant: Glass = (isInteractive && !reduceMotion) ? .regular.interactive() : .regular
+            let variant: Glass = isInteractive ? .regular.interactive() : .regular
             content
                 .glassEffect(variant, in: shape)
         }
