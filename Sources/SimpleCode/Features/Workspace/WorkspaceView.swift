@@ -3,41 +3,16 @@ import SwiftUI
 struct WorkspaceView: View {
     @Bindable var workspace: WorkspaceModel
     var onCloseWorkspace: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
-            HSplitView {
-                if workspace.isSidebarVisible {
-                    FileTreeSidebarView(workspace: workspace)
-                        .frame(minWidth: 180, idealWidth: 230, maxWidth: 420)
-                }
-
-                VSplitView {
-                    VStack(spacing: 0) {
-                        if !workspace.openDocuments.sessions.isEmpty {
-                            EditorTabStripView(workspace: workspace)
-                        }
-                        editorArea
-                    }
-                    .frame(minHeight: 200, maxHeight: .infinity)
-
-                    TerminalPanelView(session: workspace.terminal, isVisible: workspace.isTerminalVisible) {
-                        workspace.toggleTerminal()
-                    }
-                    .frame(
-                        minHeight: workspace.isTerminalVisible ? WorkspaceModel.minimumTerminalHeight : 1,
-                        idealHeight: workspace.terminalHeight,
-                        maxHeight: workspace.isTerminalVisible ? WorkspaceModel.maximumTerminalHeight : workspace.terminalHeight
-                    )
-                    .opacity(workspace.isTerminalVisible ? 1 : 0)
-                    .clipped()
-                    .allowsHitTesting(workspace.isTerminalVisible)
-                    .accessibilityHidden(!workspace.isTerminalVisible)
-                }
-            }
+            workspaceSurface
 
             WorkspaceStatusBar(workspace: workspace)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("workspace.root")
         .toolbar {
             WorkspaceToolbar(workspace: workspace, onCloseWorkspace: {
                 workspace.requestCloseWorkspace(onConfirmed: onCloseWorkspace)
@@ -45,11 +20,12 @@ struct WorkspaceView: View {
         }
         .navigationTitle(workspace.rootURL.lastPathComponent)
         .task {
-            await workspace.bootstrapDocumentsIfNeeded()
             await workspace.bootstrapAfterOpen()
         }
-        .onChange(of: workspace.appSettings.revision) { _, _ in
-            workspace.syncFileTreeFromSettings()
+        .onChange(of: workspace.appSettings.files) { _, _ in
+            Task {
+                await workspace.refreshFileTreeIfSettingsChanged()
+            }
         }
         .sheet(isPresented: Binding(
             get: { workspace.runExecution.showTrustSheet },
@@ -77,6 +53,22 @@ struct WorkspaceView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Restarting terminates the current shell and loses its interactive state (directory, environment, and virtual environments).")
+        }
+        .confirmationDialog(
+            "Select Syntax Language",
+            isPresented: $workspace.showLanguagePickerSheet,
+            titleVisibility: .visible
+        ) {
+            ForEach(LanguageRegistry.all, id: \.id) { definition in
+                Button(definition.displayName) {
+                    workspace.setLanguage(definition.id)
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                workspace.showLanguagePickerSheet = false
+            }
+        } message: {
+            Text("Choose how SimpleCode should color and indent the active document.")
         }
         .sheet(isPresented: Binding(
             get: { workspace.unsavedSessionsForSheet != nil },
