@@ -5,6 +5,8 @@ import SwiftUI
 /// the design system's rule that glass never sits behind text content.
 struct TerminalPanelView: View {
     @Bindable var session: TerminalSessionController
+    let typography: TypographySettings
+    let terminalSettings: TerminalAppearanceSettings
     var isVisible: Bool = true
     var onClose: () -> Void
 
@@ -12,51 +14,115 @@ struct TerminalPanelView: View {
         VStack(spacing: 0) {
             if isVisible {
                 header
+                Divider()
+                    .opacity(0.35)
             }
-            TerminalRepresentable(session: session, isPanelVisible: isVisible)
+            TerminalRepresentable(
+                session: session,
+                typography: typography,
+                terminalSettings: terminalSettings,
+                isPanelVisible: isVisible
+            )
+                .accessibilityIdentifier("terminal.surface")
                 .opacity(isVisible ? 1 : 0)
                 .allowsHitTesting(isVisible)
+                .background(Color(nsColor: ColorRole.terminalBackgroundPair.dynamic))
+                .clipShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
+                .padding(.horizontal, Spacing.xSmall)
+                .padding(.bottom, Spacing.xSmall)
         }
+        .padding(.top, Spacing.xSmall)
+        .glassPanel(cornerRadius: CornerRadius.panel)
+        .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
+        .clipShape(RoundedRectangle(cornerRadius: CornerRadius.panel, style: .continuous))
+        .accessibilityIdentifier("terminal.panel")
+        .accessibilityHidden(!isVisible)
     }
 
     private var header: some View {
         HStack(spacing: Spacing.small) {
-            Text("Terminal")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(ColorRole.statusBarText)
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(sessionIndicatorColor)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Terminal")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("\(sessionStateLabel) · \(session.workingDirectory.lastPathComponent)")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundStyle(ColorRole.statusBarText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Terminal \(sessionStateLabel), \(session.workingDirectory.path)")
 
             Spacer()
 
-            Button {
-                session.clearScreen()
-            } label: {
-                Label("Clear", systemImage: "eraser")
-            }
-            .help("Clear the terminal display")
-
-            Button {
-                session.restart()
-            } label: {
-                Label("Restart", systemImage: "arrow.clockwise")
-            }
-            .help("Restart the shell session")
-            .accessibilityIdentifier("terminal.restartButton")
-
-            Button {
-                onClose()
-            } label: {
-                Label("Close", systemImage: "xmark")
-            }
-            .help("Hide the terminal panel")
+            terminalAction(
+                title: "Clear Terminal",
+                systemImage: "eraser",
+                help: "Clear the terminal display",
+                identifier: "terminal.clearButton",
+                action: session.clearScreen
+            )
+            terminalAction(
+                title: "Restart Terminal",
+                systemImage: "arrow.clockwise",
+                help: "Restart the shell session",
+                identifier: "terminal.restartButton",
+                action: session.restart
+            )
+            terminalAction(
+                title: "Close Terminal",
+                systemImage: "xmark",
+                help: "Hide the terminal panel",
+                identifier: "terminal.closeButton",
+                action: onClose
+            )
         }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .controlSize(.small)
         .padding(.horizontal, Spacing.small)
-        .padding(.vertical, Spacing.xxSmall)
-        .frame(height: 28)
-        .glassPanel(cornerRadius: CornerRadius.control)
-        .padding(.horizontal, Spacing.xxSmall)
-        .padding(.top, Spacing.xxSmall)
+        .frame(height: 36)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func terminalAction(
+        title: String,
+        systemImage: String,
+        help: String,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.glass)
+        .help(help)
+        .pointingHandCursor()
+        .accessibilityLabel(title)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var sessionStateLabel: String {
+        switch session.state {
+        case .notStarted: "Ready"
+        case .running: "Connected"
+        case .terminated(let code):
+            code.map { "Exited \($0)" } ?? "Stopped"
+        }
+    }
+
+    private var sessionIndicatorColor: Color {
+        switch session.state {
+        case .running: .green
+        case .notStarted: .purple
+        case .terminated: .orange
+        }
     }
 }
