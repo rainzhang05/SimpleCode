@@ -230,6 +230,87 @@ struct WorkspaceView: View {
                 description: Text("Select a file from the sidebar to begin editing.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("workspace.editorPlaceholder")
         }
+    }
+}
+
+private struct FileCreationSheet: View {
+    let pending: WorkspaceModel.PendingCreation
+    let validationError: (String) -> String?
+    let onCreate: (String) -> Void
+    let onCancel: () -> Void
+
+    @State private var name: String
+    @FocusState private var isNameFocused: Bool
+
+    init(
+        pending: WorkspaceModel.PendingCreation,
+        validationError: @escaping (String) -> String?,
+        onCreate: @escaping (String) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        self.pending = pending
+        self.validationError = validationError
+        self.onCreate = onCreate
+        self.onCancel = onCancel
+        _name = State(initialValue: pending.name)
+    }
+
+    private var error: String? {
+        validationError(name)
+    }
+
+    private var canCreate: Bool {
+        error == nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.medium) {
+            Label(pending.kind.title, systemImage: pending.kind == .file ? "doc.badge.plus" : "folder.badge.plus")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: Spacing.xSmall) {
+                TextField("Name", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isNameFocused)
+                    .onSubmit(commit)
+                    .accessibilityIdentifier("fileTree.creationNameField")
+
+                Text(pending.directory.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                if let error {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("fileTree.creationError")
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel, action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Create", action: commit)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canCreate)
+                    .accessibilityIdentifier("fileTree.creationConfirm")
+            }
+        }
+        .padding(Spacing.large)
+        .frame(width: 420)
+        .task {
+            isNameFocused = true
+        }
+        .accessibilityIdentifier("fileTree.creationSheet")
+    }
+
+    private func commit() {
+        guard canCreate else { return }
+        onCreate(name)
     }
 }
