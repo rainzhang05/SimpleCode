@@ -21,11 +21,38 @@ struct AppSettingsStoreTests {
     return object
   }
 
+  private func colorPair(
+    light: (Double, Double, Double, Double),
+    dark: (Double, Double, Double, Double)
+  ) -> [String: Any] {
+    [
+      "light": ["red": light.0, "green": light.1, "blue": light.2, "alpha": light.3],
+      "dark": ["red": dark.0, "green": dark.1, "blue": dark.2, "alpha": dark.3],
+    ]
+  }
+
+  private var v1EditorBackground: [String: Any] {
+    colorPair(light: (0.99, 0.99, 0.99, 1), dark: (0.11, 0.11, 0.12, 1))
+  }
+
+  private var v1GutterBackground: [String: Any] {
+    colorPair(light: (0.97, 0.97, 0.97, 1), dark: (0.09, 0.09, 0.10, 1))
+  }
+
+  private var v1TerminalBackground: [String: Any] {
+    colorPair(light: (0.98, 0.98, 0.98, 1), dark: (0.08, 0.08, 0.09, 1))
+  }
+
+  private var v1TerminalForeground: [String: Any] {
+    colorPair(light: (0.10, 0.10, 0.10, 1), dark: (0.90, 0.90, 0.90, 1))
+  }
+
   @Test func defaultsOnFreshStore() {
     let store = AppSettingsStore(defaults: isolatedDefaults())
     #expect(store.typography.editorFontSize == Double(Typography.defaultEditorFontSize))
     #expect(store.editor.tabWidth == 4)
     #expect(store.files.userExclusions.isEmpty)
+    #expect(store.files.showHiddenFiles)
   }
 
   @Test func roundTripPersistence() {
@@ -150,5 +177,143 @@ struct AppSettingsStoreTests {
     store.typography.editorFontFamily = "DefinitelyNotARealFontFamilyXYZ"
     let resolved = FontCatalog.resolvedMonospacedFamily(store.typography.editorFontFamily)
     #expect(resolved == Typography.systemMonospacedFamilyName)
+  }
+
+  @Test func schemaVersionOneMigratesDefaultPaletteAndAlwaysShowsDotfiles() throws {
+    let defaults = isolatedDefaults()
+    let object = try settingsJSONObject { object in
+      object["schemaVersion"] = 1
+      var appearance = object["appearance"] as! [String: Any]
+      appearance["editorBackground"] = v1EditorBackground
+      appearance["gutterBackground"] = v1GutterBackground
+      appearance["terminalBackground"] = v1TerminalBackground
+      appearance["terminalForeground"] = v1TerminalForeground
+      object["appearance"] = appearance
+
+      var files = object["files"] as! [String: Any]
+      files["showHiddenFiles"] = false
+      object["files"] = files
+    }
+    try persistJSONObject(object, into: defaults)
+
+    let store = AppSettingsStore(defaults: defaults)
+
+    #expect(store.appearance.editorBackground == AppearanceSettings.defaults.editorBackground)
+    #expect(store.appearance.gutterBackground == AppearanceSettings.defaults.gutterBackground)
+    #expect(store.appearance.terminalBackground == AppearanceSettings.defaults.terminalBackground)
+    #expect(store.appearance.terminalForeground == AppearanceSettings.defaults.terminalForeground)
+    #expect(store.files.showHiddenFiles)
+
+    store.editor.tabWidth = 2
+    let persisted = try #require(defaults.data(forKey: AppSettingsStore.storageKey))
+    let persistedObject = try #require(JSONSerialization.jsonObject(with: persisted) as? [String: Any])
+    #expect(persistedObject["schemaVersion"] as? Int == AppSettingsBlob.currentSchemaVersion)
+  }
+
+  @Test func schemaVersionOnePreservesCustomAppearanceColors() throws {
+    let defaults = isolatedDefaults()
+    let customBackground = colorPair(light: (0.21, 0.13, 0.37, 1), dark: (0.10, 0.04, 0.19, 1))
+    let object = try settingsJSONObject { object in
+      object["schemaVersion"] = 1
+      var appearance = object["appearance"] as! [String: Any]
+      appearance["terminalBackground"] = customBackground
+      object["appearance"] = appearance
+    }
+    try persistJSONObject(object, into: defaults)
+
+    let store = AppSettingsStore(defaults: defaults)
+
+    #expect(store.appearance.terminalBackground.light.red == 0.21)
+    #expect(store.appearance.terminalBackground.dark.blue == 0.19)
+  }
+
+  @Test func schemaVersionOneUsesLegacyTerminalValuesWhenModernCounterpartsAreDefaults() throws {
+    let defaults = isolatedDefaults()
+    let legacyBackground = colorPair(light: (0.21, 0.13, 0.37, 1), dark: (0.10, 0.04, 0.19, 1))
+    let legacyForeground = colorPair(light: (0.97, 0.86, 1.0, 1), dark: (0.91, 0.78, 1.0, 1))
+    let object = try settingsJSONObject { object in
+      object["schemaVersion"] = 1
+      var appearance = object["appearance"] as! [String: Any]
+      appearance["terminalBackground"] = v1TerminalBackground
+      appearance["terminalForeground"] = v1TerminalForeground
+      object["appearance"] = appearance
+
+      var terminal = object["terminal"] as! [String: Any]
+      terminal["fontFamily"] = "Menlo"
+      terminal["fontSize"] = 17
+      terminal["background"] = legacyBackground
+      terminal["foreground"] = legacyForeground
+      object["terminal"] = terminal
+    }
+    try persistJSONObject(object, into: defaults)
+
+    let store = AppSettingsStore(defaults: defaults)
+
+    #expect(store.typography.terminalFontFamily == "Menlo")
+    #expect(store.typography.terminalFontSize == 17)
+    #expect(store.appearance.terminalBackground.light.red == 0.21)
+    #expect(store.appearance.terminalForeground.dark.green == 0.78)
+  }
+
+  @Test func schemaVersionOneKeepsExplicitModernTerminalValues() throws {
+    let defaults = isolatedDefaults()
+    let modernBackground = colorPair(light: (0.34, 0.15, 0.52, 1), dark: (0.16, 0.07, 0.26, 1))
+    let legacyBackground = colorPair(light: (0.21, 0.13, 0.37, 1), dark: (0.10, 0.04, 0.19, 1))
+    let object = try settingsJSONObject { object in
+      object["schemaVersion"] = 1
+      var typography = object["typography"] as! [String: Any]
+      typography["terminalFontFamily"] = "Monaco"
+      typography["terminalFontSize"] = 15
+      object["typography"] = typography
+
+      var appearance = object["appearance"] as! [String: Any]
+      appearance["terminalBackground"] = modernBackground
+      object["appearance"] = appearance
+
+      var terminal = object["terminal"] as! [String: Any]
+      terminal["fontFamily"] = "Menlo"
+      terminal["fontSize"] = 17
+      terminal["background"] = legacyBackground
+      object["terminal"] = terminal
+    }
+    try persistJSONObject(object, into: defaults)
+
+    let store = AppSettingsStore(defaults: defaults)
+
+    #expect(store.typography.terminalFontFamily == "Monaco")
+    #expect(store.typography.terminalFontSize == 15)
+    #expect(store.appearance.terminalBackground.light.red == 0.34)
+  }
+
+  @Test func legacyFontSizeDoesNotOverrideAPersistedSettingsBlob() throws {
+    let defaults = isolatedDefaults()
+    defaults.set(18, forKey: "editor.fontSize.v1")
+    let object = try settingsJSONObject { object in
+      var typography = object["typography"] as! [String: Any]
+      typography["editorFontSize"] = 15
+      object["typography"] = typography
+    }
+    try persistJSONObject(object, into: defaults)
+
+    let store = AppSettingsStore(defaults: defaults)
+
+    #expect(store.typography.editorFontSize == 15)
+  }
+
+  @Test func aFutureSchemaIsNeverDowngradedOrOverwritten() throws {
+    let defaults = isolatedDefaults()
+    let object = try settingsJSONObject { object in
+      object["schemaVersion"] = AppSettingsBlob.currentSchemaVersion + 1
+      var editor = object["editor"] as! [String: Any]
+      editor["tabWidth"] = 3
+      object["editor"] = editor
+    }
+    try persistJSONObject(object, into: defaults)
+    let originalData = try #require(defaults.data(forKey: AppSettingsStore.storageKey))
+
+    let store = AppSettingsStore(defaults: defaults)
+    store.editor.tabWidth = 2
+
+    #expect(defaults.data(forKey: AppSettingsStore.storageKey) == originalData)
   }
 }
