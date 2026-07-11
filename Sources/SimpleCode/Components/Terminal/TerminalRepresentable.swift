@@ -8,8 +8,11 @@ import SwiftUI
 ///
 /// Uses SwiftTerm's standard AppKit rendering path. The optional Metal renderer is
 /// intentionally not enabled in this phase (see architecture report §4).
+@MainActor
 struct TerminalRepresentable: NSViewRepresentable {
     let session: TerminalSessionController
+    let typography: TypographySettings
+    let terminalSettings: TerminalAppearanceSettings
     var isPanelVisible: Bool
 
     func makeCoordinator() -> Coordinator {
@@ -19,24 +22,29 @@ struct TerminalRepresentable: NSViewRepresentable {
     func makeNSView(context: Context) -> LocalProcessTerminalView {
         let view = LocalProcessTerminalView(frame: .zero)
         view.processDelegate = context.coordinator
-        applyAppearance(to: view)
+        view.isHidden = !isPanelVisible
+        applyAppearance(to: view, coordinator: context.coordinator)
 
-        session.attach(view)
+        context.coordinator.attach(view)
         session.setPanelVisible(isPanelVisible)
-        session.startIfNeeded()
 
         return view
     }
 
     func updateNSView(_ view: LocalProcessTerminalView, context: Context) {
-        applyAppearance(to: view)
+        view.isHidden = !isPanelVisible
+        applyAppearance(to: view, coordinator: context.coordinator)
         session.setPanelVisible(isPanelVisible)
         if session.consumeFocusRequest() {
             view.window?.makeFirstResponder(view)
         }
     }
 
-    private func applyAppearance(to view: LocalProcessTerminalView) {
+    static func dismantleNSView(_ view: LocalProcessTerminalView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    private func applyAppearance(to view: LocalProcessTerminalView, coordinator: Coordinator) {
         // These are genuinely dynamic `NSColor`s (not a pre-resolved snapshot).
         // SwiftTerm reads `nativeBackgroundColor`/`nativeForegroundColor` fresh on
         // every draw via `.setFill()`/`.set()`, so a dynamic color re-resolves
@@ -46,6 +54,11 @@ struct TerminalRepresentable: NSViewRepresentable {
         view.nativeForegroundColor = ColorRole.terminalForegroundPair.dynamic
         view.caretColor = ColorRole.terminalForegroundPair.dynamic
         view.selectedTextBackgroundColor = ColorRole.editorSelectionPair.dynamic
+        coordinator.applySupportedSettings(
+            to: view,
+            typography: typography,
+            terminalSettings: terminalSettings
+        )
     }
 
     @MainActor
@@ -53,9 +66,48 @@ struct TerminalRepresentable: NSViewRepresentable {
     // annotated for Swift 6 actor isolation.
     final class Coordinator: NSObject, @preconcurrency LocalProcessTerminalViewDelegate {
         let session: TerminalSessionController
+        private var driver: SwiftTermTerminalDriver?
+        private var attachmentID: UUID?
+        private var appliedFont: AppliedFont?
+        private var appliedScrollbackLimit: Int?
 
         init(session: TerminalSessionController) {
             self.session = session
+        }
+
+        func attach(_ view: LocalProcessTerminalView) {
+            let driver = SwiftTermTerminalDriver(view: view)
+            self.driver = driver
+            attachmentID = session.attach(driver)
+        }
+
+        func detach() {
+            if let attachmentID {
+                session.detach(attachmentID)
+            }
+            attachmentID = nil
+            driver = nil
+        }
+
+        func applySupportedSettings(
+            to view: LocalProcessTerminalView,
+            typography: TypographySettings,
+            terminalSettings: TerminalAppearanceSettings
+        ) {
+            let font = Typography.terminalFont(
+                family: typography.terminalFontFamily,
+                size: CGFloat(typography.terminalFontSize)
+            )
+            let requestedFont = AppliedFont(name: font.fontName, pointSize: font.pointSize)
+            if appliedFont != requestedFont {
+                view.font = font
+                appliedFont = requestedFont
+            }
+
+            if appliedScrollbackLimit != terminalSettings.scrollbackLimit {
+                view.changeScrollback(terminalSettings.scrollbackLimit)
+                appliedScrollbackLimit = terminalSettings.scrollbackLimit
+            }
         }
 
         func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
@@ -73,7 +125,50 @@ struct TerminalRepresentable: NSViewRepresentable {
         }
 
         func processTerminated(source: TerminalView, exitCode: Int32?) {
-            session.recordTermination(exitCode: exitCode)
+            session.recordTermination(exitCode: exitCode, from: attachmentID)
         }
+
+        private struct AppliedFont: Equatable {
+            let name: String
+            let pointSize: CGFloat
+        }
+    }
+}
+
+@MainActor
+private final class SwiftTermTerminalDriver: TerminalSessionDriving {
+    private weak var view: LocalProcessTerminalView?
+
+    init(view: LocalProcessTerminalView) {
+        self.view = view
+    }
+
+    var isProcessRunning: Bool {
+        guard let view else { return false }
+        return view.process.running
+    }
+
+    func startProcess(executable: String, environment: [String], currentDirectory: String) {
+        view?.startProcess(
+            executable: executable,
+            environment: environment,
+            currentDirectory: currentDirectory
+        )
+    }
+
+    func send(text: String) {
+        view?.send(txt: text)
+    }
+
+    func send(bytes: [UInt8]) {
+        view?.send(bytes)
+    }
+
+    func terminate() {
+        view?.terminate()
+    }
+
+    func resize(cols: Int, rows: Int) {
+        view?.resize(cols: cols, rows: rows)
     }
 }
