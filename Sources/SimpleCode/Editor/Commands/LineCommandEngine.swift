@@ -11,11 +11,21 @@ enum LineCommandEngine {
         }
         let ns = EditorTextSupport.nsString(text)
         let lineText = ns.substring(with: lastLine)
+        let lineEndsWithTerminator: Bool
+        if lastLine.length > 0 {
+            let lastUnit = ns.character(at: lastLine.location + lastLine.length - 1)
+            lineEndsWithTerminator = lastUnit == 10 || lastUnit == 13
+        } else {
+            lineEndsWithTerminator = true
+        }
+        let replacement = lineEndsWithTerminator
+            ? lineText
+            : EditorTextSupport.lineEnding(in: text) + lineText
         let edit = TextEdit(
             range: NSRange(location: lastLine.location + lastLine.length, length: 0),
-            replacement: lineText
+            replacement: replacement
         )
-        let newCursor = lastLine.location + lastLine.length + (lineText as NSString).length
+        let newCursor = lastLine.location + lastLine.length + (replacement as NSString).length
         return EditorCommandResult(
             edits: [edit],
             resultingSelections: [NSRange(location: newCursor, length: 0)]
@@ -97,18 +107,33 @@ enum LineCommandEngine {
         selection: NSRange,
         options: IndentationOptions
     ) -> EditorCommandResult {
+        if selection.length == 0 {
+            let ns = EditorTextSupport.nsString(text)
+            let location = max(0, min(selection.location, ns.length))
+            let insertion: String
+            if options.usesTabs {
+                insertion = "\t"
+            } else {
+                let column = EditorTextSupport.visualColumn(of: location, in: text, tabWidth: options.tabWidth)
+                let count = options.tabWidth - (column % options.tabWidth)
+                insertion = String(repeating: " ", count: count)
+            }
+            let edit = TextEdit(range: NSRange(location: location, length: 0), replacement: insertion)
+            return EditorCommandResult(
+                edits: [edit],
+                resultingSelections: [NSRange(location: location + (insertion as NSString).length, length: 0)]
+            )
+        }
+
         let lines = EditorTextSupport.affectedLineRanges(for: selection, in: text)
         let unit = options.indentUnit
         var edits: [TextEdit] = []
         for line in lines {
-            let insertAt = EditorTextSupport.firstNonWhitespaceOffset(on: line, in: text)
-            edits.append(TextEdit(range: NSRange(location: insertAt, length: 0), replacement: unit))
+            edits.append(TextEdit(range: NSRange(location: line.location, length: 0), replacement: unit))
         }
-        let delta = (unit as NSString).length
-        let newLocation = selection.location + delta
         return EditorCommandResult(
             edits: edits,
-            resultingSelections: [NSRange(location: newLocation, length: selection.length)]
+            resultingSelections: [EditorTextSupport.adjustedSelection(selection, for: edits)]
         )
     }
 
@@ -136,10 +161,15 @@ enum LineCommandEngine {
             ))
         }
 
-        let newLocation = max(0, selection.location - totalRemovedBeforeSelection)
+        let resultingSelection: NSRange
+        if selection.length == 0 {
+            resultingSelection = NSRange(location: max(0, selection.location - totalRemovedBeforeSelection), length: 0)
+        } else {
+            resultingSelection = EditorTextSupport.adjustedSelection(selection, for: edits)
+        }
         return EditorCommandResult(
             edits: edits,
-            resultingSelections: [NSRange(location: newLocation, length: selection.length)]
+            resultingSelections: [resultingSelection]
         )
     }
 

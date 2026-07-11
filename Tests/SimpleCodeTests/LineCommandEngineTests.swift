@@ -9,12 +9,12 @@ struct LineCommandEngineTests {
         EditorTextSupport.applyEdits(result.edits, to: text)
     }
 
-    @Test func duplicateLine() {
+    @Test func duplicateFinalUnterminatedLineInsertsASeparator() {
         let text = "line1\nline2"
         let sel = NSRange(location: 6, length: 0)
         let result = LineCommandEngine.duplicateLine(text: text, selection: sel)
         let output = apply(result, to: text)
-        #expect(output == "line1\nline2line2")
+        #expect(output == "line1\nline2\nline2")
     }
 
     @Test func moveLineUp() {
@@ -47,6 +47,7 @@ struct LineCommandEngineTests {
         let result = LineCommandEngine.indent(text: text, selection: sel, options: options)
         let output = apply(result, to: text)
         #expect(output == "    a\n    b")
+        #expect(result.resultingSelections == [NSRange(location: 0, length: 11)])
     }
 
     @Test func outdentSelection() {
@@ -55,6 +56,19 @@ struct LineCommandEngineTests {
         let result = LineCommandEngine.outdent(text: text, selection: sel, options: options)
         let output = apply(result, to: text)
         #expect(output == "a\nb")
+        #expect(result.resultingSelections == [NSRange(location: 0, length: 3)])
+    }
+
+    @Test func indentAtACollapsedCaretMovesToTheNextVisualTabStop() {
+        let text = "  value"
+        let result = LineCommandEngine.indent(
+            text: text,
+            selection: NSRange(location: 2, length: 0),
+            options: options
+        )
+
+        #expect(apply(result, to: text) == "    value")
+        #expect(result.resultingSelections == [NSRange(location: 4, length: 0)])
     }
 
     @Test func convertIndentToSpaces() {
@@ -79,6 +93,15 @@ struct LineCommandEngineTests {
         let result = LineCommandEngine.trimTrailingWhitespace(text: text, selection: sel)
         let output = apply(result, to: text)
         #expect(output == "hello\nworld")
+    }
+
+    @Test func trimTrailingWhitespacePreservesCRLFLineEndings() {
+        let text = "hello   \r\nworld\t\r\n"
+        let selection = NSRange(location: 0, length: (text as NSString).length)
+
+        let result = LineCommandEngine.trimTrailingWhitespace(text: text, selection: selection)
+
+        #expect(apply(result, to: text) == "hello\r\nworld\r\n")
     }
 
     @Test func insertFinalNewline() {

@@ -11,8 +11,6 @@ enum SmartBackspaceEngine {
         let location = selection.location
         guard location > 0 else { return nil }
 
-        let deleteStart = location - 1
-
         if smartPairDeletionEnabled,
            let pairEdit = emptyPairDeletion(at: location, in: text) {
             return pairEdit
@@ -22,14 +20,9 @@ enum SmartBackspaceEngine {
             return tabStopEdit
         }
 
-        let edit = TextEdit(
-            range: NSRange(location: deleteStart, length: 1),
-            replacement: ""
-        )
-        return EditorCommandResult(
-            edits: [edit],
-            resultingSelections: [NSRange(location: deleteStart, length: 0)]
-        )
+        // Let NSTextView delete ordinary text. It understands composed-character
+        // sequences, surrogate pairs, CRLF, IME composition, and native undo.
+        return nil
     }
 
     private static func tabStopDeletion(

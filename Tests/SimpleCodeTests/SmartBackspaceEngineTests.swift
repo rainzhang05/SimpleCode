@@ -7,13 +7,29 @@ struct SmartBackspaceEngineTests {
         EditorTextSupport.applyEdits(result.edits, to: text)
     }
 
-    @Test func deletesSingleCharacter() {
+    @Test func leavesOrdinaryCharactersForNativeDeletion() {
         let text = "abc"
         let sel = NSRange(location: 3, length: 0)
-        let result = SmartBackspaceEngine.backspace(text: text, selection: sel, tabWidth: 4, smartPairDeletionEnabled: false)!
-        let output = apply(result, to: text)
-        #expect(output == "ab")
-        #expect(result.resultingSelections == [NSRange(location: 2, length: 0)])
+        let result = SmartBackspaceEngine.backspace(text: text, selection: sel, tabWidth: 4, smartPairDeletionEnabled: false)
+        #expect(result == nil)
+    }
+
+    @Test func leavesComposedCharactersAndCRLFForNativeDeletion() {
+        let emoji = "A😀"
+        #expect(SmartBackspaceEngine.backspace(
+            text: emoji,
+            selection: NSRange(location: (emoji as NSString).length, length: 0),
+            tabWidth: 4,
+            smartPairDeletionEnabled: false
+        ) == nil)
+
+        let crlf = "A\r\nB"
+        #expect(SmartBackspaceEngine.backspace(
+            text: crlf,
+            selection: NSRange(location: 3, length: 0),
+            tabWidth: 4,
+            smartPairDeletionEnabled: false
+        ) == nil)
     }
 
     @Test func tabStopDeletionWithSpaces() {

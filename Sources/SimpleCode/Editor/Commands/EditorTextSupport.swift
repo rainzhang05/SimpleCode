@@ -23,7 +23,9 @@ enum EditorTextSupport {
         let line = lineRange(at: location, in: text)
         let ns = nsString(text)
         var end = line.location + line.length
-        if end > line.location, ns.character(at: end - 1) == 10 {
+        while end > line.location {
+            let terminator = ns.character(at: end - 1)
+            guard terminator == 10 || terminator == 13 else { break }
             end -= 1
         }
         return NSRange(location: line.location, length: max(0, end - line.location))
@@ -179,6 +181,39 @@ enum EditorTextSupport {
             }
             return NSRange(location: editStart + (edit.replacement as NSString).length, length: 0)
         }
+    }
+
+    /// Maps a selected range through a batch of non-overlapping edits expressed
+    /// in the original document coordinate space. The leading boundary keeps an
+    /// insertion at its edge selected; the trailing boundary includes it.
+    static func adjustedSelection(_ selection: NSRange, for edits: [TextEdit]) -> NSRange {
+        guard selection.length > 0 else { return selection }
+        let sorted = edits.sorted { lhs, rhs in
+            if lhs.range.location == rhs.range.location { return lhs.range.length < rhs.range.length }
+            return lhs.range.location < rhs.range.location
+        }
+        let start = adjustedBoundary(selection.location, afterEdit: false, edits: sorted)
+        let end = adjustedBoundary(NSMaxRange(selection), afterEdit: true, edits: sorted)
+        return NSRange(location: start, length: max(0, end - start))
+    }
+
+    private static func adjustedBoundary(_ position: Int, afterEdit: Bool, edits: [TextEdit]) -> Int {
+        var delta = 0
+        for edit in edits {
+            let start = edit.range.location
+            let end = NSMaxRange(edit.range)
+            let replacementLength = (edit.replacement as NSString).length
+
+            if position < start || (position == start && !afterEdit) {
+                break
+            }
+            if position > end || (position == end && afterEdit) {
+                delta += replacementLength - edit.range.length
+                continue
+            }
+            return start + delta + (afterEdit ? replacementLength : 0)
+        }
+        return position + delta
     }
 
     static func indentLevel(of whitespace: String, usesTabs: Bool, tabWidth: Int) -> Int {
