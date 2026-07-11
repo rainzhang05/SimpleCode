@@ -329,11 +329,141 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         return merged
     }
 
-    private static func applyRegex(_ pattern: String, in line: String, base: Int, category: SyntaxCategory, tokens: inout [SyntaxToken]) {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
-        let range = NSRange(location: 0, length: (line as NSString).length)
-        for match in regex.matches(in: line, range: range) {
-            tokens.append(SyntaxToken(range: NSRange(location: base + match.range.location, length: match.range.length), category: category))
+    private static func expandedLineRange(around range: NSRange, in text: String) -> NSRange {
+        let nsText = text as NSString
+        guard nsText.length > 0 else { return NSRange(location: 0, length: 0) }
+        let lower = max(0, min(range.location, nsText.length - 1))
+        let upperProbe = max(lower, min(max(range.location, NSMaxRange(range) - 1), nsText.length - 1))
+        let first = nsText.lineRange(for: NSRange(location: lower, length: 0))
+        let last = nsText.lineRange(for: NSRange(location: upperProbe, length: 0))
+        var end = NSMaxRange(last)
+        if end < nsText.length {
+            end = NSMaxRange(nsText.lineRange(for: NSRange(location: end, length: 0)))
         }
+        return NSRange(location: first.location, length: end - first.location)
+    }
+
+    private static func lineEnd(after location: Int, in text: NSString) -> Int {
+        var index = location
+        while index < text.length {
+            let unit = text.character(at: index)
+            if unit == 10 || unit == 13 { break }
+            index += 1
+        }
+        return index
+    }
+
+    private static func containsMultilineConstructs(_ text: String, supportsBackticks: Bool) -> Bool {
+        containsMultilineBlockComment(in: text)
+            || text.contains("\\\n")
+            || text.contains("'''")
+            || text.contains("\"\"\"")
+            || (supportsBackticks && containsMultilineBacktickString(in: text))
+    }
+
+    private static func containsMultilineBacktickString(in text: String) -> Bool {
+        let nsText = text as NSString
+        var index = 0
+        var isInsideTemplate = false
+
+        while index < nsText.length {
+            let unit = nsText.character(at: index)
+            if unit == 92 { // escaped character
+                index = min(nsText.length, index + 2)
+                continue
+            }
+            if unit == 96 { // `
+                isInsideTemplate.toggle()
+            } else if isInsideTemplate, unit == 10 || unit == 13 {
+                return true
+            }
+            index += 1
+        }
+        return false
+    }
+
+    private static func containsMultilineBlockComment(in text: String) -> Bool {
+        let nsText = text as NSString
+        var searchStart = 0
+        while searchStart < nsText.length {
+            let remaining = NSRange(location: searchStart, length: nsText.length - searchStart)
+            let opening = nsText.range(of: "/*", options: [], range: remaining)
+            guard opening.location != NSNotFound else { return false }
+            let afterOpening = NSMaxRange(opening)
+            let closing = nsText.range(
+                of: "*/",
+                options: [],
+                range: NSRange(location: afterOpening, length: nsText.length - afterOpening)
+            )
+            guard closing.location != NSNotFound else { return true }
+            let body = nsText.substring(with: NSRange(location: afterOpening, length: closing.location - afterOpening))
+            if body.contains("\n") || body.contains("\r") { return true }
+            searchStart = NSMaxRange(closing)
+        }
+        return false
+    }
+
+    private static func editTouchesMultilineSyntax(
+        oldText: String,
+        newText: String,
+        edit: TextEditDescriptor,
+        supportsBackticks: Bool
+    ) -> Bool {
+        let oldRange = NSRange(
+            location: edit.startUTF16,
+            length: max(0, edit.oldEndUTF16 - edit.startUTF16)
+        )
+        let newRange = NSRange(
+            location: edit.startUTF16,
+            length: max(0, edit.newEndUTF16 - edit.startUTF16)
+        )
+        let changedContext = neighborhood(around: oldRange, in: oldText)
+            + neighborhood(around: newRange, in: newText)
+        if containsMultilineConstructs(changedContext, supportsBackticks: supportsBackticks) {
+            return true
+        }
+
+        // A line break or backtick edit can turn a previously one-line template
+        // into a multiline string even when neither delimiter is within the tiny
+        // edit neighborhood. Scan the complete document only for that uncommon
+        // structural mutation; ordinary identifier edits stay line-local.
+        guard supportsBackticks else { return false }
+        let changedText = substring(oldRange, in: oldText) + substring(newRange, in: newText)
+        guard changedText.contains("`") || changedText.contains("\n") || changedText.contains("\r") else {
+            return false
+        }
+        return containsMultilineBacktickString(in: oldText)
+            || containsMultilineBacktickString(in: newText)
+    }
+
+    private static func substring(_ range: NSRange, in text: String) -> String {
+        let nsText = text as NSString
+        let lower = max(0, min(range.location, nsText.length))
+        let upper = max(lower, min(NSMaxRange(range), nsText.length))
+        return nsText.substring(with: NSRange(location: lower, length: upper - lower))
+    }
+
+    private static func neighborhood(around range: NSRange, in text: String) -> String {
+        let nsText = text as NSString
+        guard nsText.length > 0 else { return "" }
+        let lower = max(0, min(range.location - 3, nsText.length))
+        let upper = min(nsText.length, max(NSMaxRange(range) + 3, lower))
+        return nsText.substring(with: NSRange(location: lower, length: upper - lower))
+    }
+
+    private func isWhitespace(_ unit: UInt16) -> Bool {
+        unit == 9 || unit == 32
+    }
+
+    private func isDigit(_ unit: UInt16) -> Bool {
+        unit >= 48 && unit <= 57
+    }
+
+    private func isIdentifierStart(_ unit: UInt16) -> Bool {
+        (unit >= 65 && unit <= 90) || (unit >= 97 && unit <= 122) || unit == 95 || unit == 36
+    }
+
+    private func isIdentifierContinue(_ unit: UInt16) -> Bool {
+        isIdentifierStart(unit) || isDigit(unit)
     }
 }
