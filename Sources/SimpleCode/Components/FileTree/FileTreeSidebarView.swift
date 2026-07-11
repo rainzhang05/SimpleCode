@@ -112,49 +112,46 @@ private struct FileTreeRowView: View {
     let onHover: (Bool) -> Void
     @State private var isDropTarget = false
 
+    private var node: FileTreeNodeState { row.node }
+
     private var relativePath: String {
         FileTreeAccessibility.relativePath(for: node.url, workspaceRoot: workspace.rootURL)
     }
 
     var body: some View {
-        if node.isDirectory {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 4) {
-                    Button {
-                        Task { await toggleExpansion() }
-                    } label: {
-                        Image(systemName: workspace.fileTree.expandedNodeIDs.contains(node.id) ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .frame(width: 14, height: 14)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("fileTree.disclosure.\(relativePath)")
-                    rowLabel
-                }
-                if workspace.fileTree.expandedNodeIDs.contains(node.id) {
-                    if node.isLoading {
-                        ProgressView().controlSize(.small)
-                            .padding(.leading, CGFloat(depth + 1) * 12)
-                    } else if let error = node.loadError {
-                        Label(errorText(error), systemImage: "exclamationmark.triangle")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.orange)
-                            .padding(.leading, CGFloat(depth + 1) * 12)
-                    } else {
-                        ForEach(node.children ?? []) { child in
-                            FileTreeRowView(node: child, workspace: workspace, depth: depth + 1)
-                        }
-                    }
-                }
+        HStack(spacing: Spacing.xSmall) {
+            disclosure
+
+            Image(systemName: iconName)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(iconColor)
+                .frame(width: 16)
+
+            Text(node.name)
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(textColor)
+
+            if node.isSymlink {
+                Image(systemName: "link")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
-            .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
-                handleDrop(providers: providers, destination: node.url)
+
+            Spacer(minLength: Spacing.xSmall)
+
+            if isDirty {
+                Circle()
+                    .fill(.orange)
+                    .frame(width: 6, height: 6)
+                    .help("Unsaved changes")
+            } else if isOpen {
+                Circle()
+                    .stroke(ColorRole.chromeAccent.opacity(0.5), lineWidth: 1)
+                    .frame(width: 6, height: 6)
+                    .help("Open")
             }
-            .background(isDropTarget ? Color.accentColor.opacity(0.15) : Color.clear)
-        } else {
-            rowLabel
-            .accessibilityIdentifier("fileTree.row.\(relativePath)")
-            .onDrag { NSItemProvider(object: node.url as NSURL) }
         }
     }
 
