@@ -1,5 +1,4 @@
 import Foundation
-import SwiftTerm
 
 /// Lifecycle state for one terminal session, deliberately factored out of any
 /// SwiftTerm type so it can be unit tested without a live view (see requirement to
@@ -9,6 +8,20 @@ enum TerminalLifecycleState: Equatable, Sendable {
     case notStarted
     case running
     case terminated(exitCode: Int32?)
+}
+
+/// The tiny boundary between terminal lifecycle policy and SwiftTerm's AppKit view.
+/// Keeping it local makes lifecycle behavior deterministic in tests and prevents a
+/// view-recreation race from becoming a shell-management race.
+@MainActor
+protocol TerminalSessionDriving: AnyObject {
+    var isProcessRunning: Bool { get }
+
+    func startProcess(executable: String, environment: [String], currentDirectory: String)
+    func send(text: String)
+    func send(bytes: [UInt8])
+    func terminate()
+    func resize(cols: Int, rows: Int)
 }
 
 /// Owns the intent (start / interrupt / terminate) for exactly one interactive
@@ -27,11 +40,13 @@ final class TerminalSessionController: TerminalCommandSending {
     private(set) var state: TerminalLifecycleState = .notStarted
     private(set) var lastKnownCols = 80
     private(set) var lastKnownRows = 24
-    var isPanelVisible = true
+    var isPanelVisible = false
     private(set) var needsFocus = false
 
-    private weak var terminalView: LocalProcessTerminalView?
-    private var isRestartPending = false
+    private weak var driver: (any TerminalSessionDriving)?
+    private var attachmentID: UUID?
+    private var startRequested = false
+    private var isRestarting = false
     private var pendingCommands: [String] = []
     var onShellTerminated: (() -> Void)?
 
@@ -39,22 +54,45 @@ final class TerminalSessionController: TerminalCommandSending {
         self.workingDirectory = workingDirectory
     }
 
-    /// Called once by `TerminalRepresentable` when the underlying AppKit view is
-    /// created, so this controller can drive it without owning it.
-    func attach(_ terminalView: LocalProcessTerminalView) {
-        self.terminalView = terminalView
-        flushPendingCommandsIfNeeded()
+    /// Called by `TerminalRepresentable` when its AppKit view is created. The
+    /// controller intentionally keeps a weak driver: view recreation must never
+    /// prolong the terminal view's lifetime. If SwiftUI replaces a host while a
+    /// shell is active, close the old PTY before accepting the new driver so the
+    /// discarded view cannot leave an orphan shell behind.
+    @discardableResult
+    func attach(_ driver: any TerminalSessionDriving) -> UUID {
+        discardAttachedDriver(terminatingRunningProcess: true)
+        let id = UUID()
+        self.driver = driver
+        attachmentID = id
+        launchIfRequested()
+        return id
+    }
+
+    func detach(_ id: UUID) {
+        guard attachmentID == id else { return }
+        discardAttachedDriver(terminatingRunningProcess: true)
     }
 
     func startIfNeeded() {
-        guard state == .notStarted else { return }
-        guard let terminalView else { return }
+        startRequested = true
+        recoverFromMissingTerminationCallbackIfNeeded()
+        launchIfRequested()
+    }
+
+    private func launchIfRequested() {
+        guard startRequested, let driver else { return }
+        if driver.isProcessRunning {
+            state = .running
+            flushPendingCommandsIfNeeded()
+            return
+        }
 
         let shellPath = ShellEnvironment.loginShellPath()
         let environment = ShellEnvironment.makeEnvironment(workingDirectory: workingDirectory)
         let environmentArray = environment.map { "\($0.key)=\($0.value)" }
 
-        terminalView.startProcess(
+        driver.startProcess(
             executable: shellPath,
             environment: environmentArray,
             currentDirectory: workingDirectory.path
@@ -67,53 +105,60 @@ final class TerminalSessionController: TerminalCommandSending {
     /// Writes the exact command followed by a newline into the PTY input stream.
     func sendCommand(_ command: String) {
         let payload = command + "\n"
-        guard state == .running, let terminalView else {
+        if state != .running || driver?.isProcessRunning != true {
+            startIfNeeded()
+        }
+        guard state == .running, let driver, driver.isProcessRunning else {
             pendingCommands.append(command)
             return
         }
-        terminalView.send(txt: payload)
+        driver.send(text: payload)
         AppLog.terminal.debug("Run command submitted")
     }
 
     /// Sends Ctrl-C (0x03) to the foreground process, exactly as a real terminal
     /// would when the user presses Ctrl-C.
     func sendInterrupt() {
-        guard state == .running, let terminalView else { return }
-        terminalView.send([0x03])
+        guard state == .running, let driver, driver.isProcessRunning else { return }
+        driver.send(bytes: [0x03])
     }
 
     /// Terminates the shell process. `LocalProcess.terminate()` sends `SIGTERM` to
     /// the shell's PID and tears down the PTY file descriptors — this is what
     /// prevents an orphaned child shell from surviving workspace/window close.
     func terminate() {
-        guard let terminalView else { return }
-        terminalView.terminate()
+        startRequested = false
+        if let driver, driver.isProcessRunning {
+            driver.terminate()
+        }
         if state == .running {
             state = .terminated(exitCode: nil)
         }
         pendingCommands.removeAll()
+        needsFocus = false
     }
 
     /// Called by `TerminalRepresentable.Coordinator` when SwiftTerm reports that the
-    /// child process terminated (whether by the user typing `exit`, a crash, or our
-    /// own call to `terminate()`).
-    func recordTermination(exitCode: Int32?) {
+    /// child process terminated. The attachment ID discards callbacks from a view
+    /// SwiftUI has already replaced.
+    func recordTermination(exitCode: Int32?, from id: UUID? = nil) {
+        if let id, attachmentID != id { return }
+        // SwiftTerm can report the old shell's termination after `restart()` has
+        // already launched a replacement in the same view. Ignore both synchronous
+        // callbacks inside the restart transaction and delayed callbacks while the
+        // replacement process is known to be alive.
+        guard !isRestarting else { return }
+        guard !(state == .running && driver?.isProcessRunning == true) else { return }
         state = .terminated(exitCode: exitCode)
-        if !isRestartPending {
-            onShellTerminated?()
-        }
-        if isRestartPending {
-            isRestartPending = false
-            state = .notStarted
-            startIfNeeded()
-        }
+        startRequested = false
+        onShellTerminated?()
     }
 
     /// Sends the standard ANSI "clear screen + scrollback, home cursor" sequence,
     /// exactly what a real terminal's Clear command does — this does not touch the
     /// shell process itself, only what is currently displayed.
     func clearScreen() {
-        terminalView?.send(txt: "\u{1B}[2J\u{1B}[3J\u{1B}[H")
+        driver?.send(text: "\u{1B}[2J\u{1B}[3J\u{1B}[H")
     }
 
     func clearDisplay() {
@@ -131,22 +176,32 @@ final class TerminalSessionController: TerminalCommandSending {
     }
 
     /// Terminates the current shell and starts a fresh one in the same working
-    /// directory once SwiftTerm reports the process has exited.
+    /// directory. SwiftTerm synchronously marks its `LocalProcess` stopped during
+    /// `terminate()`, so this does not rely on an eventually delivered callback.
     func restart() {
         pendingCommands.removeAll()
-        guard state == .running else {
-            state = .notStarted
-            startIfNeeded()
-            return
+        startRequested = true
+        isRestarting = true
+        defer { isRestarting = false }
+        if let driver, driver.isProcessRunning {
+            driver.terminate()
         }
-        isRestartPending = true
-        terminalView?.terminate()
+        state = .notStarted
+        // A restart deliberately discards the foreground process, so the run
+        // controller must lose its transient "possibly running" state even when
+        // SwiftTerm does not deliver its eventual termination delegate callback.
+        onShellTerminated?()
+        launchIfRequested()
     }
 
     func setPanelVisible(_ visible: Bool) {
         isPanelVisible = visible
-        guard visible, let terminalView, lastKnownCols > 0, lastKnownRows > 0 else { return }
-        terminalView.resize(cols: lastKnownCols, rows: lastKnownRows)
+        if visible {
+            startRequested = true
+            launchIfRequested()
+        }
+        guard visible, let driver, lastKnownCols > 0, lastKnownRows > 0 else { return }
+        driver.resize(cols: lastKnownCols, rows: lastKnownRows)
     }
 
     func recordTerminalSize(cols: Int, rows: Int) {
@@ -156,11 +211,37 @@ final class TerminalSessionController: TerminalCommandSending {
     }
 
     private func flushPendingCommandsIfNeeded() {
-        guard state == .running, terminalView != nil, !pendingCommands.isEmpty else { return }
+        guard state == .running, driver?.isProcessRunning == true, !pendingCommands.isEmpty else { return }
         let commands = pendingCommands
         pendingCommands.removeAll()
         for command in commands {
             sendCommand(command)
         }
+    }
+
+    private func discardAttachedDriver(terminatingRunningProcess: Bool) {
+        guard let currentDriver = driver else { return }
+
+        // Reject a synchronous SwiftTerm termination callback before asking the
+        // process to exit. A view replacement is not a shell exit the user asked
+        // for, so preserve `startRequested` and let the replacement host relaunch.
+        driver = nil
+        attachmentID = nil
+        if terminatingRunningProcess, currentDriver.isProcessRunning {
+            currentDriver.terminate()
+        }
+        if state == .running {
+            state = .notStarted
+        }
+    }
+
+    /// SwiftTerm can occasionally lose a process-termination delegate callback
+    /// during AppKit view transitions. Its process-running flag is authoritative for
+    /// a new start request, allowing Run and Restart to self-heal instead of leaving
+    /// the terminal stuck in `.running`.
+    private func recoverFromMissingTerminationCallbackIfNeeded() {
+        guard state == .running, driver?.isProcessRunning == false else { return }
+        state = .terminated(exitCode: nil)
+        onShellTerminated?()
     }
 }
