@@ -1,18 +1,38 @@
 import Foundation
 
-/// Line-oriented regex highlighter for common assembly dialects (x86 Intel, AT&T, AArch64).
+/// Line-scoped syntax highlighting for the supported assembly files. Assembly is
+/// naturally local to a source line, allowing edits to update a small token window
+/// while preserving the already classified rest of a large file.
 actor AssemblyPatternHighlighter: SyntaxHighlighter {
-    private var cachedText: String = ""
-    private var cachedRevision: Int = -1
+    private enum Patterns {
+        static let label = regex(#"(?i)^\s*([A-Za-z_.@][\w.$@]*)\s*:"#)
+        static let directive = regex(#"(?i)\.([A-Za-z_][\w.]*)"#)
+        static let instruction = regex(#"(?i)\b(mov|movq|movl|movw|movb|lea|add|adc|sub|sbb|imul|mul|idiv|div|and|or|xor|not|neg|inc|dec|push|pop|call|ret|jmp|je|jne|jz|jnz|jg|jge|jl|jle|ja|jae|jb|jbe|cmp|test|nop|syscall|int|cli|sti|hlt|leave|enter|movz|movk|madd|msub|orr|eor|lsl|lsr|asr|b|bl|br|ldr|str|ldp|stp|adr|adrp|svc)\b"#)
+        static let register = regex(#"(?i)\b(%?(?:r(?:ax|bx|cx|dx|si|di|bp|sp|8|9|10|11|12|13|14|15)(?:d|w|b)?|e(?:ax|bx|cx|dx|si|di|bp|sp)|a(?:x|h|l)|b(?:x|h|l)|c(?:x|h|l)|d(?:x|h|l)|si|di|bp|sp|r\d+b?)|x\d{1,2}|w\d{1,2}|sp|lr|pc|xzr|wzr)\b"#)
+        static let number = regex(#"(?i)(?:\$|#)?0x[0-9a-f]+|(?:\$|#)?\b\d+\b"#)
+        static let string = regex(#"\"([^\"\\]|\\.)*\""#)
+
+        private static func regex(_ pattern: String) -> NSRegularExpression {
+            // These constant patterns are validated at launch, not recompiled for
+            // every source line or every keystroke.
+            try! NSRegularExpression(pattern: pattern)
+        }
+    }
+
+    private var cachedText = ""
+    private var cachedRevision = -1
     private var cachedTokens: [SyntaxToken] = []
 
     func load(text: String, revision: Int) async -> HighlightBatch {
-        let tokens = highlightEntireDocument(text)
+        let tokens = highlight(text, restrictedTo: NSRange(location: 0, length: text.utf16.count))
         cachedText = text
         cachedRevision = revision
         cachedTokens = tokens
-        let wholeDocument = NSRange(location: 0, length: text.utf16.count)
-        return HighlightBatch(revision: revision, coveredRanges: [wholeDocument], tokens: tokens)
+        return HighlightBatch(
+            revision: revision,
+            coveredRanges: [NSRange(location: 0, length: text.utf16.count)],
+            tokens: tokens
+        )
     }
 
     func applyEdit(
@@ -21,33 +41,57 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
         revision: Int,
         priorityUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
-        let editPointRange = NSRange(location: edit.startUTF16, length: max(0, edit.newEndUTF16 - edit.startUTF16))
-        let priorityRange = EditorVisibleRange.union(priorityUTF16Range, editPointRange, documentLength: fullText.utf16.count)
-
-        if cachedRevision != revision - 1 || cachedText.isEmpty {
+        guard cachedRevision == revision - 1 else {
             let batch = await load(text: fullText, revision: revision)
             return (batch, nil)
         }
 
-        let affectedLines = lineRange(containingUTF16Edit: edit, in: fullText)
-        let priorityTokens = highlightLines(in: fullText, lineRange: affectedLines)
-        let affectedUTF16Range = utf16Range(forLines: affectedLines, in: fullText)
-        let priorityBatch = HighlightBatch(
-            revision: revision,
-            coveredRanges: [priorityRange],
-            tokens: priorityTokens.filter { NSIntersectionRange($0.range, priorityRange).length > 0 }
+        let oldAffectedRange = Self.expandedLineRange(
+            around: NSRange(location: edit.startUTF16, length: max(0, edit.oldEndUTF16 - edit.startUTF16)),
+            in: cachedText
         )
+        let newAffectedRange = Self.expandedLineRange(
+            around: NSRange(location: edit.startUTF16, length: max(0, edit.newEndUTF16 - edit.startUTF16)),
+            in: fullText
+        )
+        let offsetDelta = fullText.utf16.count - cachedText.utf16.count
+        let replacementTokens = highlight(fullText, restrictedTo: newAffectedRange)
+
+        var updated: [SyntaxToken] = []
+        updated.reserveCapacity(cachedTokens.count + replacementTokens.count)
+        for token in cachedTokens {
+            if NSIntersectionRange(token.range, oldAffectedRange).length > 0 {
+                continue
+            }
+            if token.range.location >= NSMaxRange(oldAffectedRange) {
+                updated.append(SyntaxToken(
+                    range: NSRange(location: token.range.location + offsetDelta, length: token.range.length),
+                    category: token.category
+                ))
+            } else {
+                updated.append(token)
+            }
+        }
+        updated.append(contentsOf: replacementTokens)
+        updated.sort { lhs, rhs in
+            lhs.range.location == rhs.range.location
+                ? lhs.range.length < rhs.range.length
+                : lhs.range.location < rhs.range.location
+        }
 
         cachedText = fullText
         cachedRevision = revision
-        cachedTokens = highlightEntireDocument(fullText)
+        cachedTokens = updated
 
-        let remainderBatch = HighlightBatch(
-            revision: revision,
-            coveredRanges: [affectedUTF16Range],
-            tokens: priorityTokens
+        let coveredRanges = Self.mergedRanges([priorityUTF16Range, newAffectedRange], documentLength: fullText.utf16.count)
+        return (
+            HighlightBatch(
+                revision: revision,
+                coveredRanges: coveredRanges,
+                tokens: tokens(in: coveredRanges, from: updated)
+            ),
+            nil
         )
-        return (priorityBatch, remainderBatch)
     }
 
     func scheduleViewport(
