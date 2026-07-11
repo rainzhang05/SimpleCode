@@ -110,23 +110,61 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         XCTAssertTrue(dark.exists)
     }
 
-    func testCloneSheetIsFunctional() throws {
-        openCloneSheet()
-        let sheet = cloneSheetRoot()
-        XCTAssertTrue(sheet.textFields["clone.sheet.urlField"].waitForExistence(timeout: 5))
+    func testFindReplaceOneOccurrence() throws {
+        let fixture = try openFixtureWorkspace()
+        openMainFile(in: fixture)
+
+        app.typeKey("f", modifierFlags: [.command, .option])
+        let searchField = app.textFields["find.searchField"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5), debugSnapshot())
+        focusTextField(searchField)
+        typeInField(searchField, text: "greeting")
+
+        let replaceField = app.textFields["find.replaceField"]
+        XCTAssertTrue(replaceField.waitForExistence(timeout: 5), debugSnapshot())
+        typeInField(replaceField, text: "message")
+
+        app.buttons["find.next"].click()
+        app.buttons["find.replace"].click()
+        XCTAssertTrue(app.buttons["find.close"].waitForExistence(timeout: 5))
+        app.buttons["find.close"].click()
+
+        saveActiveDocument()
+        waitForValue(element("editor.tab.Main.swift"), "saved", timeout: 10)
+
+        let saved = try String(contentsOf: fixture.mainFile, encoding: .utf8)
+        XCTAssertTrue(saved.contains("message"))
     }
 
-    func testLaunchArgumentOpensWorkspace() throws {
-        let fixture = try makeTempDirectory()
-        openWorkspace(at: fixture)
-        XCTAssertTrue(app.staticTexts[fixture.lastPathComponent].waitForExistence(timeout: 5))
+    func testRunConfigurationShowsTrustGateAndCancelDoesNotRun() throws {
+        _ = try openFixtureWorkspace()
+
+        app.buttons["workspace.runConfigButton"].click()
+        let commandField = app.textFields["run.popover.commandField"]
+        XCTAssertTrue(commandField.waitForExistence(timeout: 5), debugSnapshot())
+        focusTextField(commandField)
+        typeInField(commandField, text: "printf 'simplecode-ui-run\\n'")
+        clickElement(app.buttons["Done"])
+
+        let runButton = app.buttons["workspace.runButton"]
+        waitForEnabled(runButton)
+        runButton.click()
+
+        let cancel = app.buttons["trust.sheet.cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 8), debugSnapshot())
+        cancel.click()
+        XCTAssertFalse(app.buttons["workspace.stopButton"].waitForExistence(timeout: 1))
     }
 
-    func testTerminalHideAndReveal() throws {
-        let fixture = try makeTempDirectory()
-        openWorkspace(at: fixture)
+    func testTerminalPanelTogglesOnce() throws {
+        _ = try openFixtureWorkspace()
+
         let toggle = app.buttons["workspace.terminalToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         toggle.click()
+        XCTAssertTrue(element("terminal.panel").waitForExistence(timeout: 8), debugSnapshot())
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "terminal.panel").count, 1)
+
         toggle.click()
         XCTAssertTrue(toggle.exists)
     }
