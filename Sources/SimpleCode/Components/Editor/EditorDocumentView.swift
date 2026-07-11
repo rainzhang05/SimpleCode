@@ -33,12 +33,15 @@ struct EditorDocumentView: View {
         }
         .background(ColorRole.editorBackground)
         .onChange(of: session.textStorage.string) { _, newValue in
+            guard workspace.findReplace.isVisible else { return }
             workspace.findReplace.bind(text: newValue, selection: session.selectionRange)
         }
         .onChange(of: session.selectionRange) { _, newValue in
+            guard workspace.findReplace.isVisible else { return }
             workspace.findReplace.bind(text: session.textStorage.string, selection: newValue)
         }
         .onAppear {
+            guard workspace.findReplace.isVisible else { return }
             workspace.findReplace.bind(text: session.textStorage.string, selection: session.selectionRange)
         }
         .sheet(isPresented: Binding(

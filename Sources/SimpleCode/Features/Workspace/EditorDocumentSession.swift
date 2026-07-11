@@ -17,6 +17,9 @@ final class EditorDocumentSession: Identifiable {
     private(set) var displayName: String
     private(set) var fileIdentity: FileIdentity?
     let textStorage: NSTextStorage
+    /// NSTextView normally inherits one window-wide undo manager. Keeping the
+    /// history with its document makes Command-Z deterministic after a tab switch.
+    let undoManager = UndoManager()
     var lineStartIndex = LineStartIndex()
     private(set) var revision: Int = 0
     private(set) var cursorLine: Int = 1
@@ -37,10 +40,26 @@ final class EditorDocumentSession: Identifiable {
     var selectionRange = NSRange(location: 0, length: 0)
     var pendingSelectionRange: NSRange?
     var scrollOffset: CGPoint = .zero
-    var enablesSyntaxHighlighting = true
-    var highlighter: (any SyntaxHighlighter)?
+    /// Changes whenever the highlighting configuration changes. The AppKit editor
+    /// uses this to invalidate work from the previously selected language without
+    /// treating a language override as a different document.
+    private(set) var syntaxConfigurationRevision = 0
+    var enablesSyntaxHighlighting = true {
+        didSet {
+            guard oldValue != enablesSyntaxHighlighting else { return }
+            syntaxConfigurationRevision &+= 1
+        }
+    }
+    var highlighter: (any SyntaxHighlighter)? {
+        didSet { syntaxConfigurationRevision &+= 1 }
+    }
     private var semanticTokens: [SyntaxToken] = []
     private(set) var syntaxContext: SyntaxContext = .empty
+    private(set) var didApplySyntaxHighlighting = false
+
+    var hasAppliedSyntaxHighlighting: Bool {
+        didApplySyntaxHighlighting
+    }
 
     init(id: UUID = UUID(), displayName: String = "Untitled", fileURL: URL? = nil) {
         self.id = id
@@ -106,6 +125,7 @@ final class EditorDocumentSession: Identifiable {
             enablesSyntaxHighlighting = LanguageRegistry.definition(for: content.language).highlightingAvailable && !isReadOnly
         }
         textStorage.setAttributedString(NSAttributedString(string: content.text))
+        undoManager.removeAllActions()
         lineStartIndex.rebuild(from: content.text)
         clearSyntaxContext()
         loadState = .loaded
@@ -190,12 +210,14 @@ final class EditorDocumentSession: Identifiable {
             }
             semanticTokens.append(contentsOf: tokens)
         }
+        didApplySyntaxHighlighting = true
         rebuildSyntaxContext()
     }
 
     func clearSyntaxContext() {
         semanticTokens = []
         syntaxContext = .empty
+        didApplySyntaxHighlighting = false
     }
 
     func releaseSyntaxResources() {
@@ -205,6 +227,7 @@ final class EditorDocumentSession: Identifiable {
 
     func applySavedText(_ text: String) {
         textStorage.setAttributedString(NSAttributedString(string: text))
+        undoManager.removeAllActions()
         lineStartIndex.rebuild(from: text)
         let clampedLocation = min(selectionRange.location, textStorage.length)
         let maxLength = max(0, textStorage.length - clampedLocation)

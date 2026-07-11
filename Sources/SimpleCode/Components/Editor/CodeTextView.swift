@@ -9,46 +9,37 @@ import AppKit
 /// highlighting and document-model bookkeeping live in `CodeEditorRepresentable`'s
 /// coordinator, which owns this view via `NSViewRepresentable`.
 ///
-/// TextKit decision: this view is constructed with an explicit TextKit 2 stack
-/// (`NSTextContentStorage` → `NSTextLayoutManager` → `NSTextContainer`), which is
-/// fully supported on macOS 26. No macOS 27-only API is used. See
-/// `TechnicalSpikes/EditorSpikeNotes.md` for the verification that TextKit 2 is
-/// active at runtime and for the (none encountered) blockers.
+/// Uses one explicit TextKit 2 stack (`NSTextContentStorage` →
+/// `NSTextLayoutManager` → `NSTextContainer`) so the view, session storage, and
+/// layout APIs always agree on the same text system.
 final class CodeTextView: NSTextView {
-    /// Convenience initializer that builds the TextKit 2 object graph explicitly,
-    /// rather than relying on whichever default `NSTextView()` happens to pick.
+    private static let textInset = NSSize(width: 6, height: 8)
+
+    /// Convenience initializer that asks AppKit to create its TextKit 2 graph.
+    /// `init(frame:textContainer:)` always creates a legacy layout manager, even
+    /// when passed a TextKit 2 container, so it cannot be used here.
     convenience init() {
-        let contentStorage = NSTextContentStorage()
-        let layoutManager = NSTextLayoutManager()
-        contentStorage.addTextLayoutManager(layoutManager)
-
-        let container = NSTextContainer(size: CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
-        container.widthTracksTextView = false
-        container.heightTracksTextView = false
-        layoutManager.textContainer = container
-
-        self.init(frame: .zero, textContainer: container)
-    }
-
-    override init(frame frameRect: NSRect, textContainer container: NSTextContainer?) {
-        super.init(frame: frameRect, textContainer: container)
+        self.init(usingTextLayoutManager: true)
         configureForCodeEditing()
     }
 
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        configureForCodeEditing()
-    }
-
-    /// `true` when this view ended up backed by TextKit 2 (`NSTextLayoutManager`).
-    /// Used by the technical spike to log verifiable evidence rather than assume.
+    /// `true` when this view is backed by TextKit 2 (`NSTextLayoutManager`).
     var isUsingTextKit2: Bool {
         textLayoutManager != nil
     }
 
     var highlightCurrentLine = true
     weak var commandDelegate: CodeTextViewCommandDelegate?
-    var bracketPair: (open: Int, close: Int)?
+    private var isPerformingPaste = false
+    private weak var documentUndoManager: UndoManager?
+
+    override var undoManager: UndoManager? {
+        documentUndoManager ?? super.undoManager
+    }
+
+    func attachUndoManager(_ undoManager: UndoManager) {
+        documentUndoManager = undoManager
+    }
 
     func configureWordWrap(enabled: Bool, in scrollView: NSScrollView) {
         if enabled {
@@ -63,6 +54,17 @@ final class CodeTextView: NSTextView {
             maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         }
         textLayoutManager?.textViewportLayoutController.layoutViewport()
+    }
+
+    /// Reserves a layout-only strip for the line-number subview. The gutter is not
+    /// an `NSRulerView`, so this inset is what prevents its drawing from ever
+    /// overlapping glyphs.
+    func configureLineNumberGutter(visible: Bool, width: CGFloat = LineNumberGutterView.minimumWidth) {
+        let insetWidth = visible ? width + Self.textInset.width : Self.textInset.width
+        guard textContainerInset.width != insetWidth else { return }
+        textContainerInset = NSSize(width: insetWidth, height: Self.textInset.height)
+        textLayoutManager?.textViewportLayoutController.layoutViewport()
+        needsDisplay = true
     }
 
     private func configureForCodeEditing() {
@@ -82,7 +84,6 @@ final class CodeTextView: NSTextView {
         smartInsertDeleteEnabled = false
         usesFindPanel = false
         usesRuler = false
-
         // Non-wrapping layout with both vertical and horizontal scrolling — the
         // classic AppKit recipe for a code editor (word wrap is a deferred setting).
         isHorizontallyResizable = true
@@ -91,7 +92,7 @@ final class CodeTextView: NSTextView {
         textContainer?.widthTracksTextView = false
         textContainer?.containerSize = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
 
-        textContainerInset = NSSize(width: 6, height: 8)
+        textContainerInset = Self.textInset
         drawsBackground = true
         backgroundColor = ColorRole.editorBackgroundNSColor
         textColor = ColorRole.editorForegroundNSColor
@@ -101,38 +102,29 @@ final class CodeTextView: NSTextView {
 
     // MARK: Current-line highlight
 
-    /// Drawn *before* calling `super.draw`, so glyphs are painted on top of the
-    /// highlight rather than being obscured by it.
     override func draw(_ dirtyRect: NSRect) {
         drawCurrentLineHighlight()
-        drawBracketHighlight()
         super.draw(dirtyRect)
-    }
-
-    private func drawBracketHighlight() {
-        guard let bracketPair else { return }
-        BracketHighlightRenderer.drawBracketPair(in: self, openLocation: bracketPair.open, closeLocation: bracketPair.close)
     }
 
     private func drawCurrentLineHighlight() {
         guard highlightCurrentLine else { return }
-        guard let layoutManager = textLayoutManager else { return }
-        guard let selectionRange = layoutManager.textSelections.first?.textRanges.first else { return }
+        guard selectedRange().length == 0 else { return }
+        guard let layoutManager = textLayoutManager,
+              let selectionRange = layoutManager.textSelections.first?.textRanges.first else { return }
 
-        // The first fragment at/after the caret's location is the line the caret is
-        // on; we only need its frame, so the enumeration stops immediately.
-        var lineFrame: NSRect?
+        var fillRect: NSRect?
         layoutManager.enumerateTextLayoutFragments(from: selectionRange.location, options: [.ensuresLayout]) { fragment in
-            lineFrame = fragment.layoutFragmentFrame
+            fillRect = fragment.layoutFragmentFrame
             return false
         }
 
-        guard var rect = lineFrame else { return }
-        rect.origin.x = 0
-        rect.size.width = max(bounds.width, rect.size.width)
+        guard var fillRect else { return }
+        fillRect.origin.x = 0
+        fillRect.size.width = max(bounds.width, fillRect.size.width)
 
         ColorRole.editorCurrentLineNSColor.setFill()
-        rect.fill()
+        fillRect.fill()
     }
 
     // MARK: Editor commands
@@ -199,12 +191,22 @@ final class CodeTextView: NSTextView {
         handleInsertText(insertString, replacementRange: replacementRange)
     }
 
+    override func paste(_ sender: Any?) {
+        // A one-character paste must remain a literal paste, not turn into an
+        // auto-closing pair. Keeping the native paste transaction also preserves
+        // macOS undo grouping and pasteboard semantics.
+        isPerformingPaste = true
+        defer { isPerformingPaste = false }
+        super.paste(sender)
+    }
+
     private func handleInsertText(_ insertString: Any, replacementRange: NSRange) {
         guard !hasMarkedText() else {
             super.insertText(insertString, replacementRange: replacementRange)
             return
         }
-        if let string = insertString as? String,
+        if !isPerformingPaste,
+           let string = insertString as? String,
            string.count == 1,
            let character = string.first,
            commandDelegate?.codeTextView(self, shouldInsertCharacter: character) == true {
