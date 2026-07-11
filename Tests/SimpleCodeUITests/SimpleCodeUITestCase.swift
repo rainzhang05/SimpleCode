@@ -109,38 +109,32 @@ class SimpleCodeUITestCase: XCTestCase {
 
     @discardableResult
     @MainActor
-    func openRunFixture(extraArguments: [String] = []) throws -> URL {
-        let fixture = try makeRunFixture()
-        launchApp(extraArguments: ["-UITestFixtureRunWorkspace", fixture.path] + extraArguments)
-        waitForWorkspace()
+    func openFixtureWorkspace(extraArguments: [String] = []) throws -> WorkspaceFixture {
+        let fixture = try makeWorkspaceFixture()
+        openWorkspace(at: fixture.root, extraArguments: extraArguments)
         return fixture
     }
 
     @MainActor
-    func cloneSheetRoot() -> XCUIElement {
-        if app.sheets.firstMatch.waitForExistence(timeout: 5) {
-            return app.sheets.firstMatch
-        }
-        return app.otherElements["clone.sheet"]
+    func openMainFile(in fixture: WorkspaceFixture) {
+        let row = element("fileTree.row.Main.swift")
+        XCTAssertTrue(row.waitForExistence(timeout: defaultTimeout), debugSnapshot())
+        row.click()
+        XCTAssertTrue(element("editor.tab.Main.swift").waitForExistence(timeout: defaultTimeout), debugSnapshot())
+        XCTAssertTrue(element("editor.textView").waitForExistence(timeout: defaultTimeout), debugSnapshot())
     }
 
     @MainActor
     func openCloneSheet(extraArguments: [String] = []) {
         launchApp(extraArguments: extraArguments)
         waitForWelcome()
-        let cloneCard = app.buttons["welcome.Clone a Git Repository"]
-        XCTAssertTrue(cloneCard.waitForExistence(timeout: 8))
-        cloneCard.click()
-        let sheet = cloneSheetRoot()
-        XCTAssertTrue(sheet.staticTexts["Clone a Git Repository"].waitForExistence(timeout: 8))
+        clickWelcomeAction(id: "welcome.action.cloneRepository", label: "Clone a Git Repository")
+        waitForModalSheet()
     }
 
     @MainActor
-    func waitForEnabled(_ element: XCUIElement, timeout: TimeInterval = 20) {
-        let predicate = NSPredicate(format: "isEnabled == true")
-        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
-        let result = XCTWaiter().wait(for: [expectation], timeout: timeout)
-        XCTAssertEqual(result, .completed, "Element not enabled within \(timeout)s")
+    func visibleSheet() -> XCUIElement {
+        app.sheets.firstMatch
     }
 
     func terminateStaleAppInstances() {
