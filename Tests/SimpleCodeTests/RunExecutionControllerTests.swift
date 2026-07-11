@@ -127,6 +127,17 @@ struct RunExecutionControllerTests {
         workspace.terminal.onShellTerminated?()
         #expect(workspace.runExecution.state == .idle)
     }
+
+    @Test func terminalRestartResetsRunStateWithoutWaitingForAShellCallback() throws {
+        let workspace = try makeWorkspace()
+        workspace.runCommands.setCommand("sleep 1", explicit: true)
+        workspace.runExecution.run()
+        #expect(workspace.runExecution.state == .possiblyRunning)
+
+        workspace.terminal.restart()
+
+        #expect(workspace.runExecution.state == .idle)
+    }
 }
 
 @Suite(.serialized)

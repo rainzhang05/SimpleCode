@@ -20,8 +20,10 @@ struct LargeFileOpenSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { onChoice(.cancel) }
+                    .pointingHandCursor()
                 ForEach(primaryActions, id: \.title) { action in
                     Button(action.title) { onChoice(action.choice) }
+                        .pointingHandCursor()
                         .keyboardShortcut(action.isDefault ? .defaultAction : .cancelAction)
                 }
             }

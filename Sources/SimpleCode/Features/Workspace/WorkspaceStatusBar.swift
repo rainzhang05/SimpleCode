@@ -39,7 +39,7 @@ struct WorkspaceStatusBar: View {
         .foregroundStyle(ColorRole.statusBarText)
         .padding(.horizontal, Spacing.small)
         .frame(height: 22)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(ColorRole.chromeFallback)
         .overlay(alignment: .top) {
             Rectangle().fill(ColorRole.chromeHairline).frame(height: 1)
         }

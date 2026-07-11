@@ -24,12 +24,7 @@ struct WorkspaceToolbar: ToolbarContent {
                 Image(systemName: "sidebar.leading")
             }
             .help("Toggle Sidebar")
-        }
-
-        ToolbarItem(placement: .principal) {
-            Text(workspace.rootURL.lastPathComponent)
-                .font(.system(size: 12, weight: .medium))
-                .lineLimit(1)
+            .pointingHandCursor()
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
@@ -40,6 +35,7 @@ struct WorkspaceToolbar: ToolbarContent {
                     Label("Stop", systemImage: "stop.fill")
                 }
                 .help("Stop (Control-Command-Period)")
+                .pointingHandCursor()
                 .accessibilityIdentifier("workspace.stopButton")
             }
 
@@ -50,6 +46,7 @@ struct WorkspaceToolbar: ToolbarContent {
             }
             .disabled(!hasRunnableCommand)
             .help(hasRunnableCommand ? "Run (Command-R)" : "Configure a run command first")
+            .pointingHandCursor()
             .accessibilityIdentifier("workspace.runButton")
 
             Button {
@@ -58,6 +55,7 @@ struct WorkspaceToolbar: ToolbarContent {
                 Image(systemName: "slider.horizontal.3")
             }
             .help("Edit Run Command")
+            .pointingHandCursor()
             .accessibilityIdentifier("workspace.runConfigButton")
             .sheet(isPresented: $isRunPopoverPresented) {
                 RunConfigurationPopover(workspace: workspace, isPresented: $isRunPopoverPresented)
@@ -69,23 +67,9 @@ struct WorkspaceToolbar: ToolbarContent {
                 Image(systemName: "terminal")
             }
             .help("Toggle Terminal")
+            .pointingHandCursor()
             .accessibilityIdentifier("workspace.terminalToggle")
         }
 
-        ToolbarItemGroup(placement: .secondaryAction) {
-            Button {
-                workspace.appSettings.decreaseFontSize()
-            } label: {
-                Image(systemName: "textformat.size.smaller")
-            }
-            .help("Decrease Editor Font Size")
-
-            Button {
-                workspace.appSettings.increaseFontSize()
-            } label: {
-                Image(systemName: "textformat.size.larger")
-            }
-            .help("Increase Editor Font Size")
-        }
     }
 }

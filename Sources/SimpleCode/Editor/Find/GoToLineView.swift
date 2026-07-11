@@ -27,12 +27,14 @@ struct GoToLineView: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
+                    .pointingHandCursor()
                 Button("Go") {
                     if let offset = controller.resolve(lineStartIndex: lineStartIndex, lineCount: lineCount, text: text) {
                         onGoToOffset(offset)
                     }
                 }
                 .keyboardShortcut(.defaultAction)
+                .pointingHandCursor()
                 .accessibilityIdentifier("goto.confirm")
             }
         }

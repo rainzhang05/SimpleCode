@@ -53,20 +53,27 @@ struct DocumentConflictBanner: View {
         case .cleanReloadAvailable:
             Button("Reload") { onReload() }
                 .controlSize(.small)
+                .pointingHandCursor()
             Button("Dismiss") { onDismiss() }
                 .controlSize(.small)
+                .pointingHandCursor()
         case .dirtyConflict:
             Button("Reload from Disk") { onReload() }
                 .controlSize(.small)
+                .pointingHandCursor()
             Button("Keep Editing") { onDismiss() }
                 .controlSize(.small)
+                .pointingHandCursor()
             Button("Save As…") { onSaveAs() }
                 .controlSize(.small)
+                .pointingHandCursor()
         case .deleted:
             Button("Save As…") { onSaveAs() }
                 .controlSize(.small)
+                .pointingHandCursor()
             Button("Close Tab") { onCloseTab() }
                 .controlSize(.small)
+                .pointingHandCursor()
         }
     }
 }

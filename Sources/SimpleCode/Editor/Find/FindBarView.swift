@@ -26,16 +26,20 @@ struct FindBarView: View {
                     Image(systemName: "chevron.up")
                 }
                 .help("Find Previous")
+                .pointingHandCursor()
                 .accessibilityIdentifier("find.previous")
                 Button(action: onFindNext) {
                     Image(systemName: "chevron.down")
                 }
                 .help("Find Next")
+                .pointingHandCursor()
                 .accessibilityIdentifier("find.next")
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                 }
                 .help("Close")
+                .pointingHandCursor()
+                .accessibilityIdentifier("find.close")
             }
 
             if controller.isReplaceMode {
@@ -45,8 +49,10 @@ struct FindBarView: View {
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier("find.replaceField")
                     Button("Replace", action: onReplace)
+                        .pointingHandCursor()
                         .accessibilityIdentifier("find.replace")
                     Button("Replace All", action: onReplaceAll)
+                        .pointingHandCursor()
                         .accessibilityIdentifier("find.replaceAll")
                 }
             }
@@ -65,6 +71,9 @@ struct FindBarView: View {
         }
         .padding(.horizontal, Spacing.medium)
         .padding(.vertical, Spacing.small)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .glassPanel(cornerRadius: 0)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(ColorRole.chromeHairline).frame(height: 1)
+        }
     }
 }

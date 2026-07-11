@@ -42,6 +42,7 @@ struct RunConfigurationPopover: View {
                             Button("Use Suggestion") {
                                 draftCommand = command
                             }
+                            .pointingHandCursor()
                             .accessibilityIdentifier("run.popover.useSuggestion")
                         }
                     }
@@ -60,12 +61,14 @@ struct RunConfigurationPopover: View {
                     Button("Mark Workspace as Untrusted") {
                         workspace.trust.markUntrusted()
                     }
+                    .pointingHandCursor()
                     .font(.system(size: 11))
                     .accessibilityIdentifier("run.popover.markUntrusted")
                 } else {
                     Button("Mark Workspace as Trusted") {
                         workspace.trust.markTrusted()
                     }
+                    .pointingHandCursor()
                     .font(.system(size: 11))
                     .accessibilityIdentifier("run.popover.markTrusted")
                 }
@@ -76,6 +79,7 @@ struct RunConfigurationPopover: View {
                         saveAndDismiss()
                     }
                     .keyboardShortcut(.defaultAction)
+                    .pointingHandCursor()
                 }
             }
             .padding(Spacing.medium)

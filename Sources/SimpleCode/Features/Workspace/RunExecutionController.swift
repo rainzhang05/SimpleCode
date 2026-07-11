@@ -111,11 +111,10 @@ final class RunExecutionController {
             workspace.terminal.setPanelVisible(true)
         }
 
+        workspace.terminal.startIfNeeded()
         if config.clearTerminalBeforeRun {
             workspace.terminal.clearDisplay()
         }
-
-        workspace.terminal.startIfNeeded()
         workspace.terminal.focusTerminal()
         workspace.terminal.sendCommand(command)
 
