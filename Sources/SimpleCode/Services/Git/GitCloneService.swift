@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 actor GitCloneService {
@@ -111,7 +112,7 @@ actor GitCloneService {
             throw GitCloneError.processLaunchFailure(error.localizedDescription)
         }
 
-        await waitForProcessExit(process)
+        _ = await waitForProcessExit(process)
 
         stderrTask.cancel()
         stdoutTask.cancel()
@@ -148,28 +149,36 @@ actor GitCloneService {
     /// 2. SIGINT via `interrupt()` — least destructive
     /// 3. Grace period
     /// 4. SIGTERM via `terminate()` if still running
-    /// 5. Wait for confirmed exit before cleanup
+    /// 5. SIGKILL only if the process still ignores termination
+    /// 6. Never wait indefinitely before returning control to the caller
     func cancel() async {
         isCancelled = true
         guard let process else { return }
 
         // SIGINT — graceful interruption for git clone.
         process.interrupt()
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        var exited = await waitForProcessExit(process, timeoutNanoseconds: 500_000_000)
 
-        if process.isRunning {
+        if !exited, process.isRunning {
             // SIGTERM — escalation when interrupt was ignored.
             process.terminate()
+            exited = await waitForProcessExit(process, timeoutNanoseconds: 1_000_000_000)
         }
 
-        await waitForProcessExit(process, timeoutNanoseconds: 2_000_000_000)
-
-        self.process = nil
-        lastProcessIdentifier = nil
-
-        if !process.isRunning {
-            await cleanupPartialDestinationIfOwned(processHasExited: true)
+        if !exited, process.isRunning, process.processIdentifier > 0 {
+            // A final, bounded escalation prevents a hung transport from keeping a
+            // clone process alive after the app has begun closing.
+            Darwin.kill(process.processIdentifier, SIGKILL)
+            exited = await waitForProcessExit(process, timeoutNanoseconds: 500_000_000)
         }
+
+        guard exited || !process.isRunning else { return }
+        if let activeProcess = self.process, activeProcess === process {
+            self.process = nil
+            lastProcessIdentifier = nil
+        }
+
+        await cleanupPartialDestinationIfOwned(processHasExited: true)
     }
 
     private func captureDestinationIdentityIfNeeded() {
@@ -178,23 +187,21 @@ actor GitCloneService {
         ownership = owned
     }
 
-    private func waitForProcessExit(_ process: Process, timeoutNanoseconds: UInt64 = 0) async {
-        if !process.isRunning { return }
+    /// Polling is deliberate here. Replacing `Process.terminationHandler` after a
+    /// process starts races the handler that owns the process and previously made a
+    /// timeout ineffective: the continuation waited forever before the timeout loop
+    /// was reached.
+    private func waitForProcessExit(_ process: Process, timeoutNanoseconds: UInt64? = nil) async -> Bool {
+        guard process.isRunning else { return true }
+        let deadline = timeoutNanoseconds.map { DispatchTime.now().uptimeNanoseconds + $0 }
 
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let prior = process.terminationHandler
-            process.terminationHandler = { proc in
-                prior?(proc)
-                continuation.resume()
+        while process.isRunning {
+            if let deadline, DispatchTime.now().uptimeNanoseconds >= deadline {
+                return false
             }
+            try? await Task.sleep(nanoseconds: 50_000_000)
         }
-
-        if timeoutNanoseconds > 0, process.isRunning {
-            let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
-            while process.isRunning, DispatchTime.now().uptimeNanoseconds < deadline {
-                try? await Task.sleep(nanoseconds: 50_000_000)
-            }
-        }
+        return true
     }
 
     private func cleanupPartialDestinationIfOwned(processHasExited: Bool) async {

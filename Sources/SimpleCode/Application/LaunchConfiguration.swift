@@ -5,13 +5,13 @@ struct LaunchConfiguration: Sendable, Equatable {
     var openFolderPath: String?
     var useSyntaxStressSample: Bool = false
     var fixtureWorkspacePath: String?
-    var showCloneSheet: Bool = false
     var fixtureRunWorkspacePath: String?
     var uiTestCloneSource: String?
     var uiTestCloneDestination: String?
     var uiTestTrustDecision: String?
     var uiTestUserDefaultsSuite: String?
     var uiTestRunCommand: String?
+    var uiTestSeedRecentWorkspacePaths: [String] = []
 
     static func parse(arguments: [String] = CommandLine.arguments) -> LaunchConfiguration {
         var config = LaunchConfiguration()
@@ -53,6 +53,11 @@ struct LaunchConfiguration: Sendable, Equatable {
                     config.uiTestRunCommand = arguments[index + 1]
                     index += 1
                 }
+            case "-UITestSeedRecentWorkspace":
+                if index + 1 < arguments.count {
+                    config.uiTestSeedRecentWorkspacePaths.append(arguments[index + 1])
+                    index += 1
+                }
             case "-UITestUserDefaultsSuite":
                 if index + 1 < arguments.count {
                     config.uiTestUserDefaultsSuite = arguments[index + 1]
@@ -60,15 +65,10 @@ struct LaunchConfiguration: Sendable, Equatable {
                 }
             case "-SyntaxStressTest":
                 config.useSyntaxStressSample = true
-            case "-UITestShowCloneSheet":
-                config.showCloneSheet = true
             default:
                 break
             }
             index += 1
-        }
-        if ProcessInfo.processInfo.environment["SIMPLECODE_SHOW_CLONE_SHEET"] == "1" {
-            config.showCloneSheet = true
         }
         if config.uiTestUserDefaultsSuite == nil,
            let suite = ProcessInfo.processInfo.environment["SIMPLECODE_UI_TEST_DEFAULTS_SUITE"] {

@@ -34,9 +34,16 @@ final class AppModel {
             workspaceStateStore: self.workspaceStateStore,
             clonePreferencesDefaults: defaults
         )
+        self.gitClone.onCloneSuccess = { [weak self] destination in
+            self?.handleCloneSuccess(destination: destination)
+        }
 
-        if launchConfiguration.showCloneSheet {
-            showCloneSheet = true
+        if AppTestingSupport.isUITesting(launchConfiguration: launchConfiguration),
+           !launchConfiguration.uiTestSeedRecentWorkspacePaths.isEmpty {
+            let urls = launchConfiguration.uiTestSeedRecentWorkspacePaths.map {
+                URL(fileURLWithPath: $0, isDirectory: true)
+            }
+            self.recentWorkspaces.replaceForUITesting(urls: urls)
         }
 
         if let folderPath = launchConfiguration.openFolderPath {
@@ -102,19 +109,17 @@ final class AppModel {
     }
 
     func tearDownForTermination() {
-        let group = DispatchGroup()
-        group.enter()
-        Task {
-            await gitClone.tearDown()
-            group.leave()
-        }
-        group.wait()
-
+        beginTerminationCleanup()
         if case .workspace(let workspace) = route {
-            if workspace.openDocuments.dirtySessions().isEmpty {
-                workspace.tearDown()
-            }
+            workspace.tearDown()
         }
+    }
+
+    /// Starts bounded cleanup without blocking AppKit's termination callback. The
+    /// clone service owns signal escalation; waiting for it on the main actor can
+    /// deadlock shutdown and was the source of the visible close-window stall.
+    func beginTerminationCleanup() {
+        gitClone.tearDownForTermination()
     }
 
     func handleCloneSuccess(destination: URL) {

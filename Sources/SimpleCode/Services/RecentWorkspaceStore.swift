@@ -63,6 +63,21 @@ final class RecentWorkspaceStore {
         persist()
     }
 
+    func replaceForUITesting(urls: [URL]) {
+        records = urls.map { url in
+            let standardized = url.standardizedFileURL
+            return WorkspaceRecord(
+                displayName: standardized.lastPathComponent,
+                path: standardized.path,
+                bookmarkData: nil,
+                lastOpenedDate: Date(),
+                isUnavailable: !FileManager.default.fileExists(atPath: standardized.path)
+            )
+        }
+        trimIfNeeded()
+        persist()
+    }
+
     /// Resolves a record back to an openable URL, preferring its bookmark (survives
     /// renames/moves on the same volume) and falling back to the stored path string.
     /// Marks the record `isUnavailable` (without deleting it) if neither works —

@@ -13,10 +13,10 @@ struct SimpleCodeApp: App {
         .defaultSize(width: 1_100, height: 700)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New File") { Task { await appModel.workspace?.createNewFile() } }
+                Button("New File") { appModel.workspace?.beginCreateNewFile() }
                     .keyboardShortcut("n", modifiers: .command)
                     .disabled(!appModel.isWorkspaceOpen)
-                Button("New Folder") { Task { await appModel.workspace?.createNewFolder() } }
+                Button("New Folder") { appModel.workspace?.beginCreateNewFolder() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(!appModel.isWorkspaceOpen)
                 Button("Open Folder…") { appModel.closeWorkspace() }
@@ -200,6 +200,28 @@ private struct RootView: View {
     @Bindable var appModel: AppModel
 
     var body: some View {
+        content
+            .sheet(isPresented: Binding(
+                get: { appModel.showCloneSheet && !appModel.isWorkspaceOpen },
+                set: { show in
+                    if !show {
+                        appModel.gitClone.handleSheetDismiss()
+                        appModel.showCloneSheet = false
+                    }
+                }
+            )) {
+                CloneRepositorySheet(
+                    controller: appModel.gitClone,
+                    onCancel: {
+                        appModel.gitClone.handleSheetDismiss()
+                        appModel.showCloneSheet = false
+                    }
+                )
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch appModel.route {
         case .welcome:
             WelcomeView(appModel: appModel)

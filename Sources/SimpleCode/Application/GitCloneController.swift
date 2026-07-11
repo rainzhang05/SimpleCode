@@ -225,6 +225,15 @@ final class GitCloneController {
         progressThrottleTask = nil
     }
 
+    /// Termination must never synchronously wait for a child clone process. This
+    /// starts the service's bounded cancellation path and immediately lets AppKit
+    /// continue closing the app.
+    func tearDownForTermination() {
+        progressThrottleTask?.cancel()
+        progressThrottleTask = nil
+        Task { await cloneService.cancel() }
+    }
+
     func handleSheetDismiss() {
         if sheetState == .cloning {
             cancelClone()

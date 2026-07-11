@@ -26,7 +26,12 @@ struct FileMetadata: Sendable {
     let openPolicy: FileSizeThresholds.OpenPolicy
 }
 
-actor FileContentLoader {
+protocol FileContentLoading: Actor {
+    func metadata(for url: URL) throws -> FileMetadata
+    func load(url: URL, choice: LargeFileOpenChoice?) async throws -> LoadedFileContent
+}
+
+actor FileContentLoader: FileContentLoading {
     func metadata(for url: URL) throws -> FileMetadata {
         let fm = FileManager.default
         guard fm.fileExists(atPath: url.path) else {
