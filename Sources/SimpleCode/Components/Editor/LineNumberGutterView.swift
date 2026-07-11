@@ -1,27 +1,21 @@
 import AppKit
 
-/// The line-number gutter, implemented as a classic `NSRulerView` attached to the
-/// text view's enclosing scroll view. This technique predates TextKit 2 and works
-/// the same way regardless of which TextKit generation the client view uses.
+/// A noninteractive gutter drawn over the text view's reserved leading inset.
 ///
-/// Line geometry is read through TextKit 2's `NSTextLayoutManager`:
-///   - `textLayoutFragment(for:)` locates the first visible line cheaply (an O(1)-ish
-///     point query, not a scan from the document start).
-///   - `enumerateTextLayoutFragments(from:options:)` then walks forward only across
-///     the lines actually on screen.
-/// Both APIs have existed since TextKit 2 shipped and are fully available on macOS
-/// 26 — this file deliberately does not use the macOS 27 viewport-layout-controller
-/// delegate conformance described in the architecture report as a future
-/// enhancement (see the note at the bottom of this file).
-final class LineNumberGutterView: NSRulerView {
+/// This deliberately is not an `NSRulerView`: attaching an AppKit ruler to the
+/// TextKit 2 scroll view takes a legacy rendering integration path. Line geometry
+/// is instead read from TextKit 2 layout fragments, bounded to visible fragments.
+final class LineNumberGutterView: NSView {
+    static let minimumWidth: CGFloat = 42
+
     private weak var codeTextView: CodeTextView?
     var lineStartIndex = LineStartIndex()
+    private(set) var width: CGFloat = minimumWidth
 
-    init(codeTextView: CodeTextView, scrollView: NSScrollView) {
+    init(codeTextView: CodeTextView) {
         self.codeTextView = codeTextView
-        super.init(scrollView: scrollView, orientation: .verticalRuler)
-        ruleThickness = 44
-        clientView = codeTextView
+        super.init(frame: codeTextView.bounds)
+        autoresizingMask = [.width, .height]
     }
 
     @available(*, unavailable)
@@ -29,67 +23,102 @@ final class LineNumberGutterView: NSRulerView {
         fatalError("LineNumberGutterView does not support NSCoder")
     }
 
+    override var isOpaque: Bool { false }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    override func accessibilityIsIgnored() -> Bool {
+        true
+    }
+
     func invalidate() {
         needsDisplay = true
     }
 
-    override func drawHashMarksAndLabels(in dirtyRect: NSRect) {
-        ColorRole.editorBackgroundNSColor.setFill()
-        dirtyRect.fill()
+    /// Returns `true` when the reserved editor inset needs to be laid out again.
+    /// Matching the editor's point size and using a digit-aware width keeps the
+    /// gutter stable for small files while still accommodating five-plus digit line
+    /// numbers without overlapping code.
+    @discardableResult
+    func updateMetrics(font: NSFont?, lineCount: Int) -> Bool {
+        let pointSize = max(10, (font?.pointSize ?? 13) - 1)
+        let digitFont = NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .regular)
+        let digitWidth = ("0" as NSString).size(withAttributes: [.font: digitFont]).width
+        let digitCount = max(2, String(max(1, lineCount)).count)
+        let proposedWidth = max(Self.minimumWidth, ceil(digitWidth * CGFloat(digitCount) + 18))
+        guard abs(proposedWidth - width) > 0.5 else { return false }
+        width = proposedWidth
+        needsDisplay = true
+        return true
+    }
 
+    override func draw(_ dirtyRect: NSRect) {
         guard let codeTextView,
               let layoutManager = codeTextView.textLayoutManager,
-              let contentManager = layoutManager.textContentManager,
-              let scrollView = self.scrollView else { return }
+              let contentManager = layoutManager.textContentManager else { return }
 
-        let visibleRect = scrollView.contentView.bounds
-        let inset = codeTextView.textContainerInset
+        let visibleRect = codeTextView.visibleRect
+        let gutterRect = convert(
+            NSRect(
+                x: visibleRect.minX,
+                y: visibleRect.minY,
+                width: width,
+                height: visibleRect.height
+            ),
+            from: codeTextView
+        )
+        ColorRole.gutterBackgroundNSColor.setFill()
+        gutterRect.intersection(dirtyRect).fill()
 
         let topPoint = CGPoint(x: 1, y: max(0, visibleRect.minY))
         guard let startFragment = layoutManager.textLayoutFragment(for: topPoint) else { return }
-        let startLocation = startFragment.rangeInElement.location
 
-        let startOffset = contentManager.offset(from: contentManager.documentRange.location, to: startLocation)
-        var lineNumber = startOffset >= 0
-            ? lineStartIndex.lineNumber(atUTF16Offset: startOffset)
-            : 1
+        let currentLineNumber: Int?
+        if let location = layoutManager.textSelections.first?.textRanges.first?.location {
+            let offset = contentManager.offset(from: contentManager.documentRange.location, to: location)
+            currentLineNumber = offset >= 0 ? lineStartIndex.lineNumber(atUTF16Offset: offset) : nil
+        } else {
+            currentLineNumber = nil
+        }
 
-        let currentLineLocation = currentSelectionLocation(layoutManager: layoutManager)
-
-        layoutManager.enumerateTextLayoutFragments(from: startLocation, options: [.ensuresLayout]) { fragment in
+        layoutManager.enumerateTextLayoutFragments(from: startFragment.rangeInElement.location, options: [.ensuresLayout]) { fragment in
             let frame = fragment.layoutFragmentFrame
             guard frame.minY < visibleRect.maxY else { return false }
 
-            let isCurrent = currentLineLocation.map { fragment.rangeInElement.contains($0) } ?? false
-            draw(lineNumber: lineNumber, fragmentFrame: frame, visibleRect: visibleRect, inset: inset, isCurrent: isCurrent)
+            let offset = contentManager.offset(
+                from: contentManager.documentRange.location,
+                to: fragment.rangeInElement.location
+            )
+            guard offset >= 0 else { return true }
 
-            lineNumber += 1
+            let lineNumber = lineStartIndex.lineNumber(atUTF16Offset: offset)
+            draw(
+                lineNumber: lineNumber,
+                fragmentFrame: frame,
+                visibleRect: visibleRect,
+                isCurrent: currentLineNumber == lineNumber
+            )
             return true
         }
     }
 
-    private func currentSelectionLocation(layoutManager: NSTextLayoutManager) -> NSTextLocation? {
-        layoutManager.textSelections.first?.textRanges.first?.location
-    }
-
-    private func draw(lineNumber: Int, fragmentFrame: CGRect, visibleRect: NSRect, inset: NSSize, isCurrent: Bool) {
+    private func draw(lineNumber: Int, fragmentFrame: CGRect, visibleRect: NSRect, isCurrent: Bool) {
         let numberString = "\(lineNumber)" as NSString
+        let pointSize = max(10, (codeTextView?.font?.pointSize ?? 13) - 1)
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: isCurrent ? .semibold : .regular),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: isCurrent ? .semibold : .regular),
             .foregroundColor: isCurrent ? ColorRole.editorLineNumberEmphasizedNSColor : ColorRole.editorLineNumberNSColor
         ]
 
         let size = numberString.size(withAttributes: attributes)
-        let y = fragmentFrame.minY - visibleRect.minY + inset.height
-        let x = ruleThickness - size.width - 8
-        numberString.draw(at: NSPoint(x: max(4, x), y: y), withAttributes: attributes)
+        guard let codeTextView else { return }
+        let textPoint = NSPoint(
+            x: visibleRect.minX + width - size.width - 8,
+            y: fragmentFrame.midY - size.height / 2
+        )
+        let point = convert(textPoint, from: codeTextView)
+        numberString.draw(at: NSPoint(x: max(4, point.x), y: point.y), withAttributes: attributes)
     }
 }
-
-// Future macOS 27 enhancement (documented, not implemented here): once macOS 27 is
-// the effective minimum, `CodeTextView` could adopt the public
-// `NSTextViewportLayoutControllerDelegate` conformance shown in WWDC26 session 370
-// ("Elevate your app's text experience with TextKit") to receive `willLayout` /
-// `configureRenderingSurface` / `didLayout` callbacks directly, removing the need for
-// this ruler view to re-derive the visible range on every redraw. That API does not
-// exist in the macOS 26 SDK this phase builds against, so it is not referenced here.
