@@ -3,13 +3,39 @@ import Testing
 @testable import SimpleCode
 
 struct WorkspaceTreeExclusionsTests {
-    @Test func excludesKnownDirectories() {
-        #expect(WorkspaceTreeExclusions.shouldExclude(directoryName: ".git", isWorkspaceRoot: false))
-        #expect(WorkspaceTreeExclusions.shouldExclude(directoryName: "node_modules", isWorkspaceRoot: false))
+    @Test func showsAllDirectoriesUnlessTheUserExcludesThem() {
+        #expect(!WorkspaceTreeExclusions.shouldExclude(directoryName: ".git", isWorkspaceRoot: false))
+        #expect(!WorkspaceTreeExclusions.shouldExclude(directoryName: "node_modules", isWorkspaceRoot: false))
+        #expect(WorkspaceTreeExclusions.shouldExclude(
+            directoryName: ".git",
+            relativePath: ".git",
+            isWorkspaceRoot: false,
+            userPatterns: [".git"]
+        ))
     }
 
     @Test func neverExcludesWorkspaceRoot() {
         #expect(!WorkspaceTreeExclusions.shouldExclude(directoryName: ".git", isWorkspaceRoot: true))
+    }
+
+    @MainActor
+    @Test func fileTreeCachesFlattenedVisibleRows() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "SimpleCodeTree-\(UUID().uuidString)")
+        let source = root.appending(path: "Sources")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try "let app = 1".write(to: source.appending(path: "App.swift"), atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let tree = FileTreeModel(workspaceRoot: root)
+        await tree.loadRoot()
+        #expect(tree.visibleRows.map(\.node.name) == ["Sources"])
+
+        let sourceID = try #require(tree.rootChildren.first?.id)
+        await tree.toggleExpansion(for: sourceID)
+        #expect(tree.visibleRows.map(\.node.name) == ["Sources", "App.swift"])
+
+        await tree.toggleExpansion(for: sourceID)
+        #expect(tree.visibleRows.map(\.node.name) == ["Sources"])
     }
 }
 

@@ -68,7 +68,7 @@ struct PerformanceFixtureTests {
         #expect(!listing.children.isEmpty)
         #expect(elapsed < 3.0)
         let names = Set(listing.children.map(\.name))
-        #expect(!names.contains("node_modules"))
+        #expect(names.contains("node_modules"))
         #expect(names.contains("dirs") || names.contains("Editable0.swift"))
     }
 

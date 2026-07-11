@@ -14,12 +14,20 @@ struct WorkspaceFileTreeServiceTests {
         #expect(listing.children.first?.isDirectory == true)
     }
 
-    @Test func excludesNodeModules() async throws {
+    @Test func includesProjectDirectoriesUnlessTheUserExcludesThem() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: root.appendingPathComponent("node_modules"), withIntermediateDirectories: true)
         let service = WorkspaceFileTreeService()
         let listing = await service.listDirectory(at: root, workspaceRoot: root, showHidden: false)
-        #expect(listing.children.isEmpty)
+        #expect(listing.children.map(\.name) == ["node_modules"])
+
+        let filtered = await service.listDirectory(
+            at: root,
+            workspaceRoot: root,
+            showHidden: false,
+            userPatterns: ["node_modules"]
+        )
+        #expect(filtered.children.isEmpty)
     }
 }
 

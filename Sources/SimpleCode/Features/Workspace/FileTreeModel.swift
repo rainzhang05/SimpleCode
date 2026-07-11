@@ -11,15 +11,30 @@ struct FileTreeNodeState: Identifiable, Equatable {
     var loadError: FileTreeLoadError?
 }
 
+/// A flattened, visible tree row. Keeping this derived state in the model means
+/// SwiftUI does not recursively walk the entire workspace tree during every hover,
+/// selection, or document-dirty update.
+struct FileTreeVisibleRow: Identifiable, Equatable {
+    let node: FileTreeNodeState
+    let depth: Int
+
+    var id: FileTreeNodeID { node.id }
+}
+
 @MainActor
 @Observable
 final class FileTreeModel {
     let workspaceRoot: URL
     private(set) var rootChildren: [FileTreeNodeState] = []
-    var expandedNodeIDs: Set<FileTreeNodeID> = []
+    private(set) var visibleRows: [FileTreeVisibleRow] = []
+    var expandedNodeIDs: Set<FileTreeNodeID> = [] {
+        didSet { rebuildVisibleRows() }
+    }
     var selectedNodeID: FileTreeNodeID?
     var activeFileURL: URL?
-    var showHiddenFiles = false
+    /// Source folders are part of the workspace even when their name starts with a
+    /// dot. Filtering them made common project configuration disappear unexpectedly.
+    var showHiddenFiles = true
     var userExclusions: [String] = []
     private(set) var isLoadingRoot = false
 
@@ -58,6 +73,7 @@ final class FileTreeModel {
                 loadError: error
             )]
         }
+        rebuildVisibleRows()
         isLoadingRoot = false
     }
 
@@ -65,7 +81,12 @@ final class FileTreeModel {
         let preserved = expandedNodeIDs
         await loadRoot()
         expandedNodeIDs = preserved
-        for id in preserved {
+        // Parents have to be restored before their descendants can be found in the
+        // freshly rebuilt tree. Deterministic shallow-to-deep replay also avoids
+        // redundant failed lookups for deeply expanded workspaces.
+        for id in preserved.sorted(by: { lhs, rhs in
+            lhs.path.split(separator: "/").count < rhs.path.split(separator: "/").count
+        }) {
             await loadChildrenIfNeeded(for: id)
         }
     }
@@ -73,6 +94,7 @@ final class FileTreeModel {
     func collapseAll() {
         expandedNodeIDs.removeAll()
         clearChildrenRecursively(&rootChildren)
+        rebuildVisibleRows()
     }
 
     func toggleExpansion(for nodeID: FileTreeNodeID) async {
@@ -87,8 +109,8 @@ final class FileTreeModel {
     func loadChildrenIfNeeded(for nodeID: FileTreeNodeID) async {
         guard let node = findNode(id: nodeID) else { return }
         guard node.isDirectory else { return }
-        if node.children != nil && !(node.children?.isEmpty == true && node.loadError == nil) && !node.isLoading {
-            // already loaded unless explicitly empty first pass
+        if node.children != nil && node.loadError == nil && !node.isLoading {
+            return
         }
 
         setLoading(true, for: nodeID)
@@ -132,11 +154,11 @@ final class FileTreeModel {
 
     private func clearChildrenRecursively(_ nodes: inout [FileTreeNodeState]) {
         for index in nodes.indices {
-            nodes[index].children = nil
             if var children = nodes[index].children {
                 clearChildrenRecursively(&children)
                 nodes[index].children = children
             }
+            nodes[index].children = nodes[index].isDirectory ? nil : []
         }
     }
 
@@ -156,6 +178,7 @@ final class FileTreeModel {
 
     private func updateNode(_ id: FileTreeNodeID, mutate: (inout FileTreeNodeState) -> Void) {
         _ = updateNode(id: id, in: &rootChildren, mutate: mutate)
+        rebuildVisibleRows()
     }
 
     private func updateNode(id: FileTreeNodeID, in nodes: inout [FileTreeNodeState], mutate: (inout FileTreeNodeState) -> Void) -> Bool {
@@ -171,5 +194,26 @@ final class FileTreeModel {
             }
         }
         return false
+    }
+
+    private func rebuildVisibleRows() {
+        var rows: [FileTreeVisibleRow] = []
+        rows.reserveCapacity(visibleRows.count)
+        appendVisibleRows(from: rootChildren, depth: 0, into: &rows)
+        visibleRows = rows
+    }
+
+    private func appendVisibleRows(
+        from nodes: [FileTreeNodeState],
+        depth: Int,
+        into rows: inout [FileTreeVisibleRow]
+    ) {
+        for node in nodes {
+            rows.append(FileTreeVisibleRow(node: node, depth: depth))
+            guard node.isDirectory,
+                  expandedNodeIDs.contains(node.id),
+                  let children = node.children else { continue }
+            appendVisibleRows(from: children, depth: depth + 1, into: &rows)
+        }
     }
 }

@@ -1,13 +1,9 @@
 import Foundation
 
-/// Directory exclusion rules for workspace tree traversal.
+/// User-controlled directory exclusion rules for workspace tree traversal.
+/// SimpleCode intentionally shows dot folders and build artifacts by default so
+/// the tree always represents the real workspace; users can opt out with patterns.
 enum WorkspaceTreeExclusions {
-    static let defaultDirectoryNames: Set<String> = [
-        ".git", ".svn", ".hg",
-        "node_modules", ".build", "build", "dist", "DerivedData",
-        ".venv", "venv", "__pycache__", ".idea"
-    ]
-
     static func shouldExclude(
         directoryName: String,
         relativePath: String,
@@ -15,7 +11,6 @@ enum WorkspaceTreeExclusions {
         userPatterns: [String] = []
     ) -> Bool {
         guard !isWorkspaceRoot else { return false }
-        if defaultDirectoryNames.contains(directoryName) { return true }
         return userPatterns.contains { matches(pattern: $0, directoryName: directoryName, relativePath: relativePath) }
     }
 
