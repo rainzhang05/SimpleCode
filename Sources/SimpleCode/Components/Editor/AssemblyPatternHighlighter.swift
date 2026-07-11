@@ -149,69 +149,65 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
         let line = text.substring(with: codeRange)
         var tokens: [SyntaxToken] = []
 
-        for match in numberMatches(in: line) {
-            tokens.append(SyntaxToken(
-                range: NSRange(location: baseUTF16Offset + match.range.location, length: match.range.length),
-                category: .number
-            ))
-        }
+        appendMatches(Patterns.label, in: line, base: codeRange.location, category: .label, to: &tokens)
+        appendMatches(Patterns.directive, in: line, base: codeRange.location, category: .preprocessor, to: &tokens)
+        appendMatches(Patterns.instruction, in: line, base: codeRange.location, category: .keyword, to: &tokens)
+        appendMatches(Patterns.register, in: line, base: codeRange.location, category: .variable, to: &tokens)
+        appendMatches(Patterns.number, in: line, base: codeRange.location, category: .number, to: &tokens)
+        appendMatches(Patterns.string, in: line, base: codeRange.location, category: .string, to: &tokens)
 
-        for match in stringMatches(in: nsLine) {
-            tokens.append(SyntaxToken(
-                range: NSRange(location: baseUTF16Offset + match.location, length: match.length),
-                category: .string
-            ))
+        if let comment {
+            tokens.append(SyntaxToken(range: comment, category: .comment))
         }
-
         return tokens
     }
 
-    private func commentRange(in line: String) -> NSRange? {
-        let patterns = [#";.*$"#, #"#.*$"#, #"//.*$"#, #"@.*$"#]
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) {
-                return match.range
+    private func commentRange(in text: NSString, range: NSRange) -> NSRange? {
+        let end = NSMaxRange(range)
+        var index = range.location
+        var delimiter: UInt16?
+
+        while index < end {
+            let unit = text.character(at: index)
+            if let activeDelimiter = delimiter {
+                if unit == 92 { // escaped string character
+                    index = min(end, index + 2)
+                    continue
+                }
+                if unit == activeDelimiter { delimiter = nil }
+                index += 1
+                continue
             }
+            if unit == 34 || unit == 39 {
+                delimiter = unit
+                index += 1
+                continue
+            }
+            if unit == 59 || unit == 64 { // ; and @ are assembly comment markers
+                return NSRange(location: index, length: end - index)
+            }
+            if unit == 47, index + 1 < end, text.character(at: index + 1) == 47 {
+                return NSRange(location: index, length: end - index)
+            }
+            index += 1
         }
         return nil
     }
 
-    private func labelMatches(in line: String) -> [NSTextCheckingResult] {
-        matches(for: #"(?i)^\s*([A-Za-z_.@][\w.$@]*)\s*:"#, in: line)
-    }
-
-    private func directiveMatches(in line: String) -> [NSTextCheckingResult] {
-        matches(for: #"(?i)\.([A-Za-z_][\w.]*)"#, in: line)
-    }
-
-    private func instructionMatches(in line: String) -> [NSTextCheckingResult] {
-        let intelATT = #"(?i)\b(mov|movq|movl|lea|add|sub|mul|div|and|or|xor|not|neg|inc|dec|push|pop|call|ret|jmp|je|jne|jz|jnz|cmp|test|nop|syscall|int|cli|sti|hlt|leave|enter|xorq|addq|subq|callq|retq)\b"#
-        let aarch64 = #"(?i)\b(mov|movz|movk|add|sub|mul|madd|msub|and|orr|eor|lsl|lsr|asr|cmp|b|bl|br|ret|ldr|str|ldp|stp|adr|adrp|svc|nop)\b"#
-        return matches(for: intelATT, in: line) + matches(for: aarch64, in: line)
-    }
-
-    private func registerMatches(in line: String) -> [NSTextCheckingResult] {
-        let x86 = #"(?i)\b(%?(?:r(?:ax|bx|cx|dx|si|di|bp|sp|8|9|10|11|12|13|14|15)(?:d|w|b)?|e(?:ax|bx|cx|dx|si|di|bp|sp)|a(?:x|h|l)|b(?:x|h|l)|c(?:x|h|l)|d(?:x|h|l)|si|di|bp|sp|r\d+b?))\b"#
-        let aarch64 = #"(?i)\b(x\d{1,2}|w\d{1,2}|sp|lr|pc|xzr|wzr)\b"#
-        return matches(for: x86, in: line) + matches(for: aarch64, in: line)
-    }
-
-    private func numberMatches(in line: String) -> [NSTextCheckingResult] {
-        matches(for: #"(?i)(?:\$|#)?0x[0-9a-f]+|\b\d+\b"#, in: line)
-    }
-
-    private func stringMatches(in line: NSString) -> [NSRange] {
-        let ranges: [NSRange] = []
-        let pattern = #""([^"\\]|\\.)*""#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return ranges }
-        let matches = regex.matches(in: line as String, range: NSRange(location: 0, length: line.length))
-        return matches.map(\.range)
-    }
-
-    private func matches(for pattern: String, in line: String) -> [NSTextCheckingResult] {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-        return regex.matches(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+    private func appendMatches(
+        _ regex: NSRegularExpression,
+        in line: String,
+        base: Int,
+        category: SyntaxCategory,
+        to tokens: inout [SyntaxToken]
+    ) {
+        let range = NSRange(location: 0, length: (line as NSString).length)
+        for match in regex.matches(in: line, range: range) {
+            tokens.append(SyntaxToken(
+                range: NSRange(location: base + match.range.location, length: match.range.length),
+                category: category
+            ))
+        }
     }
 
     private func lineRange(containingUTF16Edit edit: TextEditDescriptor, in text: String) -> ClosedRange<Int> {
