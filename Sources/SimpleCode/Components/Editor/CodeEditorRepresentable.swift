@@ -236,23 +236,35 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 width: gutter?.width ?? LineNumberGutterView.minimumWidth
             )
             textView.isEditable = !session.isReadOnly
+            applyBaseTextAttributesIfNeeded(to: textView, force: true)
             textView.setSelectedRange(session.selectionRange)
             if let scrollView {
                 scrollView.contentView.scroll(to: session.scrollOffset)
             }
-
-            if session.enablesSyntaxHighlighting, let highlighter = session.highlighter {
+            if session.enablesSyntaxHighlighting, let highlighter = session.highlighter, !session.hasAppliedSyntaxHighlighting {
                 let revision = session.bumpRevision()
                 let text = session.textStorage.string
-                Task { [weak self] in
+                let sessionID = session.id
+                let generation = attachmentGeneration
+                let storage = session.textStorage
+                pendingHighlightTask = Task { [weak self] in
                     let batch = await highlighter.load(text: text, revision: revision)
-                    self?.apply(batch: batch)
+                    guard !Task.isCancelled else { return }
+                    self?.apply(
+                        batch: batch,
+                        expectedSessionID: sessionID,
+                        expectedAttachmentGeneration: generation,
+                        expectedTextStorage: storage
+                    )
                 }
+            } else {
+                scheduleViewportHighlight()
             }
         }
 
         @objc func boundsDidChange() {
             gutter?.invalidate()
+            overlay?.needsDisplay = true
             scheduleViewportHighlight()
         }
 
@@ -445,6 +457,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             }
             textStorage.endEditing()
             isApplyingHighlighting = false
+            overlay?.needsDisplay = true
+            textView?.needsDisplay = true
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -456,8 +470,68 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             let lineStart = session.lineStartIndex.lineStartUTF16Offset(forLine: line)
             session.updateCursor(line: line, column: selectedLocation - lineStart + 1)
             session.selectionRange = textView.selectedRange()
-            updateBracketHighlight(in: textView)
             resetSmartHomeIfMoved(from: line, column: selectedLocation - lineStart + 1)
+            textView.needsDisplay = true
+        }
+
+        private func applyBaseTextAttributesIfNeeded(to textView: CodeTextView, force: Bool) {
+            guard let font = textView.font else { return }
+            let foreground = ColorRole.editorForegroundNSColor
+            let paragraphStyle = editorParagraphStyle(for: font)
+            textView.typingAttributes = [
+                .font: font,
+                .foregroundColor: foreground,
+                .paragraphStyle: paragraphStyle
+            ]
+
+            let needsBaseAttributes = force
+                || lastBaseFont != font
+                || lastBaseForeground != settings.appearance.editorForeground
+                || lastBaseLineHeight != settings.typography.editorLineHeight
+            guard needsBaseAttributes else { return }
+
+            lastBaseFont = font
+            lastBaseForeground = settings.appearance.editorForeground
+            lastBaseLineHeight = settings.typography.editorLineHeight
+
+            guard let textStorage = textView.textStorage, textStorage.length > 0 else { return }
+            isApplyingHighlighting = true
+            textStorage.beginEditing()
+            textStorage.addAttributes([
+                .font: font,
+                .foregroundColor: foreground,
+                .paragraphStyle: paragraphStyle
+            ], range: NSRange(location: 0, length: textStorage.length))
+            textStorage.endEditing()
+            isApplyingHighlighting = false
+            textView.needsDisplay = true
+        }
+
+        private func applyBaseTextAttributes(to textStorage: NSTextStorage, in editedRange: NSRange) {
+            guard let textView, let font = textView.font else { return }
+            let documentRange = NSRange(location: 0, length: textStorage.length)
+            let range = NSIntersectionRange(editedRange, documentRange)
+            guard range.length > 0 else { return }
+
+            isApplyingHighlighting = true
+            textStorage.beginEditing()
+            textStorage.addAttributes([
+                .font: font,
+                .foregroundColor: ColorRole.editorForegroundNSColor,
+                .paragraphStyle: editorParagraphStyle(for: font)
+            ], range: range)
+            textStorage.endEditing()
+            isApplyingHighlighting = false
+            textView.needsDisplay = true
+        }
+
+        private func editorParagraphStyle(for font: NSFont) -> NSParagraphStyle {
+            let style = NSMutableParagraphStyle()
+            let naturalLineHeight = font.ascender - font.descender + font.leading
+            let lineHeight = ceil(naturalLineHeight * CGFloat(settings.typography.editorLineHeight))
+            style.minimumLineHeight = lineHeight
+            style.maximumLineHeight = lineHeight
+            return style
         }
 
         // MARK: CodeTextViewCommandDelegate
@@ -470,7 +544,6 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         func codeTextViewHandleTab(_ textView: CodeTextView, shift: Bool) -> Bool {
-            guard settings.editor.autoIndent else { return false }
             guard let result = workspace.editorTabResult(for: session, selection: textView.selectedRange(), shift: shift) else { return false }
             applyCommand(result, in: textView)
             return true
@@ -516,21 +589,32 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             return true
         }
 
+        func applyEditorMutation(_ result: EditorCommandResult, to targetSession: EditorDocumentSession) -> Bool {
+            guard targetSession.id == session.id, let textView else { return false }
+            applyCommand(result, in: textView)
+            return true
+        }
+
         private func applyCommand(_ result: EditorCommandResult, in textView: CodeTextView) {
+            let selection = result.resultingSelections.first ?? textView.selectedRange()
             if !result.edits.isEmpty {
-                applyTextEdits(result.edits, in: textView)
-            }
-            if let selection = result.resultingSelections.first {
+                applyTextEdits(result.edits, in: textView, resultingSelection: selection)
+            } else {
                 textView.setSelectedRange(selection)
                 session.selectionRange = selection
             }
-            updateBracketHighlight(in: textView)
             textView.needsDisplay = true
             overlay?.needsDisplay = true
         }
 
-        private func applyTextEdits(_ edits: [TextEdit], in textView: CodeTextView) {
+        private func applyTextEdits(
+            _ edits: [TextEdit],
+            in textView: CodeTextView,
+            resultingSelection: NSRange
+        ) {
             guard let textStorage = textView.textStorage else { return }
+            let originalText = textStorage.string
+            let originalSelection = textView.selectedRange()
             let sortedEdits = edits.sorted { lhs, rhs in
                 if lhs.range.location == rhs.range.location {
                     return lhs.range.length > rhs.range.length
@@ -539,16 +623,78 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             }
 
             isApplyingCommand = true
-            let undoManager = textView.undoManager
-            undoManager?.beginUndoGrouping()
             textStorage.beginEditing()
             for edit in sortedEdits where edit.range.location >= 0 && NSMaxRange(edit.range) <= textStorage.length {
                 textView.replaceCharacters(in: edit.range, with: edit.replacement)
             }
             textStorage.endEditing()
-            undoManager?.endUndoGrouping()
             isApplyingCommand = false
 
+            textView.setSelectedRange(resultingSelection)
+            session.selectionRange = resultingSelection
+
+            let changedText = textStorage.string
+            registerUndo(
+                in: textView,
+                restoringText: originalText,
+                selection: originalSelection,
+                inverseText: changedText,
+                inverseSelection: resultingSelection,
+                sessionID: session.id
+            )
+
+            recordProgrammaticSourceEdit(in: textView)
+        }
+
+        private func registerUndo(
+            in textView: CodeTextView,
+            restoringText: String,
+            selection: NSRange,
+            inverseText: String,
+            inverseSelection: NSRange,
+            sessionID: UUID
+        ) {
+            textView.undoManager?.registerUndo(withTarget: self) { [weak textView] coordinator in
+                guard let textView else { return }
+                coordinator.restoreProgrammaticText(
+                    restoringText,
+                    selection: selection,
+                    inverseText: inverseText,
+                    inverseSelection: inverseSelection,
+                    sessionID: sessionID,
+                    in: textView
+                )
+            }
+            textView.undoManager?.setActionName("Edit")
+        }
+
+        private func restoreProgrammaticText(
+            _ text: String,
+            selection: NSRange,
+            inverseText: String,
+            inverseSelection: NSRange,
+            sessionID: UUID,
+            in textView: CodeTextView
+        ) {
+            guard self.session.id == sessionID, let textStorage = textView.textStorage else { return }
+
+            registerUndo(
+                in: textView,
+                restoringText: inverseText,
+                selection: inverseSelection,
+                inverseText: text,
+                inverseSelection: selection,
+                sessionID: sessionID
+            )
+
+            isApplyingCommand = true
+            textStorage.replaceCharacters(
+                in: NSRange(location: 0, length: textStorage.length),
+                with: text
+            )
+            isApplyingCommand = false
+            textView.setSelectedRange(selection)
+            self.session.selectionRange = selection
             recordProgrammaticSourceEdit(in: textView)
         }
 
