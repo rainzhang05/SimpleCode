@@ -300,9 +300,89 @@ class SimpleCodeUITestCase: XCTestCase {
         var environment = app.launchEnvironment
         environment["SIMPLECODE_UI_TESTING"] = "1"
         if let defaultsSuite {
-            return ["-UITestUserDefaultsSuite", defaultsSuite] + extraArguments
+            environment["SIMPLECODE_UI_TEST_DEFAULTS_SUITE"] = defaultsSuite
         }
-        return extraArguments
+        return environment
     }
 
+    @MainActor
+    private func waitForAnyRoot(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element("welcome.root").exists || element("workspace.root").exists {
+                return true
+            }
+            app.activate()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return false
+    }
+
+    private func waitForNoRunningApp(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if NSRunningApplication.runningApplications(withBundleIdentifier: testedAppBundleID).isEmpty {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: testedAppBundleID).isEmpty
+    }
+
+    private func removeOwnedPaths() {
+        for path in ownedPaths {
+            try? FileManager.default.removeItem(at: path)
+        }
+        ownedPaths.removeAll()
+    }
+
+    private func removeIsolatedDefaults() {
+        guard let defaultsSuite else { return }
+        if let defaults = UserDefaults(suiteName: defaultsSuite) {
+            defaults.removePersistentDomain(forName: defaultsSuite)
+            defaults.synchronize()
+        }
+        CFPreferencesAppSynchronize(defaultsSuite as CFString)
+        Self.removePreferenceFile(for: defaultsSuite)
+        Self.removeUITestDefaultsDomains()
+    }
+
+    private static func removeUITestDefaultsDomains() {
+        for _ in 0..<3 {
+            let didRemove = removeUITestPreferenceFiles()
+            if !didRemove { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
+
+    @discardableResult
+    private static func removeUITestPreferenceFiles() -> Bool {
+        guard let preferencesDirectory = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
+            .appending(path: "Preferences")
+        else {
+            return false
+        }
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: preferencesDirectory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        var didRemove = false
+        for file in files {
+            let name = file.lastPathComponent
+            guard name.hasPrefix(defaultsSuitePrefix), name.hasSuffix(".plist") else { continue }
+            try? FileManager.default.removeItem(at: file)
+            didRemove = true
+        }
+        return didRemove
+    }
+
+    private static func removePreferenceFile(for domain: String) {
+        guard let preferencesDirectory = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first else {
+            return
+        }
+        let suiteFile = preferencesDirectory
+            .appending(path: "Preferences")
+            .appending(path: "\(domain).plist")
+        try? FileManager.default.removeItem(at: suiteFile)
+    }
 }
