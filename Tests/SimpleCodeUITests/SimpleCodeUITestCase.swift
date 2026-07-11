@@ -236,22 +236,69 @@ class SimpleCodeUITestCase: XCTestCase {
     func waitForValue(_ element: XCUIElement, _ expectedValue: String, timeout: TimeInterval = 8) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            let remaining = NSRunningApplication.runningApplications(withBundleIdentifier: testedAppBundleID)
-            if remaining.isEmpty { break }
+            if element.exists, (element.value as? String) == expectedValue { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        XCTFail("Expected value '\(expectedValue)' for \(element), got '\(String(describing: element.value))'.")
+    }
+
+    @MainActor
+    func saveActiveDocument() {
+        app.menuBars.menuBarItems["File"].click()
+        let save = app.menuItems["Save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 3), debugSnapshot())
+        save.click()
+    }
+
+    @MainActor
+    func element(_ identifier: String) -> XCUIElement {
+        app.descendants(matching: .any)[identifier]
+    }
+
+    @MainActor
+    func debugSnapshot() -> String {
+        """
+        app.state=\(app.state.rawValue)
+        windows=\(app.windows.count)
+        \(app.debugDescription)
+        """
+    }
+
+    func terminateStaleAppInstances() {
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: testedAppBundleID)
+        for app in running {
+            app.terminate()
+        }
+        if !waitForNoRunningApp(timeout: 3) {
+            for app in NSRunningApplication.runningApplications(withBundleIdentifier: testedAppBundleID) {
+                app.forceTerminate()
+            }
+            _ = waitForNoRunningApp(timeout: 3)
         }
     }
 
     @MainActor
     func relaunchApp(extraArguments: [String] = []) {
         app.terminate()
+        _ = waitForNoRunningApp(timeout: 2)
+        terminateStaleAppInstances()
         app = XCUIApplication()
-        app.launchArguments = launchArguments(extraArguments: extraArguments)
-        app.launch()
-        app.activate()
+        launchApp(extraArguments: extraArguments)
     }
 
     private func launchArguments(extraArguments: [String]) -> [String] {
+        var arguments = ["-ApplePersistenceIgnoreState", "YES"]
+        if let defaultsSuite {
+            arguments += ["-UITestUserDefaultsSuite", defaultsSuite]
+        }
+        arguments += extraArguments
+        return arguments
+    }
+
+    @MainActor
+    private func launchEnvironment() -> [String: String] {
+        var environment = app.launchEnvironment
+        environment["SIMPLECODE_UI_TESTING"] = "1"
         if let defaultsSuite {
             return ["-UITestUserDefaultsSuite", defaultsSuite] + extraArguments
         }
