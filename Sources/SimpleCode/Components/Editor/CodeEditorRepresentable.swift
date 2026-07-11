@@ -129,47 +129,112 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         func applyEditorSettings(to textView: CodeTextView, scrollView: NSScrollView) {
-            textView.highlightCurrentLine = settings.editor.highlightCurrentLine
-            textView.configureWordWrap(enabled: settings.editor.wordWrap, in: scrollView)
+            let snapshot = EditorAppliedSettings(
+                highlightCurrentLine: settings.editor.highlightCurrentLine,
+                showLongLineGuide: settings.editor.showLongLineGuide,
+                guideColumn: settings.editor.longLineGuideColumn,
+                showWhitespace: settings.editor.showWhitespace,
+                showTrailingWhitespace: settings.editor.showTrailingWhitespace,
+                wordWrap: settings.editor.wordWrap,
+                showLineNumbers: settings.editor.showLineNumbers,
+                findVisible: workspace.findReplace.isVisible,
+                findMatches: workspace.findReplace.isVisible
+                    ? workspace.findReplace.matches.map(\.range)
+                    : [],
+                activeFindMatch: workspace.findReplace.isVisible
+                    ? workspace.findReplace.currentMatchIndex.flatMap { index in
+                        workspace.findReplace.matches.indices.contains(index)
+                            ? workspace.findReplace.matches[index].range
+                            : nil
+                    }
+                    : nil
+            )
+
+            textView.highlightCurrentLine = snapshot.highlightCurrentLine
             textView.backgroundColor = ColorRole.editorBackgroundNSColor
             textView.textColor = ColorRole.editorForegroundNSColor
             textView.insertionPointColor = ColorRole.editorForegroundNSColor
             textView.selectedTextAttributes = [.backgroundColor: ColorRole.editorSelectionNSColor]
-            gutter?.isHidden = !settings.editor.showLineNumbers
-            overlay?.showLongLineGuide = settings.editor.showLongLineGuide
-            overlay?.guideColumn = settings.editor.longLineGuideColumn
-            overlay?.showWhitespace = settings.editor.showWhitespace
-            overlay?.showTrailingWhitespace = settings.editor.showTrailingWhitespace
-            overlay?.findMatches = workspace.findReplace.isVisible
-                ? workspace.findReplace.matches.map(\.range)
-                : []
-            if workspace.findReplace.isVisible,
-               let activeIndex = workspace.findReplace.currentMatchIndex,
-               workspace.findReplace.matches.indices.contains(activeIndex) {
-                overlay?.activeFindMatch = workspace.findReplace.matches[activeIndex].range
-            } else {
-                overlay?.activeFindMatch = nil
+
+            if lastWordWrapEnabled != snapshot.wordWrap {
+                textView.configureWordWrap(enabled: snapshot.wordWrap, in: scrollView)
+                lastWordWrapEnabled = snapshot.wordWrap
             }
-            overlay?.needsDisplay = true
+
+            applyBaseTextAttributesIfNeeded(to: textView, force: false)
+
+            let gutterMetricsChanged = gutter?.updateMetrics(
+                font: textView.font,
+                lineCount: session.lineStartIndex.lineCount
+            ) ?? false
+            if lastAppliedSettings.showLineNumbers != snapshot.showLineNumbers || gutterMetricsChanged {
+                textView.configureLineNumberGutter(
+                    visible: snapshot.showLineNumbers,
+                    width: gutter?.width ?? LineNumberGutterView.minimumWidth
+                )
+                gutter?.isHidden = !snapshot.showLineNumbers
+                gutter?.invalidate()
+            }
+
+            if lastAppliedSettings.overlayDecorationSettings != snapshot.overlayDecorationSettings {
+                overlay?.showLongLineGuide = snapshot.showLongLineGuide
+                overlay?.guideColumn = snapshot.guideColumn
+                overlay?.showWhitespace = snapshot.showWhitespace
+                overlay?.showTrailingWhitespace = snapshot.showTrailingWhitespace
+                overlay?.needsDisplay = true
+            }
+
+            if lastAppliedSettings.findState != snapshot.findState {
+                overlay?.findMatches = snapshot.findMatches
+                overlay?.activeFindMatch = snapshot.activeFindMatch
+                overlay?.needsDisplay = true
+            }
+
+            lastAppliedSettings = snapshot
+        }
+
+        func needsAttachment(for session: EditorDocumentSession) -> Bool {
+            attachedSessionID != session.id
+                || attachedSyntaxConfigurationRevision != session.syntaxConfigurationRevision
         }
 
         func attach(session: EditorDocumentSession, to textView: CodeTextView) {
-            if attachedSessionID == session.id { return }
+            guard needsAttachment(for: session) else { return }
 
-            if let previous = self.textView, attachedSessionID != nil {
+            pendingHighlightTask?.cancel()
+            viewportHighlightTask?.cancel()
+            pendingHighlightTask = nil
+            viewportHighlightTask = nil
+            lastAppliedViewportRange = nil
+            attachmentGeneration &+= 1
+
+            if let previous = self.textView, attachedSessionID != nil, attachedSessionID != session.id {
                 self.session.selectionRange = previous.selectedRange()
                 self.session.scrollOffset = scrollView?.contentView.bounds.origin ?? .zero
             }
 
-            self.session = session
-            attachedSessionID = session.id
-
-            if let contentStorage = textView.textLayoutManager?.textContentManager as? NSTextContentStorage {
-                contentStorage.textStorage = session.textStorage
+            if attachedSessionID != session.id {
+                self.session.textStorage.delegate = nil
             }
+
+            self.session = session
+            workspace.registerEditorMutationApplier(self, for: session)
+            textView.attachUndoManager(session.undoManager)
+            guard let contentStorage = textView.textLayoutManager?.textContentManager as? NSTextContentStorage else {
+                assertionFailure("CodeTextView must use NSTextContentStorage")
+                return
+            }
+            contentStorage.textStorage = session.textStorage
+            attachedSessionID = session.id
+            attachedSyntaxConfigurationRevision = session.syntaxConfigurationRevision
             session.textStorage.delegate = self
 
             gutter?.lineStartIndex = session.lineStartIndex
+            _ = gutter?.updateMetrics(font: textView.font, lineCount: session.lineStartIndex.lineCount)
+            textView.configureLineNumberGutter(
+                visible: settings.editor.showLineNumbers,
+                width: gutter?.width ?? LineNumberGutterView.minimumWidth
+            )
             textView.isEditable = !session.isReadOnly
             textView.setSelectedRange(session.selectionRange)
             if let scrollView {
