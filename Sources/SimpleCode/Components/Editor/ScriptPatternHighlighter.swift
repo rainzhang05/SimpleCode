@@ -243,28 +243,90 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
                 continue
             }
 
-            let keywords: [String]
-            switch languageID {
-            case .python:
-                keywords = ["def", "class", "if", "elif", "else", "for", "while", "return", "import", "from", "as", "with", "try", "except", "pass", "break", "continue", "raise", "lambda", "yield", "True", "False", "None", "and", "or", "not", "in", "is"]
-            case .javascript, .typescript, .tsx:
-                keywords = ["function", "const", "let", "var", "if", "else", "for", "while", "return", "import", "export", "from", "class", "extends", "new", "try", "catch", "finally", "throw", "async", "await", "typeof", "instanceof", "switch", "case", "break", "continue", "default", "true", "false", "null", "undefined", "interface", "type", "enum", "implements", "public", "private", "protected", "readonly"]
-            default:
-                keywords = []
-            }
-            for word in keywords {
-                let escaped = NSRegularExpression.escapedPattern(for: word)
-                applyRegex(#"\b\#(escaped)\b"#, in: line, base: lineRange.location, category: .keyword, tokens: &tokens)
+            if isIdentifierStart(unit) {
+                let identifierEnd = endOfIdentifier(in: nsText, startingAt: location, limit: lineEnd)
+                let identifier = nsText.substring(with: NSRange(location: location, length: identifierEnd - location))
+                if configuration.keywords.contains(identifier) {
+                    tokens.append(SyntaxToken(
+                        range: NSRange(location: location, length: identifierEnd - location),
+                        category: .keyword
+                    ))
+                } else if configuration.constants.contains(identifier) {
+                    tokens.append(SyntaxToken(
+                        range: NSRange(location: location, length: identifierEnd - location),
+                        category: .constant
+                    ))
+                }
+                location = identifierEnd
+                continue
             }
 
-            lineStart = lineEnd
-            if lineStart < ns.length, ns.character(at: lineStart) == 13, lineStart + 1 < ns.length, ns.character(at: lineStart + 1) == 10 {
-                lineStart += 2
-            } else if lineStart < ns.length {
-                lineStart += 1
-            }
+            location += 1
         }
         return tokens
+    }
+
+    private func endOfString(in text: NSString, startingAt start: Int, limit: Int, delimiter: UInt16) -> Int {
+        var index = start + 1
+        while index < limit {
+            let unit = text.character(at: index)
+            if unit == 92 { // escaped character
+                index = min(limit, index + 2)
+                continue
+            }
+            index += 1
+            if unit == delimiter { break }
+        }
+        return index
+    }
+
+    private func endOfNumber(in text: NSString, startingAt start: Int, limit: Int) -> Int {
+        var index = start
+        while index < limit {
+            let unit = text.character(at: index)
+            guard isDigit(unit) || unit == 46 || unit == 95 || unit == 120 || unit == 88 || unit == 101 || unit == 69 || unit == 43 || unit == 45 || (unit >= 65 && unit <= 70) || (unit >= 97 && unit <= 102) else {
+                break
+            }
+            index += 1
+        }
+        return index
+    }
+
+    private func endOfIdentifier(in text: NSString, startingAt start: Int, limit: Int) -> Int {
+        var index = start + 1
+        while index < limit, isIdentifierContinue(text.character(at: index)) {
+            index += 1
+        }
+        return index
+    }
+
+    private func tokens(in ranges: [NSRange], from tokens: [SyntaxToken]) -> [SyntaxToken] {
+        tokens.filter { token in
+            ranges.contains { NSIntersectionRange(token.range, $0).length > 0 }
+        }
+    }
+
+    private static func mergedRanges(_ ranges: [NSRange], documentLength: Int) -> [NSRange] {
+        let clamped = ranges.compactMap { range -> NSRange? in
+            let lower = max(0, min(range.location, documentLength))
+            let upper = max(lower, min(NSMaxRange(range), documentLength))
+            return upper > lower ? NSRange(location: lower, length: upper - lower) : nil
+        }.sorted { $0.location < $1.location }
+
+        var merged: [NSRange] = []
+        for range in clamped {
+            guard var previous = merged.last else {
+                merged.append(range)
+                continue
+            }
+            if range.location <= NSMaxRange(previous) {
+                previous.length = max(NSMaxRange(previous), NSMaxRange(range)) - previous.location
+                merged[merged.count - 1] = previous
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
     }
 
     private static func applyRegex(_ pattern: String, in line: String, base: Int, category: SyntaxCategory, tokens: inout [SyntaxToken]) {
