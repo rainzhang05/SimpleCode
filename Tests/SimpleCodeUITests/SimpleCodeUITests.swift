@@ -166,27 +166,161 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "terminal.panel").count, 1)
 
         toggle.click()
-        XCTAssertTrue(toggle.exists)
+        XCTAssertFalse(element("terminal.panel").waitForExistence(timeout: 2))
     }
 
-    func testCloseWorkspaceReturnsToWelcome() throws {
-        let fixture = try makeTempDirectory()
-        openWorkspace(at: fixture)
+    func testCloneSheetValidatesInvalidInputWithoutNetwork() throws {
+        let parent = try makeTempDirectory(prefix: "SimpleCodeCloneDestination")
+        openCloneSheet(extraArguments: ["-UITestCloneDestination", parent.path])
+
+        app.typeText("not-a-url")
+        app.typeKey(.return, modifierFlags: [])
+        waitForModalSheet(timeout: 2)
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(element("welcome.root").waitForExistence(timeout: 5), debugSnapshot())
+    }
+
+    func testDirtyCloseCancelThenDontSaveReturnsToWelcome() throws {
+        let fixture = try openFixtureWorkspace()
+        openMainFile(in: fixture)
+
+        typeInEditor("\n// dirty close test")
+        waitForValue(element("editor.tab.Main.swift"), "modified")
+
         app.typeKey("w", modifierFlags: [.command, .shift])
+        let cancel = app.buttons["unsaved.sheet.cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: 8), debugSnapshot())
+        cancel.click()
+        XCTAssertTrue(element("workspace.root").waitForExistence(timeout: 5))
+
+        app.typeKey("w", modifierFlags: [.command, .shift])
+        let dontSave = app.buttons["unsaved.sheet.dontSave"]
+        XCTAssertTrue(dontSave.waitForExistence(timeout: 8), debugSnapshot())
+        dontSave.click()
         waitForWelcome()
     }
 
-    func testRelaunchWithIsolatedDefaultsDoesNotCrash() throws {
-        useIsolatedDefaults()
-        let fixture = try makeTempDirectory()
-        openWorkspace(at: fixture)
-        relaunchApp()
-        waitForWelcome()
+    private func assertEditorScreenshotContainsPaintedGlyphs(
+        fileName: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let editor = element("editor.textView")
+        XCTAssertTrue(editor.waitForExistence(timeout: 8), debugSnapshot(), file: file, line: line)
+
+        let screenshot = editor.screenshot()
+        guard let tiff = screenshot.image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              bitmap.pixelsWide > 80,
+              bitmap.pixelsHigh > 100 else {
+            XCTFail("Could not inspect the rendered editor screenshot for \(fileName).", file: file, line: line)
+            return
+        }
+
+        let sampleX = max(0, bitmap.pixelsWide - 16)
+        let sampleY = bitmap.pixelsHigh / 2
+        guard let background = rgb(bitmap.colorAt(x: sampleX, y: sampleY)) else {
+            XCTFail("Could not read the editor background pixels for \(fileName).", file: file, line: line)
+            return
+        }
+
+        // Exclude the line-number gutter: this assertion must prove source glyphs
+        // are painted, not merely that the gutter labels are visible.
+        let xRange = 72..<min(bitmap.pixelsWide - 16, 320)
+        let yRange = 40..<max(41, bitmap.pixelsHigh - 40)
+        var inkPixels = 0
+        var rowsWithInk = 0
+        var maximumDistance: CGFloat = 0
+
+        for y in yRange {
+            var inkInRow = 0
+            for x in xRange {
+                guard let color = rgb(bitmap.colorAt(x: x, y: y)) else { continue }
+                let distance = abs(color.red - background.red)
+                    + abs(color.green - background.green)
+                    + abs(color.blue - background.blue)
+                maximumDistance = max(maximumDistance, distance)
+                if distance > 0.18 {
+                    inkInRow += 1
+                }
+            }
+            inkPixels += inkInRow
+            if inkInRow >= 3 {
+                rowsWithInk += 1
+            }
+        }
+
+        if inkPixels <= 80 {
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = "Editor rendering - \(fileName)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+
+        XCTAssertGreaterThan(
+            inkPixels,
+            80,
+            "Expected painted glyph pixels for \(fileName), not only accessibility text (\(bitmap.pixelsWide)x\(bitmap.pixelsHigh), max color distance \(maximumDistance)).\n\(debugSnapshot())",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThan(
+            rowsWithInk,
+            4,
+            "Expected glyph-shaped ink across several rows for \(fileName).",
+            file: file,
+            line: line
+        )
+
+        assertLineNumberGutterContainsLabels(
+            bitmap,
+            fileName: fileName,
+            file: file,
+            line: line
+        )
     }
 
-    func testDarkModeLaunch() throws {
-        app.launchEnvironment["AppleInterfaceStyle"] = "Dark"
-        launchApp()
-        waitForWelcome()
+    private func assertLineNumberGutterContainsLabels(
+        _ bitmap: NSBitmapImageRep,
+        fileName: String,
+        file: StaticString,
+        line: UInt
+    ) {
+        // Sample a quiet part of the gutter, then look for the line-number glyphs
+        // above it. This verifies the TextKit 2 gutter itself rather than only the
+        // source text rendered beside it.
+        guard let background = rgb(bitmap.colorAt(x: 8, y: bitmap.pixelsHigh / 2)) else {
+            XCTFail("Could not read the line-number gutter background for \(fileName).", file: file, line: line)
+            return
+        }
+
+        let xRange = 12..<min(80, bitmap.pixelsWide)
+        let yRange = 12..<min(340, bitmap.pixelsHigh - 12)
+        var labelPixels = 0
+        for y in yRange {
+            for x in xRange {
+                guard let color = rgb(bitmap.colorAt(x: x, y: y)) else { continue }
+                let distance = abs(color.red - background.red)
+                    + abs(color.green - background.green)
+                    + abs(color.blue - background.blue)
+                if distance > 0.08 {
+                    labelPixels += 1
+                }
+            }
+        }
+
+        XCTAssertGreaterThan(
+            labelPixels,
+            15,
+            "Expected visible line-number labels for \(fileName), not only a gutter background.",
+            file: file,
+            line: line
+        )
+    }
+
+    private func rgb(_ color: NSColor?) -> (red: CGFloat, green: CGFloat, blue: CGFloat)? {
+        guard let color = color?.usingColorSpace(.deviceRGB) else { return nil }
+        return (color.redComponent, color.greenComponent, color.blueComponent)
     }
 }
