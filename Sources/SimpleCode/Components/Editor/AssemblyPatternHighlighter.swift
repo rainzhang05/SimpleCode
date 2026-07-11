@@ -99,84 +99,55 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
         revision: Int,
         visibleUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
-        if cachedRevision != revision || cachedText != fullText {
+        guard cachedRevision == revision else {
             let batch = await load(text: fullText, revision: revision)
-            let visibleTokens = batch.tokens.filter { NSIntersectionRange($0.range, visibleUTF16Range).length > 0 }
-            let priority = HighlightBatch(revision: revision, coveredRanges: [visibleUTF16Range], tokens: visibleTokens)
-            return (priority, nil)
+            let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count)
+            return (
+                HighlightBatch(
+                    revision: revision,
+                    coveredRanges: visibleRanges,
+                    tokens: tokens(in: visibleRanges, from: batch.tokens)
+                ),
+                nil
+            )
         }
 
-        let visibleTokens = cachedTokens.filter { NSIntersectionRange($0.range, visibleUTF16Range).length > 0 }
-        let priority = HighlightBatch(revision: revision, coveredRanges: [visibleUTF16Range], tokens: visibleTokens)
-        return (priority, nil)
+        let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count)
+        return (
+            HighlightBatch(
+                revision: revision,
+                coveredRanges: visibleRanges,
+                tokens: tokens(in: visibleRanges, from: cachedTokens)
+            ),
+            nil
+        )
     }
 
-    private func highlightEntireDocument(_ text: String) -> [SyntaxToken] {
-        let lineCount = max(1, text.split(separator: "\n", omittingEmptySubsequences: false).count)
-        return highlightLines(in: text, lineRange: 1...lineCount)
-    }
-
-    private func highlightLines(in text: String, lineRange: ClosedRange<Int>) -> [SyntaxToken] {
+    private func highlight(_ text: String, restrictedTo range: NSRange) -> [SyntaxToken] {
+        let nsText = text as NSString
+        guard nsText.length > 0, range.length > 0 else { return [] }
         var tokens: [SyntaxToken] = []
-        var lineNumber = 1
-        var lineStart = text.startIndex
+        var location = max(0, min(range.location, nsText.length))
+        let end = min(nsText.length, NSMaxRange(range))
 
-        while lineStart < text.endIndex {
-            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
-            let line = String(text[lineStart..<lineEnd])
-
-            if lineRange.contains(lineNumber) {
-                let baseUTF16 = text.utf16.distance(from: text.utf16.startIndex, to: lineStart.samePosition(in: text.utf16)!)
-                tokens.append(contentsOf: highlightLine(line, baseUTF16Offset: baseUTF16))
-            }
-
-            if lineEnd == text.endIndex { break }
-            lineStart = text.index(after: lineEnd)
-            lineNumber += 1
+        while location < end {
+            let lineRange = nsText.lineRange(for: NSRange(location: location, length: 0))
+            let contentRange = Self.contentRange(of: lineRange, in: nsText)
+            tokens.append(contentsOf: highlightLine(nsText, range: contentRange))
+            let next = NSMaxRange(lineRange)
+            guard next > location else { break }
+            location = next
         }
-
         return tokens
     }
 
-    private func highlightLine(_ line: String, baseUTF16Offset: Int) -> [SyntaxToken] {
+    private func highlightLine(_ text: NSString, range: NSRange) -> [SyntaxToken] {
+        guard range.length > 0 else { return [] }
+        let comment = commentRange(in: text, range: range)
+        let codeEnd = comment?.location ?? NSMaxRange(range)
+        let codeRange = NSRange(location: range.location, length: max(0, codeEnd - range.location))
+        let line = text.substring(with: codeRange)
         var tokens: [SyntaxToken] = []
-        let nsLine = line as NSString
-
-        if let commentRange = commentRange(in: line) {
-            tokens.append(SyntaxToken(
-                range: NSRange(location: baseUTF16Offset + commentRange.location, length: commentRange.length),
-                category: .comment
-            ))
-            return tokens
-        }
-
-        for match in labelMatches(in: line) {
-            tokens.append(SyntaxToken(
-                range: NSRange(location: baseUTF16Offset + match.range.location, length: match.range.length),
-                category: .label
-            ))
-        }
-
-        for match in directiveMatches(in: line) {
-            tokens.append(SyntaxToken(
-                range: NSRange(location: baseUTF16Offset + match.range.location, length: match.range.length),
-                category: .preprocessor
-            ))
-        }
-
-        for match in instructionMatches(in: line) {
-            tokens.append(SyntaxToken(
-                range: NSRange(location: baseUTF16Offset + match.range.location, length: match.range.length),
-                category: .keyword
-            ))
-        }
-
-        for match in registerMatches(in: line) {
-            tokens.append(SyntaxToken(
-                range: NSRange(location: baseUTF16Offset + match.range.location, length: match.range.length),
-                category: .variable
-            ))
-        }
 
         for match in numberMatches(in: line) {
             tokens.append(SyntaxToken(
