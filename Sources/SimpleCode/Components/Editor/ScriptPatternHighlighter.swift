@@ -1,18 +1,65 @@
 import Foundation
 
-/// Regex-based highlighter for JavaScript, TypeScript, and Python when tree-sitter SPM
-/// packages omit external scanner object files (documented integration limitation).
+/// A lightweight lexical highlighter for the JavaScript/TypeScript/Python family.
+///
+/// These grammars are deliberately kept inside the existing twelve-language scope.
+/// The lexer is line-oriented, so normal single-line edits update only the changed
+/// line (and one neighbour for newline edits) rather than recompiling regular
+/// expressions and reparsing the full document on every keystroke.
 actor ScriptPatternHighlighter: SyntaxHighlighter {
-    private let languageID: LanguageID
+    private struct Configuration {
+        let lineComment: UInt16
+        let supportsSlashComments: Bool
+        let supportsBackticks: Bool
+        let keywords: Set<String>
+        let constants: Set<String>
+
+        init(languageID: LanguageID) {
+            switch languageID {
+            case .python:
+                lineComment = 35 // #
+                supportsSlashComments = false
+                supportsBackticks = false
+                keywords = [
+                    "def", "class", "if", "elif", "else", "for", "while", "return", "import", "from", "as", "with", "try", "except", "finally", "pass", "break", "continue", "raise", "lambda", "yield", "async", "await", "match", "case", "global", "nonlocal", "del", "assert", "in", "is", "and", "or", "not"
+                ]
+                constants = ["True", "False", "None"]
+            case .javascript, .typescript, .tsx:
+                lineComment = 47 // /
+                supportsSlashComments = true
+                supportsBackticks = true
+                keywords = [
+                    "function", "const", "let", "var", "if", "else", "for", "while", "return", "import", "export", "from", "class", "extends", "new", "try", "catch", "finally", "throw", "async", "await", "typeof", "instanceof", "switch", "case", "break", "continue", "default", "interface", "type", "enum", "implements", "public", "private", "protected", "readonly", "declare", "namespace", "keyof", "infer", "satisfies", "void", "delete", "in", "of", "get", "set", "static", "abstract"
+                ]
+                constants = ["true", "false", "null", "undefined", "NaN", "Infinity"]
+            default:
+                lineComment = 47
+                supportsSlashComments = true
+                supportsBackticks = false
+                keywords = []
+                constants = []
+            }
+        }
+    }
+
+    private let configuration: Configuration
+    private var cachedText = ""
+    private var cachedRevision = -1
+    private var cachedTokens: [SyntaxToken] = []
+    private var hasMultilineConstructs = false
 
     init(languageID: LanguageID) {
-        self.languageID = languageID
+        configuration = Configuration(languageID: languageID)
     }
 
     func load(text: String, revision: Int) async -> HighlightBatch {
-        let tokens = Self.highlight(text, languageID: languageID)
-        let whole = NSRange(location: 0, length: text.utf16.count)
-        return HighlightBatch(revision: revision, coveredRanges: [whole], tokens: tokens)
+        let tokens = highlightEntireDocument(text)
+        cachedText = text
+        cachedRevision = revision
+        cachedTokens = tokens
+        hasMultilineConstructs = Self.containsMultilineConstructs(text, supportsBackticks: configuration.supportsBackticks)
+        let wholeDocument = NSRange(location: 0, length: text.utf16.count)
+        return HighlightBatch(revision: revision, coveredRanges: [wholeDocument], tokens: tokens)
     }
 
     func applyEdit(
@@ -21,8 +68,67 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         revision: Int,
         priorityUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
-        let batch = await load(text: fullText, revision: revision)
-        return (batch, nil)
+        guard cachedRevision == revision - 1,
+              !hasMultilineConstructs,
+              !Self.editTouchesMultilineSyntax(
+                oldText: cachedText,
+                newText: fullText,
+                edit: edit,
+                supportsBackticks: configuration.supportsBackticks
+              ) else {
+            let batch = await load(text: fullText, revision: revision)
+            return (batch, nil)
+        }
+
+        let oldAffectedRange = Self.expandedLineRange(
+            around: NSRange(
+                location: edit.startUTF16,
+                length: max(0, edit.oldEndUTF16 - edit.startUTF16)
+            ),
+            in: cachedText
+        )
+        let newAffectedRange = Self.expandedLineRange(
+            around: NSRange(
+                location: edit.startUTF16,
+                length: max(0, edit.newEndUTF16 - edit.startUTF16)
+            ),
+            in: fullText
+        )
+        let offsetDelta = fullText.utf16.count - cachedText.utf16.count
+        let replacementTokens = highlight(fullText, restrictedTo: newAffectedRange)
+
+        var updated: [SyntaxToken] = []
+        updated.reserveCapacity(cachedTokens.count + replacementTokens.count)
+        for token in cachedTokens {
+            if NSIntersectionRange(token.range, oldAffectedRange).length > 0 {
+                continue
+            }
+            if token.range.location >= NSMaxRange(oldAffectedRange) {
+                updated.append(SyntaxToken(
+                    range: NSRange(location: token.range.location + offsetDelta, length: token.range.length),
+                    category: token.category
+                ))
+            } else {
+                updated.append(token)
+            }
+        }
+        updated.append(contentsOf: replacementTokens)
+        updated.sort { lhs, rhs in
+            lhs.range.location == rhs.range.location
+                ? lhs.range.length < rhs.range.length
+                : lhs.range.location < rhs.range.location
+        }
+
+        cachedText = fullText
+        cachedRevision = revision
+        cachedTokens = updated
+
+        let coveredRanges = Self.mergedRanges([priorityUTF16Range, newAffectedRange], documentLength: fullText.utf16.count)
+        let tokens = tokens(in: coveredRanges, from: updated)
+        return (
+            HighlightBatch(revision: revision, coveredRanges: coveredRanges, tokens: tokens),
+            nil
+        )
     }
 
     func scheduleViewport(
