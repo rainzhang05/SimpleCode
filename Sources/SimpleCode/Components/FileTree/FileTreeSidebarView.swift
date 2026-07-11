@@ -3,32 +3,57 @@ import UniformTypeIdentifiers
 
 struct FileTreeSidebarView: View {
     @Bindable var workspace: WorkspaceModel
+    @State private var hoveredNodeID: FileTreeNodeID?
+
+    private var openFilePaths: Set<String> {
+        Set(workspace.openDocuments.sessions.compactMap {
+            $0.fileURL?.standardizedFileURL.path
+        })
+    }
+
+    private var dirtyFilePaths: Set<String> {
+        Set(workspace.openDocuments.sessions.compactMap { session in
+            guard session.isDirty else { return nil }
+            return session.fileURL?.standardizedFileURL.path
+        })
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             sidebarToolbar
+
             if workspace.fileTree.isLoadingRoot {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(selection: $workspace.fileTree.selectedNodeID) {
-                    ForEach(workspace.fileTree.rootChildren) { node in
-                        FileTreeRowView(node: node, workspace: workspace, depth: 0)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 1) {
+                        ForEach(workspace.fileTree.visibleRows) { row in
+                            FileTreeRowView(
+                                row: row,
+                                workspace: workspace,
+                                openFilePaths: openFilePaths,
+                                dirtyFilePaths: dirtyFilePaths,
+                                isHovered: hoveredNodeID == row.node.id,
+                                onHover: { hovering in
+                                    hoveredNodeID = hovering ? row.node.id : nil
+                                }
+                            )
+                        }
                     }
+                    .padding(.horizontal, Spacing.xSmall)
+                    .padding(.vertical, Spacing.xSmall)
                 }
-                .listStyle(.sidebar)
                 .accessibilityIdentifier("fileTree.sidebar")
-                .onChange(of: workspace.fileTree.selectedNodeID) { _, selectedNodeID in
-                    guard let selectedNodeID,
-                          let node = workspace.fileTree.node(for: selectedNodeID),
-                          !node.isDirectory else { return }
-                    Task { await workspace.openFile(url: node.url) }
-                }
                 .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                     handleRootDrop(providers: providers)
                 }
             }
         }
-        .task { await workspace.fileTree.loadRoot() }
+        .frame(maxHeight: .infinity)
+        .glassPanel(cornerRadius: CornerRadius.panel)
+        .shadow(color: .black.opacity(0.16), radius: 22, y: 10)
+        .clipShape(RoundedRectangle(cornerRadius: CornerRadius.panel, style: .continuous))
         .sheet(item: $workspace.pendingRename) { pending in
             RenameSheet(name: Binding(
                 get: { workspace.pendingRename?.name ?? pending.name },
@@ -173,30 +198,16 @@ struct FileTreeRowView: View {
         return true
     }
 
-    private var iconName: String {
-        if node.isDirectory { return "folder.fill" }
-        return node.name.hasSuffix(".swift") ? "swift" : "doc.text"
-    }
-
-    private var isActiveFile: Bool {
-        guard let active = workspace.fileTree.activeFileURL else { return false }
-        return active.standardizedFileURL == node.url.standardizedFileURL
-    }
-
     @ViewBuilder
     private var contextMenu: some View {
         if !node.isDirectory {
             Button("Open") { Task { await workspace.openFile(url: node.url) } }
         }
         Button("New File") {
-            Task {
-                await workspace.createNewFile(in: node.isDirectory ? node.url : node.url.deletingLastPathComponent())
-            }
+            workspace.beginCreateNewFile(in: node.isDirectory ? node.url : node.url.deletingLastPathComponent())
         }
         Button("New Folder") {
-            Task {
-                await workspace.createNewFolder(in: node.isDirectory ? node.url : node.url.deletingLastPathComponent())
-            }
+            workspace.beginCreateNewFolder(in: node.isDirectory ? node.url : node.url.deletingLastPathComponent())
         }
         Divider()
         Button("Rename") {
@@ -206,17 +217,13 @@ struct FileTreeRowView: View {
         Button("Delete", role: .destructive) { workspace.requestDelete(item: node.url, isDirectory: node.isDirectory) }
         Divider()
         Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
-        Button("Copy Path") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(node.url.path, forType: .string) }
+        Button("Copy Path") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(node.url.path, forType: .string)
+        }
         Button("Copy Relative Path") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(relativePath, forType: .string)
-        }
-    }
-
-    private func errorText(_ error: FileTreeLoadError) -> String {
-        switch error {
-        case .permissionDenied: return "Permission denied"
-        case .unreadable(let message): return message
         }
     }
 }
@@ -243,6 +250,7 @@ private struct RenameSheet: View {
         VStack(alignment: .leading, spacing: Spacing.medium) {
             Text("Rename").font(.headline)
             TextField("Name", text: $name)
+                .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("fileTree.renameField")
             HStack {
                 Spacer()
