@@ -82,36 +82,34 @@ struct FileTreeSidebarView: View {
 
     private var sidebarToolbar: some View {
         HStack(spacing: Spacing.xSmall) {
-            Button { Task { await workspace.createNewFile() } } label: { Image(systemName: "doc.badge.plus") }
-                .help("New File")
-            Button { Task { await workspace.createNewFolder() } } label: { Image(systemName: "folder.badge.plus") }
-                .help("New Folder")
+            Text("Files")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+
             Spacer()
-            Button { workspace.fileTree.collapseAll() } label: { Image(systemName: "list.bullet.indent") }
-                .help("Collapse All")
-            Button { Task { await workspace.fileTree.refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                .help("Refresh")
-            Button {
-                Task { await workspace.setShowHiddenFiles(!workspace.appSettings.files.showHiddenFiles) }
-            } label: {
-                Image(systemName: workspace.appSettings.files.showHiddenFiles ? "eye" : "eye.slash")
-            }
-            .help("Show Hidden Files")
+
+            Button { workspace.beginCreateNewFile() } label: { Image(systemName: "doc.badge.plus") }
+                .help("New File")
+                .pointingHandCursor()
+            Button { workspace.beginCreateNewFolder() } label: { Image(systemName: "folder.badge.plus") }
+                .help("New Folder")
+                .pointingHandCursor()
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
         .controlSize(.small)
         .padding(.horizontal, Spacing.small)
-        .padding(.vertical, Spacing.xxSmall)
-        .glassPanel(cornerRadius: CornerRadius.control)
-        .padding(Spacing.xxSmall)
+        .padding(.vertical, Spacing.xSmall)
     }
 }
 
-struct FileTreeRowView: View {
-    let node: FileTreeNodeState
+private struct FileTreeRowView: View {
+    let row: FileTreeVisibleRow
     @Bindable var workspace: WorkspaceModel
-    let depth: Int
+    let openFilePaths: Set<String>
+    let dirtyFilePaths: Set<String>
+    let isHovered: Bool
+    let onHover: (Bool) -> Void
     @State private var isDropTarget = false
 
     private var relativePath: String {
