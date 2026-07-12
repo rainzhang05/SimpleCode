@@ -3,11 +3,11 @@ import SwiftUI
 
 struct CodeEditorRepresentable: NSViewRepresentable {
     var session: EditorDocumentSession
-    var settings: AppSettingsStore
+    var settings: AppSettingsSnapshot
     var workspace: WorkspaceModel
     var onTextChanged: () -> Void
 
-    private var fontSize: CGFloat { settings.editorFontSize }
+    private var fontSize: CGFloat { CGFloat(settings.typography.editorFontSize) }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(session: session, settings: settings, workspace: workspace, onTextChanged: onTextChanged)
@@ -67,6 +67,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = context.coordinator.textView else { return }
+        context.coordinator.settings = settings
         if context.coordinator.needsAttachment(for: session) {
             context.coordinator.attach(session: session, to: textView)
         }
@@ -96,7 +97,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextStorageDelegate, CodeTextViewCommandDelegate, EditorTextMutationApplying {
         var session: EditorDocumentSession
-        var settings: AppSettingsStore
+        var settings: AppSettingsSnapshot
         let workspace: WorkspaceModel
         let onTextChanged: () -> Void
         weak var textView: CodeTextView?
@@ -116,6 +117,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         private var lastBaseFont: NSFont?
         private var lastBaseForeground: StoredColorPair?
         private var lastBaseLineHeight: Double?
+        private var lastAppliedAppearance: AppearanceSettings?
         private var isApplyingHighlighting = false
         private var isApplyingCommand = false
         private var smartHomePressLine: Int?
@@ -125,7 +127,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
         init(
             session: EditorDocumentSession,
-            settings: AppSettingsStore,
+            settings: AppSettingsSnapshot,
             workspace: WorkspaceModel,
             onTextChanged: @escaping () -> Void
         ) {
@@ -137,6 +139,12 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         func applyEditorSettings(to textView: CodeTextView, scrollView: NSScrollView) {
+            let previousAppearance = lastAppliedAppearance
+            let appearanceChanged = previousAppearance != settings.appearance
+            let syntaxColorsChanged = previousAppearance.map {
+                $0.editorForeground != settings.appearance.editorForeground
+                    || $0.syntaxPalette != settings.appearance.syntaxPalette
+            } ?? false
             let snapshot = EditorAppliedSettings(
                 highlightCurrentLine: settings.editor.highlightCurrentLine,
                 showLongLineGuide: settings.editor.showLongLineGuide,
@@ -159,10 +167,12 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             )
 
             textView.highlightCurrentLine = snapshot.highlightCurrentLine
-            textView.backgroundColor = ColorRole.editorBackgroundNSColor
-            textView.textColor = ColorRole.editorForegroundNSColor
-            textView.insertionPointColor = ColorRole.editorForegroundNSColor
-            textView.selectedTextAttributes = [.backgroundColor: ColorRole.editorSelectionNSColor]
+            textView.backgroundColor = settings.appearance.editorBackground.colorRolePair.dynamic
+            textView.textColor = settings.appearance.editorForeground.colorRolePair.dynamic
+            textView.insertionPointColor = settings.appearance.editorForeground.colorRolePair.dynamic
+            textView.selectedTextAttributes = [
+                .backgroundColor: settings.appearance.editorSelection.colorRolePair.dynamic
+            ]
 
             if lastWordWrapEnabled != snapshot.wordWrap {
                 textView.configureWordWrap(enabled: snapshot.wordWrap, in: scrollView)
@@ -170,6 +180,9 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             }
 
             applyBaseTextAttributesIfNeeded(to: textView, force: false)
+            if syntaxColorsChanged {
+                session.refreshSyntaxAttributes()
+            }
 
             let gutterMetricsChanged = gutter?.updateMetrics(
                 font: textView.font,
@@ -198,7 +211,14 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 overlay?.needsDisplay = true
             }
 
+            if appearanceChanged {
+                textView.needsDisplay = true
+                gutter?.invalidate()
+                overlay?.needsDisplay = true
+            }
+
             lastAppliedSettings = snapshot
+            lastAppliedAppearance = settings.appearance
         }
 
         func needsAttachment(for session: EditorDocumentSession) -> Bool {
@@ -750,9 +770,6 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             )
             textStorage.endEditing()
             isApplyingHighlighting = false
-            if session.hasAppliedSyntaxHighlighting, foregroundChanged, !force {
-                session.refreshSyntaxAttributes()
-            }
             textView.needsDisplay = true
         }
 

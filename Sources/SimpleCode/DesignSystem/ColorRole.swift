@@ -18,20 +18,37 @@ struct ColorRolePair {
 
 /// Resolves editor/terminal colors from the active `AppSettingsStore`.
 enum SettingsColorResolver {
-    nonisolated(unsafe) private static var cachedAppearance: AppearanceSettings = .defaults
+    private final class SnapshotStorage: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = AppSettingsSnapshot.defaults
+
+        func read() -> AppSettingsSnapshot {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+
+        func write(_ snapshot: AppSettingsSnapshot) {
+            lock.lock()
+            value = snapshot
+            lock.unlock()
+        }
+    }
+
+    private static let storage = SnapshotStorage()
 
     @MainActor
     static func bind(_ settings: AppSettingsStore) {
-        cachedAppearance = settings.appearance
+        updateSnapshot(settings.snapshot)
     }
 
-    nonisolated static func updateSnapshot(_ appearance: AppearanceSettings) {
-        cachedAppearance = appearance
+    static func updateSnapshot(_ snapshot: AppSettingsSnapshot) {
+        storage.write(snapshot)
     }
 
-    static var appearance: AppearanceSettings {
-        cachedAppearance
-    }
+    static var snapshot: AppSettingsSnapshot { storage.read() }
+
+    static var appearance: AppearanceSettings { snapshot.appearance }
 
     static func pair(_ keyPath: KeyPath<AppearanceSettings, StoredColorPair>) -> ColorRolePair {
         appearance[keyPath: keyPath].colorRolePair

@@ -5,8 +5,7 @@ import SwiftUI
 /// the design system's rule that glass never sits behind text content.
 struct TerminalPanelView: View {
     @Bindable var session: TerminalSessionController
-    let typography: TypographySettings
-    let terminalSettings: TerminalAppearanceSettings
+    let settings: AppSettingsSnapshot
     @Binding var panelHeight: CGFloat
     var isVisible: Bool = true
     var onClose: () -> Void
@@ -21,14 +20,13 @@ struct TerminalPanelView: View {
                 .opacity(0.35)
             TerminalRepresentable(
                 session: session,
-                typography: typography,
-                terminalSettings: terminalSettings,
+                settings: settings,
                 isPanelVisible: isVisible
             )
                 .accessibilityIdentifier("terminal.surface")
                 .opacity(isVisible ? 1 : 0)
                 .allowsHitTesting(isVisible)
-                .background(Color(nsColor: ColorRole.terminalBackgroundPair.dynamic))
+                .background(Color(nsColor: settings.appearance.terminalBackground.colorRolePair.dynamic))
                 .clipShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
                 .padding(.horizontal, Spacing.xSmall)
                 .padding(.bottom, Spacing.xSmall)

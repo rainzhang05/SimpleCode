@@ -31,6 +31,7 @@ enum HighlightBatchApplicator {
     /// untouched.
     @MainActor
     static func apply(_ batch: HighlightBatch, to textStorage: NSTextStorage) {
+        let palette = SettingsColorResolver.appearance.syntaxPalette
         textStorage.beginEditing()
         for range in batch.coveredRanges where isValid(range, in: textStorage) {
             textStorage.addAttribute(
@@ -40,7 +41,7 @@ enum HighlightBatchApplicator {
             )
         }
         for token in batch.tokens where isValid(token.range, in: textStorage) {
-            let storedPair = SettingsColorResolver.appearance.syntaxPalette.pair(for: token.category)
+            let storedPair = palette.pair(for: token.category)
             textStorage.addAttribute(
                 .foregroundColor,
                 value: storedPair.colorRolePair.dynamic,

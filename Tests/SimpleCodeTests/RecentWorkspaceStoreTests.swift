@@ -86,6 +86,38 @@ struct RecentWorkspaceStoreTests {
         #expect(secondStore.records.first?.id == created.id)
     }
 
+    @Test func recentWorkspaceHistoryIsFixedAtTenEntries() {
+        let store = RecentWorkspaceStore(defaults: makeIsolatedDefaults())
+        let urls = (0..<15).map { index in
+            URL(fileURLWithPath: "/tmp/SimpleCodeRecent-\(index)", isDirectory: true)
+        }
+
+        store.replaceForUITesting(urls: urls)
+
+        #expect(store.records.count == 10)
+        #expect(store.records.map(\.displayName) == urls.prefix(10).map(\.lastPathComponent))
+    }
+
+    @Test func oversizedPersistedHistoryIsNormalizedAtLaunch() throws {
+        let defaults = makeIsolatedDefaults()
+        let key = "recentWorkspaces.v1"
+        let records = (0..<15).map { index in
+            WorkspaceRecord(
+                displayName: "Workspace-\(index)",
+                path: "/tmp/SimpleCodePersisted-\(index)",
+                bookmarkData: nil
+            )
+        }
+        defaults.set(try JSONEncoder().encode(records), forKey: key)
+
+        let store = RecentWorkspaceStore(defaults: defaults, storageKey: key)
+
+        #expect(store.records.count == 10)
+        #expect(store.records.map(\.id) == records.prefix(10).map(\.id))
+        let persisted = try #require(defaults.data(forKey: key))
+        #expect(try JSONDecoder().decode([WorkspaceRecord].self, from: persisted).count == 10)
+    }
+
     @Test func corruptedPersistedDataFallsBackToAnEmptyListRatherThanCrashing() {
         let defaults = makeIsolatedDefaults()
         defaults.set(Data([0x00, 0x01, 0x02, 0xFF]), forKey: "recentWorkspaces.v1")

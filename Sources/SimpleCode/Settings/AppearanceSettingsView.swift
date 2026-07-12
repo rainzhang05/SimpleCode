@@ -39,6 +39,7 @@ struct AppearanceSettingsView: View {
                 syntaxColorRow("String", keyPath: \.string)
                 syntaxColorRow("Number", keyPath: \.number)
                 syntaxColorRow("Comment", keyPath: \.comment)
+                syntaxColorRow("Documentation Comment", keyPath: \.documentationComment)
                 syntaxColorRow("Operator", keyPath: \.operator)
                 syntaxColorRow("Punctuation", keyPath: \.punctuation)
                 syntaxColorRow("Preprocessor", keyPath: \.preprocessor)
@@ -46,6 +47,7 @@ struct AppearanceSettingsView: View {
                 syntaxColorRow("Label", keyPath: \.label)
                 syntaxColorRow("Constant", keyPath: \.constant)
                 syntaxColorRow("Invalid", keyPath: \.invalid)
+                syntaxColorRow("Plain Text", keyPath: \.plain)
 
                 Button("Reset Syntax Palette") {
                     settings.resetSyntaxPalette()
@@ -106,11 +108,17 @@ private struct ColorSettingRow: View {
             ColorPicker("", selection: Binding(
                 get: { color.swiftUIColor },
                 set: { picked in
-                    onChange(StoredColor(nsColor: NSColor(picked)))
+                    onChange(SettingsColorConversion.storedColor(from: picked))
                 }
             ), supportsOpacity: true)
             .labelsHidden()
             .accessibilityLabel("\(title) color")
         }
+    }
+}
+
+enum SettingsColorConversion {
+    static func storedColor(from color: Color) -> StoredColor {
+        StoredColor(nsColor: NSColor(color))
     }
 }

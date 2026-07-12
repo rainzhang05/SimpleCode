@@ -13,12 +13,16 @@ final class RecentWorkspaceStore {
 
     private let defaults: UserDefaults
     private let storageKey: String
-    private let maximumRecords = 20
+    private static let maximumRecords = 10
 
     init(defaults: UserDefaults = .standard, storageKey: String = "recentWorkspaces.v1") {
         self.defaults = defaults
         self.storageKey = storageKey
-        self.records = Self.decode(from: defaults, key: storageKey)
+        let decodedRecords = Self.decode(from: defaults, key: storageKey)
+        self.records = Array(decodedRecords.prefix(Self.maximumRecords))
+        if decodedRecords.count > Self.maximumRecords {
+            persist()
+        }
     }
 
     /// Records that a workspace at `url` was just opened: updates the existing entry
@@ -113,8 +117,8 @@ final class RecentWorkspaceStore {
     }
 
     private func trimIfNeeded() {
-        if records.count > maximumRecords {
-            records.removeLast(records.count - maximumRecords)
+        if records.count > Self.maximumRecords {
+            records.removeLast(records.count - Self.maximumRecords)
         }
     }
 

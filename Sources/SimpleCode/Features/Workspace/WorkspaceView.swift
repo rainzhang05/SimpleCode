@@ -1,5 +1,14 @@
 import SwiftUI
 
+enum FileTreeSettingsRefreshPolicy {
+    static func shouldRefresh(
+        from oldSettings: AppSettingsSnapshot,
+        to newSettings: AppSettingsSnapshot
+    ) -> Bool {
+        oldSettings.files.userExclusions != newSettings.files.userExclusions
+    }
+}
+
 struct WorkspaceView: View {
     @Bindable var workspace: WorkspaceModel
     var onCloseWorkspace: () -> Void
@@ -22,9 +31,11 @@ struct WorkspaceView: View {
         .task {
             await workspace.bootstrapAfterOpen()
         }
-        .onChange(of: workspace.appSettings.files) { _, _ in
-            Task {
-                await workspace.refreshFileTreeIfSettingsChanged()
+        .onChange(of: workspace.appSettings.snapshot) { oldSettings, newSettings in
+            if FileTreeSettingsRefreshPolicy.shouldRefresh(from: oldSettings, to: newSettings) {
+                Task {
+                    await workspace.refreshFileTreeIfSettingsChanged()
+                }
             }
         }
         .alert("Restart Terminal?", isPresented: Binding(
@@ -173,8 +184,7 @@ struct WorkspaceView: View {
     private func terminalOverlay(height: CGFloat) -> some View {
         TerminalPanelView(
             session: workspace.terminal,
-            typography: workspace.appSettings.typography,
-            terminalSettings: workspace.appSettings.terminal,
+            settings: workspace.appSettings.snapshot,
             panelHeight: $workspace.terminalHeight,
             isVisible: workspace.isTerminalVisible
         ) {
@@ -208,7 +218,11 @@ struct WorkspaceView: View {
     @ViewBuilder
     private var editorArea: some View {
         if let session = workspace.openDocuments.activeSession {
-            EditorDocumentView(workspace: workspace, session: session, settings: workspace.appSettings) {
+            EditorDocumentView(
+                workspace: workspace,
+                session: session,
+                settings: workspace.appSettings.snapshot
+            ) {
                 workspace.syncFindBinding()
             }
         } else {

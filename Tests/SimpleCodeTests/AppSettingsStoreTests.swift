@@ -419,6 +419,63 @@ struct AppSettingsStoreTests {
     #expect(reloaded.appearance.editorCurrentLine.dark.alpha == 1)
   }
 
+  @Test func colorPickerConversionPreservesFullyTransparentColors() {
+    let converted = SettingsColorConversion.storedColor(
+      from: Color(.sRGB, red: 0.2, green: 0.4, blue: 0.6, opacity: 0)
+    )
+
+    #expect(converted.alpha == 0)
+  }
+
+  @Test func tabWidthChoicesHaveUniqueTagsAndStableCustomSelection() {
+    #expect(Set(EditorTabWidthChoice.options).count == EditorTabWidthChoice.options.count)
+    #expect(EditorTabWidthChoice.selection(for: 2) == .preset(2))
+    #expect(EditorTabWidthChoice.selection(for: 3) == .custom)
+  }
+
+  @Test func fileTreeRefreshDecisionOnlyRespondsToExclusionChanges() {
+    let original = AppSettingsSnapshot.defaults
+
+    var appearance = original.appearance
+    appearance.editorBackground.light.red = 0.25
+    let appearanceChange = AppSettingsSnapshot(
+      appearance: appearance,
+      typography: original.typography,
+      editor: original.editor,
+      files: original.files
+    )
+
+    var typography = original.typography
+    typography.editorFontSize += 1
+    let typographyChange = AppSettingsSnapshot(
+      appearance: original.appearance,
+      typography: typography,
+      editor: original.editor,
+      files: original.files
+    )
+
+    var editor = original.editor
+    editor.wordWrap.toggle()
+    let editorChange = AppSettingsSnapshot(
+      appearance: original.appearance,
+      typography: original.typography,
+      editor: editor,
+      files: original.files
+    )
+
+    let exclusionChange = AppSettingsSnapshot(
+      appearance: original.appearance,
+      typography: original.typography,
+      editor: original.editor,
+      files: FileDisplaySettings(userExclusions: ["DerivedData"])
+    )
+
+    #expect(!FileTreeSettingsRefreshPolicy.shouldRefresh(from: original, to: appearanceChange))
+    #expect(!FileTreeSettingsRefreshPolicy.shouldRefresh(from: original, to: typographyChange))
+    #expect(!FileTreeSettingsRefreshPolicy.shouldRefresh(from: original, to: editorChange))
+    #expect(FileTreeSettingsRefreshPolicy.shouldRefresh(from: original, to: exclusionChange))
+  }
+
   @Test func schemaVersionThreeDoesNotPersistRemovedBackingFields() throws {
     let encoded = try JSONEncoder().encode(AppSettingsBlob.defaults)
     let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])

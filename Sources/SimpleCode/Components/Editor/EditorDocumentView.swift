@@ -3,10 +3,8 @@ import SwiftUI
 struct EditorDocumentView: View {
     @Bindable var workspace: WorkspaceModel
     @Bindable var session: EditorDocumentSession
-    var settings: AppSettingsStore
+    var settings: AppSettingsSnapshot
     var onTextChanged: () -> Void
-
-    private var fontSize: CGFloat { settings.editorFontSize }
 
     var body: some View {
         VStack(spacing: 0) {

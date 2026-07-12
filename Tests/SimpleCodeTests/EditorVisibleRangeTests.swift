@@ -209,7 +209,7 @@ struct EditorVisibleRangeTests {
         scrollView.documentView = textView
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: session,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -265,7 +265,7 @@ struct EditorVisibleRangeTests {
         scrollView.documentView = textView
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: session,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -317,7 +317,7 @@ struct EditorVisibleRangeTests {
         scrollView.documentView = textView
         var coordinator: CodeEditorRepresentable.Coordinator? = CodeEditorRepresentable.Coordinator(
             session: session,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -375,7 +375,7 @@ struct EditorVisibleRangeTests {
         scrollView.documentView = textView
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: session,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -436,7 +436,7 @@ struct EditorVisibleRangeTests {
         scrollView.documentView = textView
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: session,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -498,14 +498,19 @@ struct EditorVisibleRangeTests {
 
     @MainActor
     @Test func currentLineHighlightSurvivesBaseBackgroundPaint() throws {
-        let originalAppearance = SettingsColorResolver.appearance
-        var testAppearance = originalAppearance
+        let originalSnapshot = SettingsColorResolver.snapshot
+        var testAppearance = originalSnapshot.appearance
         let white = StoredColor(red: 1, green: 1, blue: 1)
         let marker = StoredColor(red: 0.12, green: 0.83, blue: 0.29)
         testAppearance.editorBackground = StoredColorPair(light: white, dark: white)
         testAppearance.editorCurrentLine = StoredColorPair(light: marker, dark: marker)
-        SettingsColorResolver.updateSnapshot(testAppearance)
-        defer { SettingsColorResolver.updateSnapshot(originalAppearance) }
+        SettingsColorResolver.updateSnapshot(AppSettingsSnapshot(
+            appearance: testAppearance,
+            typography: originalSnapshot.typography,
+            editor: originalSnapshot.editor,
+            files: originalSnapshot.files
+        ))
+        defer { SettingsColorResolver.updateSnapshot(originalSnapshot) }
 
         let textView = CodeTextView()
         textView.frame = NSRect(x: 0, y: 0, width: 240, height: 90)
@@ -693,7 +698,7 @@ struct EditorVisibleRangeTests {
 
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: firstSession,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -745,7 +750,7 @@ struct EditorVisibleRangeTests {
         scrollView.documentView = textView
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: session,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -790,7 +795,7 @@ struct EditorVisibleRangeTests {
         scrollView.documentView = textView
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: session,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -888,7 +893,7 @@ struct EditorVisibleRangeTests {
 
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: session,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -947,7 +952,7 @@ struct EditorVisibleRangeTests {
 
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: session,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )
@@ -1002,7 +1007,7 @@ struct EditorVisibleRangeTests {
         scrollView.documentView = textView
         let coordinator = CodeEditorRepresentable.Coordinator(
             session: first,
-            settings: settings,
+            settings: settings.snapshot,
             workspace: workspace,
             onTextChanged: {}
         )

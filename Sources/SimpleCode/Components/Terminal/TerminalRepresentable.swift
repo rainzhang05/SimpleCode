@@ -11,8 +11,7 @@ import SwiftUI
 @MainActor
 struct TerminalRepresentable: NSViewRepresentable {
     let session: TerminalSessionController
-    let typography: TypographySettings
-    let terminalSettings: TerminalAppearanceSettings
+    let settings: AppSettingsSnapshot
     var isPanelVisible: Bool
 
     func makeCoordinator() -> Coordinator {
@@ -23,6 +22,7 @@ struct TerminalRepresentable: NSViewRepresentable {
         let view = LocalProcessTerminalView(frame: .zero)
         view.processDelegate = context.coordinator
         view.isHidden = !isPanelVisible
+        context.coordinator.settings = settings
         applyAppearance(to: view, coordinator: context.coordinator)
 
         context.coordinator.attach(view)
@@ -32,6 +32,7 @@ struct TerminalRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ view: LocalProcessTerminalView, context: Context) {
+        context.coordinator.settings = settings
         view.isHidden = !isPanelVisible
         applyAppearance(to: view, coordinator: context.coordinator)
         session.setPanelVisible(isPanelVisible)
@@ -47,20 +48,17 @@ struct TerminalRepresentable: NSViewRepresentable {
     }
 
     private func applyAppearance(to view: LocalProcessTerminalView, coordinator: Coordinator) {
-        // These are genuinely dynamic `NSColor`s (not a pre-resolved snapshot).
-        // SwiftTerm reads `nativeBackgroundColor`/`nativeForegroundColor` fresh on
-        // every draw via `.setFill()`/`.set()`, so a dynamic color re-resolves
-        // itself automatically on light/dark changes without this method needing
-        // to run again — the same mechanism `CodeTextView` relies on.
-        view.nativeBackgroundColor = ColorRole.terminalBackgroundPair.dynamic
-        view.nativeForegroundColor = ColorRole.terminalForegroundPair.dynamic
-        view.caretColor = ColorRole.terminalForegroundPair.dynamic
-        view.selectedTextBackgroundColor = ColorRole.editorSelectionPair.dynamic
-        coordinator.applySupportedSettings(
-            to: view,
-            typography: typography,
-            terminalSettings: terminalSettings
-        )
+        let appearance = coordinator.settings.appearance
+        let appearanceChanged = coordinator.appliedAppearance != appearance
+        view.nativeBackgroundColor = appearance.terminalBackground.colorRolePair.dynamic
+        view.nativeForegroundColor = appearance.terminalForeground.colorRolePair.dynamic
+        view.caretColor = appearance.terminalForeground.colorRolePair.dynamic
+        view.selectedTextBackgroundColor = appearance.editorSelection.colorRolePair.dynamic
+        coordinator.applySupportedSettings(to: view)
+        if appearanceChanged {
+            coordinator.appliedAppearance = appearance
+            view.needsDisplay = true
+        }
     }
 
     @MainActor
@@ -68,10 +66,12 @@ struct TerminalRepresentable: NSViewRepresentable {
     // annotated for Swift 6 actor isolation.
     final class Coordinator: NSObject, @preconcurrency LocalProcessTerminalViewDelegate {
         let session: TerminalSessionController
+        fileprivate var settings: AppSettingsSnapshot = .defaults
         private var driver: SwiftTermTerminalDriver?
         private var attachmentID: UUID?
+        fileprivate var appliedAppearance: AppearanceSettings?
         private var appliedFont: AppliedFont?
-        private var appliedScrollbackLimit: Int?
+        private var didApplyScrollbackLimit = false
 
         init(session: TerminalSessionController) {
             self.session = session
@@ -91,11 +91,8 @@ struct TerminalRepresentable: NSViewRepresentable {
             driver = nil
         }
 
-        func applySupportedSettings(
-            to view: LocalProcessTerminalView,
-            typography: TypographySettings,
-            terminalSettings: TerminalAppearanceSettings
-        ) {
+        func applySupportedSettings(to view: LocalProcessTerminalView) {
+            let typography = settings.typography
             let font = Typography.terminalFont(
                 family: typography.terminalFontFamily,
                 size: CGFloat(typography.terminalFontSize)
@@ -106,9 +103,9 @@ struct TerminalRepresentable: NSViewRepresentable {
                 appliedFont = requestedFont
             }
 
-            if appliedScrollbackLimit != terminalSettings.scrollbackLimit {
-                view.changeScrollback(terminalSettings.scrollbackLimit)
-                appliedScrollbackLimit = terminalSettings.scrollbackLimit
+            if !didApplyScrollbackLimit {
+                view.changeScrollback(10_000)
+                didApplyScrollbackLimit = true
             }
         }
 
