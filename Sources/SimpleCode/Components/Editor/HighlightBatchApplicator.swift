@@ -1,9 +1,28 @@
 import AppKit
 
+enum HighlightParseStrategy {
+    case incremental
+    case full
+}
+
 /// Shared stale-result guard for syntax highlighting batches.
 enum HighlightBatchApplicator {
     static func shouldApply(batchRevision: Int, currentRevision: Int) -> Bool {
         batchRevision == currentRevision
+    }
+
+    /// An incremental edit is valid only when the parser is known to represent
+    /// the immediately preceding document revision. Any missed revision means
+    /// its tree offsets may no longer describe the current source, so rebuild it.
+    static func parseStrategy(
+        lastParsedRevision: Int?,
+        requestedRevision: Int
+    ) -> HighlightParseStrategy {
+        guard let lastParsedRevision,
+              requestedRevision == lastParsedRevision + 1 else {
+            return .full
+        }
+        return .incremental
     }
 
     /// Applies one semantic batch as a single text-storage transaction. Covered

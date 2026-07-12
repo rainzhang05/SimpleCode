@@ -4,6 +4,368 @@ import Testing
 @testable import SimpleCode
 
 struct EditorVisibleRangeTests {
+    private actor SuspendedEditorHighlighter: SyntaxHighlighter {
+        private var didStartLoad = false
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+        private var loadContinuation: CheckedContinuation<Void, Never>?
+
+        func waitUntilLoadStarts() async {
+            if didStartLoad { return }
+            await withCheckedContinuation { continuation in
+                startWaiters.append(continuation)
+            }
+        }
+
+        func resumeLoad() {
+            loadContinuation?.resume()
+            loadContinuation = nil
+        }
+
+        func load(text: String, revision: Int) async -> HighlightBatch {
+            didStartLoad = true
+            let waiters = startWaiters
+            startWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+            await withCheckedContinuation { continuation in
+                loadContinuation = continuation
+            }
+            return HighlightBatch(
+                revision: revision,
+                coveredRanges: [NSRange(location: 0, length: text.utf16.count)],
+                tokens: text.isEmpty
+                    ? []
+                    : [SyntaxToken(range: NSRange(location: 0, length: min(3, text.utf16.count)), category: .keyword)]
+            )
+        }
+
+        func applyEdit(
+            fullText: String,
+            edit: TextEditDescriptor,
+            revision: Int,
+            priorityUTF16Range: NSRange
+        ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            (await load(text: fullText, revision: revision), nil)
+        }
+
+        func scheduleViewport(
+            fullText: String,
+            revision: Int,
+            visibleUTF16Range: NSRange
+        ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            (await load(text: fullText, revision: revision), nil)
+        }
+    }
+
+    private actor RecordingEditorHighlighter: SyntaxHighlighter {
+        private var loadTexts: [String] = []
+        private var editTexts: [String] = []
+
+        func snapshot() -> (loadTexts: [String], editTexts: [String]) {
+            (loadTexts, editTexts)
+        }
+
+        func load(text: String, revision: Int) -> HighlightBatch {
+            loadTexts.append(text)
+            return HighlightBatch(
+                revision: revision,
+                coveredRanges: [NSRange(location: 0, length: text.utf16.count)],
+                tokens: []
+            )
+        }
+
+        func applyEdit(
+            fullText: String,
+            edit: TextEditDescriptor,
+            revision: Int,
+            priorityUTF16Range: NSRange
+        ) -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            editTexts.append(fullText)
+            return (
+                HighlightBatch(revision: revision, coveredRanges: [priorityUTF16Range], tokens: []),
+                nil
+            )
+        }
+
+        func scheduleViewport(
+            fullText: String,
+            revision: Int,
+            visibleUTF16Range: NSRange
+        ) -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            (
+                HighlightBatch(revision: revision, coveredRanges: [visibleUTF16Range], tokens: []),
+                nil
+            )
+        }
+    }
+
+    @MainActor
+    private final class MutationApplierSpy: EditorTextMutationApplying {
+        private(set) var applicationCount = 0
+
+        func applyEditorMutation(_ result: EditorCommandResult, to session: EditorDocumentSession) -> Bool {
+            applicationCount += 1
+            return true
+        }
+    }
+
+    @MainActor
+    @Test func attachingPreparedSyntaxDoesNotResetTokenForeground() throws {
+        let suiteName = "SimpleCode.PreparedSyntax.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "PreparedSyntax-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "prepared-syntax")
+        )
+        defer { workspace.tearDown() }
+
+        let session = EditorDocumentSession(displayName: "Prepared.swift")
+        session.textStorage.setAttributedString(NSAttributedString(string: "let prepared = true"))
+        session.applyInitialHighlighting(HighlightBatch(
+            revision: 0,
+            coveredRanges: [NSRange(location: 0, length: session.textStorage.length)],
+            tokens: [SyntaxToken(range: NSRange(location: 0, length: 3), category: .keyword)]
+        ))
+        let expected = try #require(session.textStorage.attribute(
+            .foregroundColor,
+            at: 0,
+            effectiveRange: nil
+        ) as? NSColor)
+
+        let textView = CodeTextView()
+        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let scrollView = NSScrollView()
+        scrollView.documentView = textView
+        let coordinator = CodeEditorRepresentable.Coordinator(
+            session: session,
+            settings: settings,
+            workspace: workspace,
+            onTextChanged: {}
+        )
+        coordinator.textView = textView
+        coordinator.scrollView = scrollView
+        coordinator.attach(session: session, to: textView)
+
+        let actual = try #require(session.textStorage.attribute(
+            .foregroundColor,
+            at: 0,
+            effectiveRange: nil
+        ) as? NSColor)
+        let aqua = try #require(NSAppearance(named: .aqua))
+        var expectedRGB: NSColor?
+        var actualRGB: NSColor?
+        aqua.performAsCurrentDrawingAppearance {
+            expectedRGB = expected.usingColorSpace(.sRGB)
+            actualRGB = actual.usingColorSpace(.sRGB)
+        }
+        let resolvedExpected = try #require(expectedRGB)
+        let resolvedActual = try #require(actualRGB)
+        #expect(abs(resolvedActual.redComponent - resolvedExpected.redComponent) < 0.000_1)
+        #expect(abs(resolvedActual.greenComponent - resolvedExpected.greenComponent) < 0.000_1)
+        #expect(abs(resolvedActual.blueComponent - resolvedExpected.blueComponent) < 0.000_1)
+    }
+
+    @MainActor
+    @Test func coordinatorTeardownDetachesEditorGraphAndDelegates() throws {
+        let suiteName = "SimpleCode.EditorTeardown.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "EditorTeardown-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "editor-teardown")
+        )
+        defer { workspace.tearDown() }
+        let session = EditorDocumentSession(displayName: "Teardown.swift")
+        session.textStorage.setAttributedString(NSAttributedString(string: "let teardown = true"))
+        session.enablesSyntaxHighlighting = false
+
+        let textView = CodeTextView()
+        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let scrollView = NSScrollView()
+        scrollView.documentView = textView
+        let coordinator = CodeEditorRepresentable.Coordinator(
+            session: session,
+            settings: settings,
+            workspace: workspace,
+            onTextChanged: {}
+        )
+        coordinator.textView = textView
+        coordinator.scrollView = scrollView
+        textView.delegate = coordinator
+        textView.commandDelegate = coordinator
+        coordinator.attach(session: session, to: textView)
+
+        CodeEditorRepresentable.dismantleNSView(scrollView, coordinator: coordinator)
+        CodeEditorRepresentable.dismantleNSView(scrollView, coordinator: coordinator)
+
+        #expect(coordinator.isTornDown)
+        #expect(scrollView.documentView == nil)
+        #expect(textView.delegate == nil)
+        #expect(textView.commandDelegate == nil)
+        #expect(session.textStorage.delegate == nil)
+        let contentStorage = try #require(textView.textLayoutManager?.textContentManager as? NSTextContentStorage)
+        #expect(contentStorage.textStorage !== session.textStorage)
+    }
+
+    @MainActor
+    @Test func teardownDuringSuspendedHighlightReleasesCoordinatorAndRejectsBatch() async throws {
+        let suiteName = "SimpleCode.EditorTeardownHighlight.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "EditorTeardownHighlight-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "editor-teardown-highlight")
+        )
+        defer { workspace.tearDown() }
+        let highlighter = SuspendedEditorHighlighter()
+        let session = EditorDocumentSession(displayName: "Suspended.swift")
+        session.textStorage.setAttributedString(NSAttributedString(string: "let suspended = true"))
+        session.highlighter = highlighter
+
+        let textView = CodeTextView()
+        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let scrollView = NSScrollView()
+        scrollView.documentView = textView
+        var coordinator: CodeEditorRepresentable.Coordinator? = CodeEditorRepresentable.Coordinator(
+            session: session,
+            settings: settings,
+            workspace: workspace,
+            onTextChanged: {}
+        )
+        weak let releasedCoordinator = coordinator
+        coordinator?.textView = textView
+        coordinator?.scrollView = scrollView
+        coordinator?.attach(session: session, to: textView)
+
+        await highlighter.waitUntilLoadStarts()
+        do {
+            let activeCoordinator = try #require(coordinator)
+            CodeEditorRepresentable.dismantleNSView(scrollView, coordinator: activeCoordinator)
+        }
+        coordinator = nil
+        await Task.yield()
+
+        #expect(releasedCoordinator == nil)
+        await highlighter.resumeLoad()
+        await Task.yield()
+        #expect(!session.hasAppliedSyntaxHighlighting)
+    }
+
+    @MainActor
+    @Test func skippedTypingRevisionUsesOneFullParseOfLatestText() async throws {
+        let suiteName = "SimpleCode.EditorRevisionGap.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "EditorRevisionGap-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "editor-revision-gap")
+        )
+        defer { workspace.tearDown() }
+        let highlighter = RecordingEditorHighlighter()
+        let session = EditorDocumentSession(displayName: "Gap.swift")
+        session.textStorage.setAttributedString(NSAttributedString(string: "let gap"))
+        session.highlighter = highlighter
+        session.applyInitialHighlighting(HighlightBatch(
+            revision: 0,
+            coveredRanges: [NSRange(location: 0, length: session.textStorage.length)],
+            tokens: [SyntaxToken(range: NSRange(location: 0, length: 3), category: .keyword)]
+        ))
+
+        let textView = CodeTextView()
+        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let scrollView = NSScrollView()
+        scrollView.documentView = textView
+        let coordinator = CodeEditorRepresentable.Coordinator(
+            session: session,
+            settings: settings,
+            workspace: workspace,
+            onTextChanged: {}
+        )
+        coordinator.textView = textView
+        coordinator.scrollView = scrollView
+        coordinator.attach(session: session, to: textView)
+
+        session.textStorage.append(NSAttributedString(string: "1"))
+        session.textStorage.append(NSAttributedString(string: "2"))
+        try await Task.sleep(for: .milliseconds(120))
+
+        let calls = await highlighter.snapshot()
+        #expect(calls.loadTexts == ["let gap12"])
+        #expect(calls.editTexts.isEmpty)
+        coordinator.tearDown()
+    }
+
+    @MainActor
+    @Test func unregisteringOldMutationApplierPreservesNewRegistration() throws {
+        let suiteName = "SimpleCode.EditorMutationRegistration.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "EditorMutationRegistration-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "editor-mutation-registration")
+        )
+        defer { workspace.tearDown() }
+        let session = EditorDocumentSession(displayName: "Registration.swift")
+        let oldApplier = MutationApplierSpy()
+        let currentApplier = MutationApplierSpy()
+
+        workspace.registerEditorMutationApplier(oldApplier, for: session)
+        workspace.registerEditorMutationApplier(currentApplier, for: session)
+        workspace.unregisterEditorMutationApplier(oldApplier, for: session)
+        workspace.applyEditorCommand(
+            EditorCommandResult(edits: [], resultingSelections: [NSRange(location: 0, length: 0)]),
+            session: session
+        )
+
+        #expect(oldApplier.applicationCount == 0)
+        #expect(currentApplier.applicationCount == 1)
+    }
+
     @MainActor
     @Test func currentLineHighlightSurvivesBaseBackgroundPaint() throws {
         let originalAppearance = SettingsColorResolver.appearance

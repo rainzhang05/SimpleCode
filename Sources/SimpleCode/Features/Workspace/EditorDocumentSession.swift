@@ -143,6 +143,15 @@ final class EditorDocumentSession: Identifiable {
         mergeSyntaxTokens(batch.tokens, replacingCoveredRanges: batch.coveredRanges)
     }
 
+    func refreshSyntaxAttributes() {
+        guard didApplySyntaxHighlighting else { return }
+        let fullRange = NSRange(location: 0, length: textStorage.length)
+        HighlightBatchApplicator.apply(
+            HighlightBatch(revision: revision, coveredRanges: [fullRange], tokens: semanticTokens),
+            to: textStorage
+        )
+    }
+
     func publishLoadedContent() {
         loadState = .loaded
     }

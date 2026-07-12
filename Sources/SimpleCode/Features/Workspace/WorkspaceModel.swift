@@ -580,6 +580,14 @@ final class WorkspaceModel {
         editorMutationSessionID = session.id
     }
 
+    func unregisterEditorMutationApplier(_ applier: any EditorTextMutationApplying, for session: EditorDocumentSession) {
+        guard editorMutationSessionID == session.id,
+              let registeredApplier = editorMutationApplier,
+              ObjectIdentifier(registeredApplier) == ObjectIdentifier(applier) else { return }
+        editorMutationApplier = nil
+        editorMutationSessionID = nil
+    }
+
     private func applyTextEdits(_ edits: [TextEdit], selection: NSRange, session: EditorDocumentSession) {
         if !edits.isEmpty {
             let hadStorageDelegate = session.textStorage.delegate != nil

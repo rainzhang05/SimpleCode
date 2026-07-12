@@ -88,6 +88,11 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
     }
 
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        coordinator.tearDown()
+        scrollView.documentView = nil
+    }
+
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextStorageDelegate, CodeTextViewCommandDelegate, EditorTextMutationApplying {
         var session: EditorDocumentSession
@@ -101,6 +106,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         private(set) var attachedSessionID: UUID?
         private var attachedSyntaxConfigurationRevision: Int?
         private var attachmentGeneration = 0
+        private var lastParsedRevision: Int?
+        private(set) var isTornDown = false
 
         private var pendingHighlightTask: Task<Void, Never>?
         private var viewportHighlightTask: Task<Void, Never>?
@@ -194,12 +201,13 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         func needsAttachment(for session: EditorDocumentSession) -> Bool {
-            attachedSessionID != session.id
+            !isTornDown && (attachedSessionID != session.id
                 || attachedSyntaxConfigurationRevision != session.syntaxConfigurationRevision
+            )
         }
 
         func attach(session: EditorDocumentSession, to textView: CodeTextView) {
-            guard needsAttachment(for: session) else { return }
+            guard !isTornDown, needsAttachment(for: session) else { return }
 
             pendingHighlightTask?.cancel()
             viewportHighlightTask?.cancel()
@@ -213,7 +221,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 self.session.scrollOffset = scrollView?.contentView.bounds.origin ?? .zero
             }
 
-            if attachedSessionID != session.id {
+            if attachedSessionID != session.id,
+               self.session.textStorage.delegate === self {
                 self.session.textStorage.delegate = nil
             }
 
@@ -227,6 +236,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             contentStorage.textStorage = session.textStorage
             attachedSessionID = session.id
             attachedSyntaxConfigurationRevision = session.syntaxConfigurationRevision
+            lastParsedRevision = session.hasAppliedSyntaxHighlighting ? session.revision : nil
             session.textStorage.delegate = self
 
             gutter?.lineStartIndex = session.lineStartIndex
@@ -249,8 +259,15 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 let storage = session.textStorage
                 pendingHighlightTask = Task { [weak self] in
                     let batch = await highlighter.load(text: text, revision: revision)
-                    guard !Task.isCancelled else { return }
-                    self?.apply(
+                    guard let self,
+                          self.recordParsedRevision(
+                            revision,
+                            expectedSessionID: sessionID,
+                            expectedAttachmentGeneration: generation,
+                            expectedTextStorage: storage
+                          ),
+                          !Task.isCancelled else { return }
+                    self.apply(
                         batch: batch,
                         expectedSessionID: sessionID,
                         expectedAttachmentGeneration: generation,
@@ -262,7 +279,56 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             }
         }
 
+        func tearDown() {
+            guard !isTornDown else { return }
+            isTornDown = true
+            attachmentGeneration &+= 1
+            pendingHighlightTask?.cancel()
+            viewportHighlightTask?.cancel()
+            pendingHighlightTask = nil
+            viewportHighlightTask = nil
+            NotificationCenter.default.removeObserver(self)
+            scrollView?.contentView.postsBoundsChangedNotifications = false
+
+            if attachedSessionID == session.id {
+                if let textView, textView.textStorage === session.textStorage {
+                    session.selectionRange = textView.selectedRange()
+                }
+                session.scrollOffset = scrollView?.contentView.bounds.origin ?? session.scrollOffset
+            }
+
+            if session.textStorage.delegate === self {
+                session.textStorage.delegate = nil
+            }
+            if let textView {
+                if textView.delegate === self {
+                    textView.delegate = nil
+                }
+                if textView.commandDelegate === self {
+                    textView.commandDelegate = nil
+                }
+                if let contentStorage = textView.textLayoutManager?.textContentManager as? NSTextContentStorage,
+                   contentStorage.textStorage === session.textStorage {
+                    contentStorage.textStorage = NSTextStorage()
+                }
+            }
+            overlay?.textView = nil
+            overlay?.removeFromSuperview()
+            gutter?.removeFromSuperview()
+            workspace.unregisterEditorMutationApplier(self, for: session)
+
+            attachedSessionID = nil
+            attachedSyntaxConfigurationRevision = nil
+            lastParsedRevision = nil
+            lastAppliedViewportRange = nil
+            overlay = nil
+            gutter = nil
+            textView = nil
+            scrollView = nil
+        }
+
         @objc func boundsDidChange() {
+            guard !isTornDown else { return }
             gutter?.invalidate()
             overlay?.needsDisplay = true
             scheduleViewportHighlight()
@@ -274,6 +340,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             range editedRange: NSRange,
             changeInLength delta: Int
         ) {
+            guard !isTornDown else { return }
             guard editedMask.contains(.editedCharacters) else { return }
             guard !isApplyingHighlighting else { return }
             guard !isApplyingCommand else { return }
@@ -312,10 +379,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             let visibleRange = currentVisibleUTF16Range(fallbackAround: editedRange.location)
             let sessionID = session.id
             let generation = attachmentGeneration
-            let sourceText = textStorage.string
             pendingHighlightTask?.cancel()
             pendingHighlightTask = Task { [weak self] in
-                guard let self else { return }
                 // A native text view can emit a character edit for every keypress.
                 // Debounce before crossing the actor boundary so cancelled revisions
                 // never accumulate as serialized parser work during a fast paste or
@@ -326,17 +391,34 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                     return
                 }
                 guard !Task.isCancelled,
-                      self.session.id == sessionID,
-                      self.attachmentGeneration == generation,
-                      self.session.revision == revision,
-                      self.textView?.textStorage === textStorage else { return }
-                let result = await highlighter.applyEdit(
-                    fullText: sourceText,
-                    edit: descriptor,
-                    revision: revision,
-                    priorityUTF16Range: visibleRange
-                )
-                guard !Task.isCancelled else { return }
+                      let request = self?.makeEditHighlightRequest(
+                        revision: revision,
+                        expectedSessionID: sessionID,
+                        expectedAttachmentGeneration: generation,
+                        expectedTextStorage: textStorage
+                      ) else { return }
+                let result: (priority: HighlightBatch, remainder: HighlightBatch?)
+                switch request.strategy {
+                case .incremental:
+                    result = await highlighter.applyEdit(
+                        fullText: request.sourceText,
+                        edit: descriptor,
+                        revision: revision,
+                        priorityUTF16Range: visibleRange
+                    )
+                case .full:
+                    result = (
+                        priority: await highlighter.load(text: request.sourceText, revision: revision),
+                        remainder: nil
+                    )
+                }
+                guard let self,
+                      self.recordParsedRevision(
+                    revision,
+                    expectedSessionID: sessionID,
+                    expectedAttachmentGeneration: generation,
+                    expectedTextStorage: textStorage
+                ), !Task.isCancelled else { return }
                 self.apply(
                     batch: result.priority,
                     expectedSessionID: sessionID,
@@ -355,6 +437,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         private func scheduleViewportHighlight() {
+            guard !isTornDown else { return }
             viewportHighlightTask?.cancel()
             let sessionID = session.id
             let generation = attachmentGeneration
@@ -365,51 +448,39 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 } catch {
                     return
                 }
-                guard !Task.isCancelled else { return }
-                await self?.highlightVisibleViewport(
+                guard !Task.isCancelled,
+                      let request = self?.makeViewportHighlightRequest(
+                        expectedSessionID: sessionID,
+                        expectedAttachmentGeneration: generation,
+                        expectedTextStorage: storage
+                      ) else { return }
+                let result = await request.highlighter.scheduleViewport(
+                    fullText: request.sourceText,
+                    revision: request.revision,
+                    visibleUTF16Range: request.visibleRange
+                )
+                guard let self, !Task.isCancelled else { return }
+                self.apply(
+                    batch: result.priority,
                     expectedSessionID: sessionID,
                     expectedAttachmentGeneration: generation,
                     expectedTextStorage: storage
                 )
+                if let remainder = result.remainder {
+                    self.apply(
+                        batch: remainder,
+                        expectedSessionID: sessionID,
+                        expectedAttachmentGeneration: generation,
+                        expectedTextStorage: storage
+                    )
+                }
+                guard self.isCurrent(
+                    sessionID: sessionID,
+                    attachmentGeneration: generation,
+                    textStorage: storage
+                ), self.session.revision == request.revision else { return }
+                self.lastAppliedViewportRange = request.visibleRange
             }
-        }
-
-        private func highlightVisibleViewport(
-            expectedSessionID: UUID,
-            expectedAttachmentGeneration: Int,
-            expectedTextStorage: NSTextStorage
-        ) async {
-            guard isCurrent(
-                sessionID: expectedSessionID,
-                attachmentGeneration: expectedAttachmentGeneration,
-                textStorage: expectedTextStorage
-            ) else { return }
-            guard session.enablesSyntaxHighlighting, let highlighter = session.highlighter, let textView else { return }
-            let visibleRange = currentVisibleUTF16Range(fallbackAround: 0)
-            if let lastAppliedViewportRange, NSEqualRanges(lastAppliedViewportRange, visibleRange) { return }
-            let text = textView.string
-            let revision = session.revision
-            let result = await highlighter.scheduleViewport(
-                fullText: text,
-                revision: revision,
-                visibleUTF16Range: visibleRange
-            )
-            guard !Task.isCancelled else { return }
-            apply(
-                batch: result.priority,
-                expectedSessionID: expectedSessionID,
-                expectedAttachmentGeneration: expectedAttachmentGeneration,
-                expectedTextStorage: expectedTextStorage
-            )
-            if let remainder = result.remainder {
-                apply(
-                    batch: remainder,
-                    expectedSessionID: expectedSessionID,
-                    expectedAttachmentGeneration: expectedAttachmentGeneration,
-                    expectedTextStorage: expectedTextStorage
-                )
-            }
-            lastAppliedViewportRange = visibleRange
         }
 
         private func currentVisibleUTF16Range(fallbackAround offset: Int) -> NSRange {
@@ -425,10 +496,83 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             attachmentGeneration: Int,
             textStorage: NSTextStorage
         ) -> Bool {
-            attachedSessionID == sessionID
+            !isTornDown
+                && attachedSessionID == sessionID
                 && self.attachmentGeneration == attachmentGeneration
                 && session.id == sessionID
                 && self.textView?.textStorage === textStorage
+        }
+
+        private func recordParsedRevision(
+            _ revision: Int,
+            expectedSessionID: UUID,
+            expectedAttachmentGeneration: Int,
+            expectedTextStorage: NSTextStorage
+        ) -> Bool {
+            guard isCurrent(
+                sessionID: expectedSessionID,
+                attachmentGeneration: expectedAttachmentGeneration,
+                textStorage: expectedTextStorage
+            ) else { return false }
+            lastParsedRevision = revision
+            return true
+        }
+
+        private struct EditHighlightRequest {
+            let sourceText: String
+            let strategy: HighlightParseStrategy
+        }
+
+        private func makeEditHighlightRequest(
+            revision: Int,
+            expectedSessionID: UUID,
+            expectedAttachmentGeneration: Int,
+            expectedTextStorage: NSTextStorage
+        ) -> EditHighlightRequest? {
+            guard isCurrent(
+                sessionID: expectedSessionID,
+                attachmentGeneration: expectedAttachmentGeneration,
+                textStorage: expectedTextStorage
+            ), session.revision == revision else { return nil }
+            return EditHighlightRequest(
+                sourceText: expectedTextStorage.string,
+                strategy: HighlightBatchApplicator.parseStrategy(
+                    lastParsedRevision: lastParsedRevision,
+                    requestedRevision: revision
+                )
+            )
+        }
+
+        private struct ViewportHighlightRequest {
+            let highlighter: any SyntaxHighlighter
+            let sourceText: String
+            let revision: Int
+            let visibleRange: NSRange
+        }
+
+        private func makeViewportHighlightRequest(
+            expectedSessionID: UUID,
+            expectedAttachmentGeneration: Int,
+            expectedTextStorage: NSTextStorage
+        ) -> ViewportHighlightRequest? {
+            guard isCurrent(
+                sessionID: expectedSessionID,
+                attachmentGeneration: expectedAttachmentGeneration,
+                textStorage: expectedTextStorage
+            ), session.enablesSyntaxHighlighting,
+               let highlighter = session.highlighter,
+               let textView,
+               lastParsedRevision == session.revision else { return nil }
+            let visibleRange = currentVisibleUTF16Range(fallbackAround: 0)
+            guard lastAppliedViewportRange.map({ !NSEqualRanges($0, visibleRange) }) ?? true else {
+                return nil
+            }
+            return ViewportHighlightRequest(
+                highlighter: highlighter,
+                sourceText: textView.string,
+                revision: session.revision,
+                visibleRange: visibleRange
+            )
         }
 
         private func apply(
@@ -445,17 +589,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             guard HighlightBatchApplicator.shouldApply(batchRevision: batch.revision, currentRevision: session.revision) else { return }
             let textStorage = expectedTextStorage
             session.mergeSyntaxTokens(batch.tokens, replacingCoveredRanges: batch.coveredRanges)
-            let isDark = textView?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            let appearance: EditorAppearance = isDark ? .dark : .light
             isApplyingHighlighting = true
-            textStorage.beginEditing()
-            for range in batch.coveredRanges where range.location >= 0 && NSMaxRange(range) <= textStorage.length {
-                textStorage.addAttribute(.foregroundColor, value: ColorRole.editorForegroundNSColor, range: range)
-            }
-            for token in batch.tokens where token.range.location >= 0 && NSMaxRange(token.range) <= textStorage.length {
-                textStorage.addAttribute(.foregroundColor, value: HighlightTheme.color(for: token.category, appearance: appearance), range: token.range)
-            }
-            textStorage.endEditing()
+            HighlightBatchApplicator.apply(batch, to: textStorage)
             isApplyingHighlighting = false
             overlay?.needsDisplay = true
             textView?.needsDisplay = true
@@ -484,9 +619,10 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 .paragraphStyle: paragraphStyle
             ]
 
+            let foregroundChanged = lastBaseForeground != settings.appearance.editorForeground
             let needsBaseAttributes = force
                 || lastBaseFont != font
-                || lastBaseForeground != settings.appearance.editorForeground
+                || foregroundChanged
                 || lastBaseLineHeight != settings.typography.editorLineHeight
             guard needsBaseAttributes else { return }
 
@@ -497,13 +633,22 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             guard let textStorage = textView.textStorage, textStorage.length > 0 else { return }
             isApplyingHighlighting = true
             textStorage.beginEditing()
-            textStorage.addAttributes([
+            var baseAttributes: [NSAttributedString.Key: Any] = [
                 .font: font,
-                .foregroundColor: foreground,
                 .paragraphStyle: paragraphStyle
-            ], range: NSRange(location: 0, length: textStorage.length))
+            ]
+            if !session.hasAppliedSyntaxHighlighting {
+                baseAttributes[.foregroundColor] = foreground
+            }
+            textStorage.addAttributes(
+                baseAttributes,
+                range: NSRange(location: 0, length: textStorage.length)
+            )
             textStorage.endEditing()
             isApplyingHighlighting = false
+            if session.hasAppliedSyntaxHighlighting, foregroundChanged, !force {
+                session.refreshSyntaxAttributes()
+            }
             textView.needsDisplay = true
         }
 
@@ -717,7 +862,6 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                   let highlighter = session.highlighter,
                   let storage = textView.textStorage else { return }
             pendingHighlightTask?.cancel()
-            let text = textView.string
             let sessionID = session.id
             let generation = attachmentGeneration
             pendingHighlightTask = Task { [weak self] in
@@ -726,14 +870,21 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 } catch {
                     return
                 }
+                guard !Task.isCancelled,
+                      let request = self?.makeEditHighlightRequest(
+                        revision: revision,
+                        expectedSessionID: sessionID,
+                        expectedAttachmentGeneration: generation,
+                        expectedTextStorage: storage
+                      ) else { return }
+                let batch = await highlighter.load(text: request.sourceText, revision: revision)
                 guard let self,
-                      !Task.isCancelled,
-                      self.session.id == sessionID,
-                      self.attachmentGeneration == generation,
-                      self.session.revision == revision,
-                      self.textView?.textStorage === storage else { return }
-                let batch = await highlighter.load(text: text, revision: revision)
-                guard !Task.isCancelled else { return }
+                      self.recordParsedRevision(
+                    revision,
+                    expectedSessionID: sessionID,
+                    expectedAttachmentGeneration: generation,
+                    expectedTextStorage: storage
+                ), !Task.isCancelled else { return }
                 self.apply(
                     batch: batch,
                     expectedSessionID: sessionID,
