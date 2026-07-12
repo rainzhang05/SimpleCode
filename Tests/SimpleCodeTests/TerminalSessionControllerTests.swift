@@ -20,19 +20,38 @@ struct TerminalSessionControllerTests {
         private(set) var sentText: [String] = []
         private(set) var sentBytes: [[UInt8]] = []
         private(set) var terminateCount = 0
+        private(set) var clearDisplayCount = 0
+        private(set) var focusCount = 0
         private(set) var resizedTo: [(cols: Int, rows: Int)] = []
+        private(set) var events: [String] = []
+        var sendSucceeds = true
 
         func startProcess(executable: String, environment: [String], currentDirectory: String) {
             launches.append(Launch(executable: executable, environment: environment, currentDirectory: currentDirectory))
+            events.append("start")
             isProcessRunning = true
         }
 
-        func send(text: String) {
+        func send(text: String) -> Bool {
             sentText.append(text)
+            events.append("send:\(text)")
+            return sendSucceeds
         }
 
-        func send(bytes: [UInt8]) {
+        func send(bytes: [UInt8]) -> Bool {
             sentBytes.append(bytes)
+            return sendSucceeds
+        }
+
+        func clearDisplay() {
+            clearDisplayCount += 1
+            events.append("clear")
+        }
+
+        func focus() -> Bool {
+            focusCount += 1
+            events.append("focus")
+            return true
         }
 
         func terminate() {
@@ -98,8 +117,129 @@ struct TerminalSessionControllerTests {
 
     @Test func queuesCommandBeforeStartup() throws {
         let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
-        controller.sendCommand("echo queued")
+        let result = controller.sendCommand("echo queued")
         #expect(controller.state == .notStarted)
+        #expect(result == .queued)
+
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+
+        #expect(driver.sentText == ["echo queued\n"])
+    }
+
+    @Test func runningTerminalSubmitsTheExactCommandOnce() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+        controller.setPanelVisible(true)
+
+        let result = controller.sendCommand("printf 'hello'")
+
+        #expect(result == .submitted)
+        #expect(driver.sentText == ["printf 'hello'\n"])
+    }
+
+    @Test func driverSubmissionFailureIsReportedWithoutQueuingADuplicate() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+        controller.setPanelVisible(true)
+        driver.sendSucceeds = false
+
+        let result = controller.sendCommand("echo fails")
+        driver.sendSucceeds = true
+        controller.startIfNeeded()
+
+        #expect(result == .failed)
+        #expect(driver.sentText == ["echo fails\n"])
+    }
+
+    @Test func clearUsesTheEmulatorAndFocusesWithoutWritingToTheShell() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+        controller.setPanelVisible(true)
+
+        controller.clearDisplay()
+
+        #expect(driver.clearDisplayCount == 1)
+        #expect(driver.launches.count == 1)
+        #expect(driver.sentText.isEmpty)
+        #expect(driver.sentBytes.isEmpty)
+        #expect(driver.focusCount == 1)
+        #expect(!controller.consumeFocusRequest())
+    }
+
+    @Test func interruptSendsOneControlCByte() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+        controller.setPanelVisible(true)
+
+        let result = controller.sendInterrupt()
+
+        #expect(result)
+        #expect(driver.sentBytes == [[0x03]])
+    }
+
+    @Test func queuedCommandCanBeCancelledBeforeTerminalAttachment() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        #expect(controller.sendCommand("sleep 60") == .queued)
+
+        #expect(controller.cancelQueuedCommand("sleep 60"))
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+
+        #expect(driver.sentText.isEmpty)
+    }
+
+    @Test func failedDeferredDeliveryIsReportedAndNotRetriedSilently() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        var deliveries: [(String, TerminalCommandSubmissionResult)] = []
+        controller.onQueuedCommandDelivery = { deliveries.append(($0, $1)) }
+        #expect(controller.sendCommand("echo queued") == .queued)
+        let driver = TerminalDriverSpy()
+        driver.sendSucceeds = false
+
+        controller.attach(driver)
+        driver.sendSucceeds = true
+        controller.startIfNeeded()
+
+        #expect(deliveries.count == 1)
+        #expect(deliveries.first?.0 == "echo queued")
+        #expect(deliveries.first?.1 == .failed)
+        #expect(driver.sentText == ["echo queued\n"])
+        #expect(driver.launches.count == 1)
+    }
+
+    @Test func pendingClearRunsBeforeAQueuedCommandFlushes() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        controller.clearDisplay()
+        #expect(controller.sendCommand("echo clean") == .queued)
+        let driver = TerminalDriverSpy()
+
+        controller.attach(driver)
+
+        let clearIndex = try #require(driver.events.firstIndex(of: "clear"))
+        let sendIndex = try #require(driver.events.firstIndex(of: "send:echo clean\n"))
+        #expect(clearIndex < sendIndex)
+        #expect(driver.sentText == ["echo clean\n"])
+    }
+
+    @Test func shellTerminationFailsAndDrainsQueuedCommands() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        var deliveries: [(String, TerminalCommandSubmissionResult)] = []
+        controller.onQueuedCommandDelivery = { deliveries.append(($0, $1)) }
+        #expect(controller.sendCommand("echo abandoned") == .queued)
+
+        controller.recordTermination(exitCode: 1)
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+
+        #expect(deliveries.count == 1)
+        #expect(deliveries.first?.0 == "echo abandoned")
+        #expect(deliveries.first?.1 == .failed)
+        #expect(driver.sentText.isEmpty)
     }
 
     @Test func attachedTerminalStartsOnlyAfterThePanelIsRevealed() throws {

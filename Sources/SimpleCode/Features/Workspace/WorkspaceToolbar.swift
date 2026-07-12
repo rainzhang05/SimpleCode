@@ -44,7 +44,7 @@ struct WorkspaceToolbar: ToolbarContent {
             } label: {
                 Label("Run", systemImage: "play.fill")
             }
-            .disabled(!hasRunnableCommand)
+            .disabled(!hasRunnableCommand || !workspace.runExecution.state.acceptsRunSubmission)
             .help(hasRunnableCommand ? "Run (Command-R)" : "Configure a run command first")
             .pointingHandCursor()
             .accessibilityIdentifier("workspace.runButton")

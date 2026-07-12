@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// SwiftUI chrome around the terminal: a compact glass header (Clear / Restart /
+/// SwiftUI chrome around the terminal: a compact glass header (Clear /
 /// Close) plus the AppKit-bridged terminal surface itself, which stays opaque per
 /// the design system's rule that glass never sits behind text content.
 struct TerminalPanelView: View {
@@ -40,6 +40,7 @@ struct TerminalPanelView: View {
         .overlay(alignment: .top) {
             resizeHandle
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("terminal.panel")
         .accessibilityHidden(!isVisible)
     }
@@ -111,14 +112,7 @@ struct TerminalPanelView: View {
                 systemImage: "eraser",
                 help: "Clear the terminal display",
                 identifier: "terminal.clearButton",
-                action: session.clearScreen
-            )
-            terminalAction(
-                title: "Restart Terminal",
-                systemImage: "arrow.clockwise",
-                help: "Restart the shell session",
-                identifier: "terminal.restartButton",
-                action: session.restart
+                action: session.clearDisplay
             )
             terminalAction(
                 title: "Close Terminal",

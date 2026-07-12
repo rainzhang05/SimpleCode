@@ -36,7 +36,9 @@ struct TerminalRepresentable: NSViewRepresentable {
         applyAppearance(to: view, coordinator: context.coordinator)
         session.setPanelVisible(isPanelVisible)
         if session.consumeFocusRequest() {
-            view.window?.makeFirstResponder(view)
+            if view.window?.makeFirstResponder(view) != true {
+                session.focusTerminal()
+            }
         }
     }
 
@@ -156,12 +158,28 @@ private final class SwiftTermTerminalDriver: TerminalSessionDriving {
         )
     }
 
-    func send(text: String) {
-        view?.send(txt: text)
+    func send(text: String) -> Bool {
+        guard let view, view.process.running else { return false }
+        view.send(txt: text)
+        return true
     }
 
-    func send(bytes: [UInt8]) {
-        view?.send(bytes)
+    func send(bytes: [UInt8]) -> Bool {
+        guard let view, view.process.running else { return false }
+        view.send(bytes)
+        return true
+    }
+
+    func clearDisplay() {
+        guard let view else { return }
+        view.terminal.buffer.clear()
+        view.terminal.buffer.fillViewportRows()
+        view.needsDisplay = true
+    }
+
+    func focus() -> Bool {
+        guard let view, let window = view.window else { return false }
+        return window.makeFirstResponder(view)
     }
 
     func terminate() {

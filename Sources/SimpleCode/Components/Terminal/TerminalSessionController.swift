@@ -18,8 +18,10 @@ protocol TerminalSessionDriving: AnyObject {
     var isProcessRunning: Bool { get }
 
     func startProcess(executable: String, environment: [String], currentDirectory: String)
-    func send(text: String)
-    func send(bytes: [UInt8])
+    @discardableResult func send(text: String) -> Bool
+    @discardableResult func send(bytes: [UInt8]) -> Bool
+    func clearDisplay()
+    @discardableResult func focus() -> Bool
     func terminate()
     func resize(cols: Int, rows: Int)
 }
@@ -47,8 +49,10 @@ final class TerminalSessionController: TerminalCommandSending {
     private var attachmentID: UUID?
     private var startRequested = false
     private var isRestarting = false
+    private var clearRequested = false
     private var pendingCommands: [String] = []
     var onShellTerminated: (() -> Void)?
+    var onQueuedCommandDelivery: ((String, TerminalCommandSubmissionResult) -> Void)?
 
     init(workingDirectory: URL) {
         self.workingDirectory = workingDirectory
@@ -65,7 +69,9 @@ final class TerminalSessionController: TerminalCommandSending {
         let id = UUID()
         self.driver = driver
         attachmentID = id
+        fulfillClearRequestIfPossible()
         launchIfRequested()
+        fulfillFocusRequestIfPossible()
         return id
     }
 
@@ -84,6 +90,7 @@ final class TerminalSessionController: TerminalCommandSending {
         guard startRequested, let driver else { return }
         if driver.isProcessRunning {
             state = .running
+            fulfillClearRequestIfPossible()
             flushPendingCommandsIfNeeded()
             return
         }
@@ -99,28 +106,39 @@ final class TerminalSessionController: TerminalCommandSending {
         )
         state = .running
         AppLog.terminal.info("Terminal session started")
+        fulfillClearRequestIfPossible()
         flushPendingCommandsIfNeeded()
     }
 
     /// Writes the exact command followed by a newline into the PTY input stream.
-    func sendCommand(_ command: String) {
+    @discardableResult
+    func sendCommand(_ command: String) -> TerminalCommandSubmissionResult {
         let payload = command + "\n"
         if state != .running || driver?.isProcessRunning != true {
             startIfNeeded()
         }
         guard state == .running, let driver, driver.isProcessRunning else {
             pendingCommands.append(command)
-            return
+            return .queued
         }
-        driver.send(text: payload)
+        guard driver.send(text: payload) else { return .failed }
         AppLog.terminal.debug("Run command submitted")
+        return .submitted
     }
 
     /// Sends Ctrl-C (0x03) to the foreground process, exactly as a real terminal
     /// would when the user presses Ctrl-C.
-    func sendInterrupt() {
-        guard state == .running, let driver, driver.isProcessRunning else { return }
-        driver.send(bytes: [0x03])
+    @discardableResult
+    func sendInterrupt() -> Bool {
+        guard state == .running, let driver, driver.isProcessRunning else { return false }
+        return driver.send(bytes: [0x03])
+    }
+
+    @discardableResult
+    func cancelQueuedCommand(_ command: String) -> Bool {
+        guard let index = pendingCommands.firstIndex(of: command) else { return false }
+        pendingCommands.remove(at: index)
+        return true
     }
 
     /// Terminates the shell process. `LocalProcess.terminate()` sends `SIGTERM` to
@@ -135,6 +153,7 @@ final class TerminalSessionController: TerminalCommandSending {
             state = .terminated(exitCode: nil)
         }
         pendingCommands.removeAll()
+        clearRequested = false
         needsFocus = false
     }
 
@@ -149,24 +168,21 @@ final class TerminalSessionController: TerminalCommandSending {
         // replacement process is known to be alive.
         guard !isRestarting else { return }
         guard !(state == .running && driver?.isProcessRunning == true) else { return }
+        failPendingCommands()
         state = .terminated(exitCode: exitCode)
         startRequested = false
         onShellTerminated?()
     }
 
-    /// Sends the standard ANSI "clear screen + scrollback, home cursor" sequence,
-    /// exactly what a real terminal's Clear command does — this does not touch the
-    /// shell process itself, only what is currently displayed.
-    func clearScreen() {
-        driver?.send(text: "\u{1B}[2J\u{1B}[3J\u{1B}[H")
-    }
-
     func clearDisplay() {
-        clearScreen()
+        clearRequested = true
+        fulfillClearRequestIfPossible()
+        focusTerminal()
     }
 
     func focusTerminal() {
         needsFocus = true
+        fulfillFocusRequestIfPossible()
     }
 
     func consumeFocusRequest() -> Bool {
@@ -211,11 +227,46 @@ final class TerminalSessionController: TerminalCommandSending {
     }
 
     private func flushPendingCommandsIfNeeded() {
-        guard state == .running, driver?.isProcessRunning == true, !pendingCommands.isEmpty else { return }
+        guard !pendingCommands.isEmpty else { return }
+        guard state == .running, driver?.isProcessRunning == true else {
+            failPendingCommands()
+            return
+        }
+        while let command = pendingCommands.first {
+            guard state == .running, let driver, driver.isProcessRunning else {
+                failPendingCommands()
+                return
+            }
+            pendingCommands.removeFirst()
+            let payload = command + "\n"
+            guard driver.send(text: payload) else {
+                onQueuedCommandDelivery?(command, .failed)
+                failPendingCommands()
+                return
+            }
+            AppLog.terminal.debug("Queued run command submitted")
+            onQueuedCommandDelivery?(command, .submitted)
+        }
+    }
+
+    private func fulfillClearRequestIfPossible() {
+        guard clearRequested, let driver else { return }
+        driver.clearDisplay()
+        clearRequested = false
+    }
+
+    private func failPendingCommands() {
         let commands = pendingCommands
         pendingCommands.removeAll()
         for command in commands {
-            sendCommand(command)
+            onQueuedCommandDelivery?(command, .failed)
+        }
+    }
+
+    private func fulfillFocusRequestIfPossible() {
+        guard needsFocus, let driver else { return }
+        if driver.focus() {
+            needsFocus = false
         }
     }
 
@@ -241,6 +292,7 @@ final class TerminalSessionController: TerminalCommandSending {
     /// the terminal stuck in `.running`.
     private func recoverFromMissingTerminationCallbackIfNeeded() {
         guard state == .running, driver?.isProcessRunning == false else { return }
+        failPendingCommands()
         state = .terminated(exitCode: nil)
         onShellTerminated?()
     }

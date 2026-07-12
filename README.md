@@ -6,8 +6,8 @@ own the opaque editing surface and the SwiftTerm-powered terminal surface.
 
 The app is intentionally small. It includes workspace opening, recent workspaces,
 local Git clone, file-tree operations, tabs, native text editing, syntax
-highlighting, find/replace, go-to-line, save safeguards, settings, and a
-trust-gated terminal run flow. It does not include LSP, debugging, source-control
+highlighting, find/replace, go-to-line, save safeguards, settings, and an
+integrated terminal run flow. It does not include LSP, debugging, source-control
 UI, remote development, plugins, collaboration, or AI features.
 
 ## Requirements
@@ -17,9 +17,9 @@ UI, remote development, plugins, collaboration, or AI features.
 ## Privacy and Security Notes
 
 The main app is not sandboxed. This is deliberate: the integrated terminal runs
-inside the user's normal local shell environment, and run commands may read,
-modify, or delete local files. SimpleCode gates run commands behind workspace
-trust prompts, but users should still treat cloned repositories as untrusted code.
+inside the user's normal local shell environment, and configured commands run
+directly when Run is invoked. Commands may read, modify, or delete local files, so
+users should treat cloned repositories and their run configurations as untrusted code.
 
 ## Acknowledgments
 

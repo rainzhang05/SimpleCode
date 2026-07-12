@@ -3,11 +3,8 @@ import Foundation
 enum RunError: LocalizedError {
     case emptyCommand
     case terminalUnavailable
-    case terminalStartupFailure
     case commandSubmissionFailure
-    case untrustedWorkspaceCancelled
     case interruptFailure
-    case terminalRestartFailure
 
     var errorDescription: String? {
         switch self {
@@ -15,16 +12,10 @@ enum RunError: LocalizedError {
             return "Enter a command before running."
         case .terminalUnavailable:
             return "The terminal session is not available."
-        case .terminalStartupFailure:
-            return "The terminal session could not be started."
         case .commandSubmissionFailure:
             return "The command could not be sent to the terminal."
-        case .untrustedWorkspaceCancelled:
-            return "Run was cancelled."
         case .interruptFailure:
             return "Could not send an interrupt to the terminal."
-        case .terminalRestartFailure:
-            return "The terminal session could not be restarted."
         }
     }
 }
@@ -33,22 +24,37 @@ enum RunError: LocalizedError {
 @Observable
 final class RunExecutionController {
     private unowned var workspace: WorkspaceModel?
+    private var terminal: (any TerminalCommandSending)?
     private(set) var state: RunExecutionState = .idle
-    var pendingTrustCommand: String?
-    var showTrustSheet = false
+    private var queuedCommand: String?
+    private var lastSubmissionDate: Date?
+    private let now: () -> Date
+    private let rapidRunSuppressionInterval: TimeInterval = 0.35
 
-    init() {}
+    init(now: @escaping () -> Date = Date.init) {
+        self.now = now
+    }
 
-    func bind(workspace: WorkspaceModel) {
+    func bind(
+        workspace: WorkspaceModel,
+        terminal: (any TerminalCommandSending)? = nil
+    ) {
         self.workspace = workspace
+        self.terminal = terminal ?? workspace.terminal
+        self.terminal?.onQueuedCommandDelivery = { [weak self] command, result in
+            self?.recordQueuedCommandDelivery(command: command, result: result)
+        }
     }
 
     func run() {
         guard let workspace else { return }
-        if state == .submitting {
+        guard state != .submitting, state != .queued else { return }
+        if state == .running,
+           let lastSubmissionDate,
+           now().timeIntervalSince(lastSubmissionDate) < rapidRunSuppressionInterval {
             return
         }
-        resetStateForNewRun()
+        let stateBeforeSubmission = state
         let command = workspace.runCommands.configuration.effectiveCommand
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -56,69 +62,91 @@ final class RunExecutionController {
             return
         }
 
-        if !workspace.trust.isTrusted {
-            pendingTrustCommand = command
-            showTrustSheet = true
-            return
-        }
-
-        execute(command: command)
-    }
-
-    func runOnceAfterTrustPrompt() {
-        guard let command = pendingTrustCommand else { return }
-        pendingTrustCommand = nil
-        showTrustSheet = false
-        execute(command: command)
-    }
-
-    func trustAndRun() {
-        workspace?.trust.markTrusted()
-        runOnceAfterTrustPrompt()
-    }
-
-    func cancelTrustPrompt() {
-        pendingTrustCommand = nil
-        showTrustSheet = false
+        execute(command: command, stateOnFailure: stateBeforeSubmission)
     }
 
     func stop() {
-        guard let workspace else { return }
+        guard let workspace, let terminal else { return }
         guard state.isInterruptible else { return }
 
-        workspace.terminal.sendInterrupt()
-        state = .interruptSent
+        if state == .queued, let queuedCommand {
+            guard terminal.cancelQueuedCommand(queuedCommand) else {
+                workspace.errorAlertMessage = RunError.commandSubmissionFailure.localizedDescription
+                return
+            }
+            self.queuedCommand = nil
+            state = .idle
+        } else {
+            guard terminal.sendInterrupt() else {
+                workspace.errorAlertMessage = RunError.interruptFailure.localizedDescription
+                return
+            }
+            state = .interruptSent
+        }
 
         if workspace.runCommands.configuration.revealTerminalOnRun {
             workspace.isTerminalVisible = true
-            workspace.terminal.setPanelVisible(true)
+            terminal.setPanelVisible(true)
         }
-        workspace.terminal.focusTerminal()
+        terminal.focusTerminal()
     }
 
     func resetStateForNewRun() {
         state = .idle
+        queuedCommand = nil
+        lastSubmissionDate = nil
     }
 
-    private func execute(command: String) {
-        guard let workspace else { return }
+    private func execute(command: String, stateOnFailure: RunExecutionState) {
+        guard let workspace, let terminal else {
+            workspace?.errorAlertMessage = RunError.terminalUnavailable.localizedDescription
+            return
+        }
 
         state = .submitting
         let config = workspace.runCommands.configuration
 
         if config.revealTerminalOnRun {
             workspace.isTerminalVisible = true
-            workspace.terminal.setPanelVisible(true)
+            terminal.setPanelVisible(true)
         }
 
-        workspace.terminal.startIfNeeded()
         if config.clearTerminalBeforeRun {
-            workspace.terminal.clearDisplay()
+            terminal.clearDisplay()
         }
-        workspace.terminal.focusTerminal()
-        workspace.terminal.sendCommand(command)
+        terminal.focusTerminal()
 
-        state = .possiblyRunning
-        AppLog.run.info("Run command dispatched to terminal session")
+        switch terminal.sendCommand(command) {
+        case .submitted:
+            state = .running
+            lastSubmissionDate = now()
+            AppLog.run.info("Run command dispatched to terminal session")
+        case .queued:
+            queuedCommand = command
+            state = .queued
+            AppLog.run.info("Run command queued for terminal startup")
+        case .failed:
+            state = stateOnFailure
+            workspace.errorAlertMessage = RunError.commandSubmissionFailure.localizedDescription
+        }
+    }
+
+    private func recordQueuedCommandDelivery(
+        command: String,
+        result: TerminalCommandSubmissionResult
+    ) {
+        guard command == queuedCommand else { return }
+        queuedCommand = nil
+        switch result {
+        case .submitted:
+            state = .running
+            lastSubmissionDate = now()
+        case .failed:
+            state = .idle
+            workspace?.errorAlertMessage = RunError.commandSubmissionFailure.localizedDescription
+        case .queued:
+            queuedCommand = command
+            state = .queued
+        }
     }
 }

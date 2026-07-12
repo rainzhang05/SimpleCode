@@ -31,7 +31,10 @@ struct SimpleCodeApp: App {
             CommandMenu("Run") {
                 Button("Run") { appModel.workspace?.runExecution.run() }
                     .keyboardShortcut("r", modifiers: .command)
-                    .disabled(!(appModel.workspace?.runCommands.hasRunnableCommand ?? false))
+                    .disabled(
+                        !(appModel.workspace?.runCommands.hasRunnableCommand ?? false)
+                            || !(appModel.workspace?.runExecution.state.acceptsRunSubmission ?? false)
+                    )
                 Button("Stop") { appModel.workspace?.runExecution.stop() }
                     .keyboardShortcut(".", modifiers: [.control, .command])
                     .disabled(!(appModel.workspace?.runExecution.state.isInterruptible ?? false))
