@@ -102,12 +102,12 @@ final class CodeTextView: NSTextView {
 
     // MARK: Current-line highlight
 
-    override func draw(_ dirtyRect: NSRect) {
-        drawCurrentLineHighlight()
-        super.draw(dirtyRect)
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        drawCurrentLineHighlight(in: rect)
     }
 
-    private func drawCurrentLineHighlight() {
+    private func drawCurrentLineHighlight(in dirtyRect: NSRect) {
         guard highlightCurrentLine else { return }
         guard selectedRange().length == 0 else { return }
         guard let layoutManager = textLayoutManager,
@@ -119,12 +119,16 @@ final class CodeTextView: NSTextView {
             return false
         }
 
-        guard var fillRect else { return }
-        fillRect.origin.x = 0
-        fillRect.size.width = max(bounds.width, fillRect.size.width)
+        guard let layoutRect = fillRect else { return }
+        var viewRect = EditorTextGeometry.viewFrame(for: layoutRect, in: self)
+        let visible = visibleRect
+        viewRect.origin.x = visible.minX
+        viewRect.size.width = visible.width
+        let paintRect = viewRect.intersection(dirtyRect)
+        guard !paintRect.isEmpty else { return }
 
         ColorRole.editorCurrentLineNSColor.setFill()
-        fillRect.fill()
+        paintRect.fill()
     }
 
     // MARK: Editor commands

@@ -1,5 +1,25 @@
 import AppKit
 
+/// Converts between TextKit layout coordinates and the text view's document-view
+/// coordinates. Keeping this math shared prevents the gutter, current-line paint,
+/// and viewport highlighter from drifting by the text-container inset.
+@MainActor
+enum EditorTextGeometry {
+    static func viewFrame(for layoutFrame: NSRect, in textView: NSTextView) -> NSRect {
+        let origin = textView.textContainerOrigin
+        return layoutFrame.offsetBy(dx: origin.x, dy: origin.y)
+    }
+
+    static func layoutPoint(forViewPoint viewPoint: NSPoint, in textView: NSTextView) -> NSPoint {
+        let origin = textView.textContainerOrigin
+        return NSPoint(x: viewPoint.x - origin.x, y: viewPoint.y - origin.y)
+    }
+
+    static func textLookupX(in textView: NSTextView) -> CGFloat {
+        textView.textContainerOrigin.x + (textView.textContainer?.lineFragmentPadding ?? 0)
+    }
+}
+
 /// Computes the UTF-16 character range currently visible in the editor scroll view,
 /// expanded by a margin for syntax-highlight prioritization.
 enum EditorVisibleRange {
@@ -14,12 +34,20 @@ enum EditorVisibleRange {
         guard let layoutManager = textView.textLayoutManager,
               let contentManager = layoutManager.textContentManager else { return nil }
 
-        let visibleRect = scrollView.contentView.bounds
+        let visibleRect = textView.visibleRect
         let documentLength = textView.string.utf16.count
         guard documentLength > 0 else { return NSRange(location: 0, length: 0) }
 
-        let topPoint = CGPoint(x: 1, y: max(0, visibleRect.minY))
-        let bottomPoint = CGPoint(x: 1, y: max(0, visibleRect.maxY - 1))
+        let origin = textView.textContainerOrigin
+        let lookupX = EditorTextGeometry.textLookupX(in: textView)
+        let topPoint = EditorTextGeometry.layoutPoint(
+            forViewPoint: CGPoint(x: lookupX, y: max(origin.y, visibleRect.minY)),
+            in: textView
+        )
+        let bottomPoint = EditorTextGeometry.layoutPoint(
+            forViewPoint: CGPoint(x: lookupX, y: max(origin.y, visibleRect.maxY - 1)),
+            in: textView
+        )
         guard let topFragment = layoutManager.textLayoutFragment(for: topPoint),
               let bottomFragment = layoutManager.textLayoutFragment(for: bottomPoint) else {
             return NSRange(location: 0, length: min(documentLength, marginUTF16 * 2))

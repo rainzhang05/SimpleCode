@@ -72,7 +72,14 @@ final class LineNumberGutterView: NSView {
         ColorRole.gutterBackgroundNSColor.setFill()
         gutterRect.intersection(dirtyRect).fill()
 
-        let topPoint = CGPoint(x: 1, y: max(0, visibleRect.minY))
+        let origin = codeTextView.textContainerOrigin
+        let topPoint = EditorTextGeometry.layoutPoint(
+            forViewPoint: CGPoint(
+                x: EditorTextGeometry.textLookupX(in: codeTextView),
+                y: max(origin.y, visibleRect.minY)
+            ),
+            in: codeTextView
+        )
         guard let startFragment = layoutManager.textLayoutFragment(for: topPoint) else { return }
 
         let currentLineNumber: Int?
@@ -84,7 +91,7 @@ final class LineNumberGutterView: NSView {
         }
 
         layoutManager.enumerateTextLayoutFragments(from: startFragment.rangeInElement.location, options: [.ensuresLayout]) { fragment in
-            let frame = fragment.layoutFragmentFrame
+            let frame = EditorTextGeometry.viewFrame(for: fragment.layoutFragmentFrame, in: codeTextView)
             guard frame.minY < visibleRect.maxY else { return false }
 
             let offset = contentManager.offset(

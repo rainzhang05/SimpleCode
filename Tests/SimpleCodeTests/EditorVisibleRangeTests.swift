@@ -5,6 +5,67 @@ import Testing
 
 struct EditorVisibleRangeTests {
     @MainActor
+    @Test func currentLineHighlightSurvivesBaseBackgroundPaint() throws {
+        let originalAppearance = SettingsColorResolver.appearance
+        var testAppearance = originalAppearance
+        let white = StoredColor(red: 1, green: 1, blue: 1)
+        let marker = StoredColor(red: 0.12, green: 0.83, blue: 0.29)
+        testAppearance.editorBackground = StoredColorPair(light: white, dark: white)
+        testAppearance.editorCurrentLine = StoredColorPair(light: marker, dark: marker)
+        SettingsColorResolver.updateSnapshot(testAppearance)
+        defer { SettingsColorResolver.updateSnapshot(originalAppearance) }
+
+        let textView = CodeTextView()
+        textView.frame = NSRect(x: 0, y: 0, width: 240, height: 90)
+        textView.font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        textView.string = "first line\nsecond line"
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        textView.layoutSubtreeIfNeeded()
+        textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
+
+        let bitmap = try #require(textView.bitmapImageRepForCachingDisplay(in: textView.bounds))
+        textView.cacheDisplay(in: textView.bounds, to: bitmap)
+
+        var foundMarker = false
+        for y in stride(from: 0, to: bitmap.pixelsHigh, by: 2) {
+            for x in stride(from: 0, to: bitmap.pixelsWide, by: 3) {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if abs(color.redComponent - marker.red) < 0.04,
+                   abs(color.greenComponent - marker.green) < 0.04,
+                   abs(color.blueComponent - marker.blue) < 0.04 {
+                    foundMarker = true
+                    break
+                }
+            }
+            if foundMarker { break }
+        }
+
+        #expect(foundMarker)
+    }
+
+    @MainActor
+    @Test func sharedTextGeometryAccountsForInsetsPaddingAndScrollCoordinates() throws {
+        let textView = CodeTextView()
+        textView.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
+        textView.textContainerInset = NSSize(width: 47, height: 19)
+        textView.textContainer?.lineFragmentPadding = 7
+
+        let origin = textView.textContainerOrigin
+        let layoutFrame = NSRect(x: 4, y: 11, width: 120, height: 22)
+        let viewFrame = EditorTextGeometry.viewFrame(for: layoutFrame, in: textView)
+        #expect(viewFrame.origin.x == layoutFrame.origin.x + origin.x)
+        #expect(viewFrame.origin.y == layoutFrame.origin.y + origin.y)
+
+        let lookupX = EditorTextGeometry.textLookupX(in: textView)
+        #expect(lookupX == origin.x + 7)
+
+        let scrolledViewPoint = NSPoint(x: lookupX, y: 143)
+        let layoutPoint = EditorTextGeometry.layoutPoint(forViewPoint: scrolledViewPoint, in: textView)
+        #expect(layoutPoint.x == 7)
+        #expect(layoutPoint.y == scrolledViewPoint.y - origin.y)
+    }
+
+    @MainActor
     @Test func codeTextViewBuildsOneTextKit2Graph() throws {
         let textView = CodeTextView()
 
