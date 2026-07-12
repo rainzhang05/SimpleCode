@@ -9,12 +9,15 @@ struct RecentlyClosedDocument: Equatable, Sendable {
 @MainActor
 @Observable
 final class OpenDocumentsStore {
+    typealias HighlighterFactory = (LanguageID) -> (any SyntaxHighlighter)?
+
     private(set) var sessions: [EditorDocumentSession] = []
     private(set) var activeSessionID: UUID?
     private(set) var recentlyClosed: [RecentlyClosedDocument] = []
     private let maxRecentlyClosed = 10
 
     private let loader: any FileContentLoading
+    private let highlighterFactory: HighlighterFactory
     private let fileOperations = FileOperationService()
     private let watcherRegistry = DocumentWatcherRegistry()
     private var latestOpenRequest = 0
@@ -23,8 +26,12 @@ final class OpenDocumentsStore {
 
     var pendingLargeFileOpen: PendingLargeFileOpen?
 
-    init(loader: any FileContentLoading = FileContentLoader()) {
+    init(
+        loader: any FileContentLoading = FileContentLoader(),
+        highlighterFactory: @escaping HighlighterFactory = HighlightProviderFactory.makeHighlighter
+    ) {
         self.loader = loader
+        self.highlighterFactory = highlighterFactory
     }
 
     var activeSession: EditorDocumentSession? {
@@ -97,7 +104,10 @@ final class OpenDocumentsStore {
                 return
             }
             session.prepareLoadedContent(content, url: url, choice: choice)
-            await prepareInitialSyntax(for: session, text: content.text)
+            guard await prepareInitialSyntax(for: session, text: content.text) else {
+                discardLoadingSession(session)
+                return
+            }
             guard isCurrentOpenRequest(request, session: session) else {
                 discardLoadingSession(session)
                 return
@@ -319,7 +329,10 @@ final class OpenDocumentsStore {
             let selection = session.selectionRange
             let scroll = session.scrollOffset
             session.prepareLoadedContent(content, url: url)
-            await prepareInitialSyntax(for: session, text: content.text)
+            guard await prepareInitialSyntax(for: session, text: content.text) else {
+                session.setLoadError("Could not prepare syntax highlighting.", url: url)
+                return
+            }
             session.publishLoadedContent()
             session.selectionRange = selection
             session.scrollOffset = scroll
@@ -364,16 +377,40 @@ final class OpenDocumentsStore {
         }
     }
 
-    private func prepareInitialSyntax(for session: EditorDocumentSession, text: String) async {
-        guard session.enablesSyntaxHighlighting,
-              let highlighter = HighlightProviderFactory.makeHighlighter(for: session.language) else {
-            session.highlighter = nil
-            return
+    private func prepareInitialSyntax(for session: EditorDocumentSession, text: String) async -> Bool {
+        var attemptsRemaining = 3
+        while attemptsRemaining > 0 {
+            guard !Task.isCancelled else { return false }
+            guard session.enablesSyntaxHighlighting else {
+                session.highlighter = nil
+                return true
+            }
+
+            let language = session.language
+            let revision = session.revision
+            guard let highlighter = highlighterFactory(language) else {
+                return false
+            }
+            session.highlighter = highlighter
+            let batch = await highlighter.load(text: text, revision: revision)
+            guard !Task.isCancelled else { return false }
+
+            guard session.language == language,
+                  session.revision == revision,
+                  batch.revision == revision else {
+                attemptsRemaining -= 1
+                continue
+            }
+
+            session.applyInitialHighlighting(batch)
+            return session.hasAppliedSyntaxHighlighting
         }
-        session.highlighter = highlighter
-        let batch = await highlighter.load(text: text, revision: session.revision)
-        guard !Task.isCancelled, session.revision == batch.revision else { return }
-        session.applyInitialHighlighting(batch)
+
+        if !session.enablesSyntaxHighlighting {
+            session.highlighter = nil
+            return true
+        }
+        return false
     }
 
     private func beginOpenRequest() -> Int {

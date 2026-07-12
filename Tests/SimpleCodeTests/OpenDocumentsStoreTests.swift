@@ -6,6 +6,68 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct OpenDocumentsStoreTests {
+    private actor ControlledHighlighter: SyntaxHighlighter {
+        private let category: SyntaxCategory
+        private let suspendsLoad: Bool
+        private var didStartLoad = false
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+        private var loadContinuation: CheckedContinuation<Void, Never>?
+
+        init(category: SyntaxCategory = .keyword, suspendsLoad: Bool) {
+            self.category = category
+            self.suspendsLoad = suspendsLoad
+        }
+
+        func waitUntilLoadStarts() async {
+            if didStartLoad { return }
+            await withCheckedContinuation { continuation in
+                startWaiters.append(continuation)
+            }
+        }
+
+        func resumeLoad() {
+            loadContinuation?.resume()
+            loadContinuation = nil
+        }
+
+        func load(text: String, revision: Int) async -> HighlightBatch {
+            didStartLoad = true
+            let waiters = startWaiters
+            startWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+            if suspendsLoad {
+                await withCheckedContinuation { continuation in
+                    loadContinuation = continuation
+                }
+            }
+            let length = min(3, text.utf16.count)
+            return HighlightBatch(
+                revision: revision,
+                coveredRanges: [NSRange(location: 0, length: text.utf16.count)],
+                tokens: length > 0
+                    ? [SyntaxToken(range: NSRange(location: 0, length: length), category: category)]
+                    : []
+            )
+        }
+
+        func applyEdit(
+            fullText: String,
+            edit: TextEditDescriptor,
+            revision: Int,
+            priorityUTF16Range: NSRange
+        ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            (await load(text: fullText, revision: revision), nil)
+        }
+
+        func scheduleViewport(
+            fullText: String,
+            revision: Int,
+            visibleUTF16Range: NSRange
+        ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            (await load(text: fullText, revision: revision), nil)
+        }
+    }
+
     private actor DeferredFileContentLoader: FileContentLoading {
         private var continuations: [URL: CheckedContinuation<LoadedFileContent, Error>] = [:]
 
@@ -94,6 +156,66 @@ struct OpenDocumentsStoreTests {
             effectiveRange: nil
         ) as? NSColor
         #expect(keywordColor != nil)
+        #expect(keywordColor != ColorRole.editorForegroundNSColor)
+    }
+
+    @Test func loadedPublicationWaitsForSyntaxAndUsesAdaptiveTokenColor() async throws {
+        let highlighter = ControlledHighlighter(suspendsLoad: true)
+        let store = OpenDocumentsStore(highlighterFactory: { _ in highlighter })
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Boundary.swift")
+        try "let boundary = true\n".write(to: file, atomically: true, encoding: .utf8)
+
+        let openTask = Task { await store.open(url: file) }
+        await highlighter.waitUntilLoadStarts()
+
+        let loadingSession = try #require(store.activeSession)
+        #expect(loadingSession.loadState == .loading)
+        #expect(!loadingSession.hasAppliedSyntaxHighlighting)
+
+        await highlighter.resumeLoad()
+        await openTask.value
+
+        let loadedSession = try #require(store.activeSession)
+        #expect(loadedSession.loadState == .loaded)
+        #expect(loadedSession.hasAppliedSyntaxHighlighting)
+        let tokenColor = try #require(loadedSession.textStorage.attribute(
+            .foregroundColor,
+            at: 0,
+            effectiveRange: nil
+        ) as? NSColor)
+        #expect(tokenColor != ColorRole.editorForegroundNSColor)
+        let expectedPair = SettingsColorResolver.appearance.syntaxPalette.keyword.colorRolePair
+        try expect(tokenColor, resolvesLike: expectedPair)
+    }
+
+    @Test func staleInitialHighlightRetriesCurrentLanguageBeforePublishing() async throws {
+        let firstHighlighter = ControlledHighlighter(suspendsLoad: true)
+        let retryHighlighter = ControlledHighlighter(category: .string, suspendsLoad: false)
+        var factoryCalls = 0
+        let store = OpenDocumentsStore(highlighterFactory: { _ in
+            factoryCalls += 1
+            return factoryCalls == 1 ? firstHighlighter : retryHighlighter
+        })
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Revision.swift")
+        try "let revision = true\n".write(to: file, atomically: true, encoding: .utf8)
+
+        let openTask = Task { await store.open(url: file) }
+        await firstHighlighter.waitUntilLoadStarts()
+        let session = try #require(store.activeSession)
+        session.setLanguageOverride(.python)
+        await firstHighlighter.resumeLoad()
+        await openTask.value
+
+        #expect(session.loadState == .loaded)
+        #expect(session.language == .python)
+        #expect(session.hasAppliedSyntaxHighlighting)
+        #expect(factoryCalls == 2)
     }
 
     @Test func recentlyClosedRecordDoesNotRetainTheEditorSession() async throws {
@@ -150,5 +272,20 @@ struct OpenDocumentsStoreTests {
             await Task.yield()
         }
         Issue.record("Timed out waiting for deferred file load")
+    }
+
+    private func expect(_ color: NSColor, resolvesLike pair: ColorRolePair) throws {
+        for (appearanceName, expected) in [(NSAppearance.Name.aqua, pair.light), (.darkAqua, pair.dark)] {
+            let appearance = try #require(NSAppearance(named: appearanceName))
+            var resolved: NSColor?
+            appearance.performAsCurrentDrawingAppearance {
+                resolved = color.usingColorSpace(.sRGB)
+            }
+            let actual = try #require(resolved)
+            let expectedRGB = try #require(expected.usingColorSpace(.sRGB))
+            #expect(abs(actual.redComponent - expectedRGB.redComponent) < 0.000_1)
+            #expect(abs(actual.greenComponent - expectedRGB.greenComponent) < 0.000_1)
+            #expect(abs(actual.blueComponent - expectedRGB.blueComponent) < 0.000_1)
+        }
     }
 }
