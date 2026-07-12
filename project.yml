@@ -11,7 +11,7 @@ options:
 packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
-    exactVersion: 1.13.0
+    exactVersion: 1.14.0
   SwiftTreeSitter:
     url: https://github.com/tree-sitter/swift-tree-sitter
     exactVersion: 0.10.0
