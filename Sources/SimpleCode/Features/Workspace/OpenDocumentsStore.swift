@@ -104,7 +104,11 @@ final class OpenDocumentsStore {
                 return
             }
             session.prepareLoadedContent(content, url: url, choice: choice)
-            guard await prepareInitialSyntax(for: session, text: content.text) else {
+            guard await prepareInitialSyntax(
+                for: session,
+                text: content.text,
+                prioritizeInitialPage: content.openPolicy != .normal
+            ) else {
                 discardLoadingSession(session)
                 return
             }
@@ -177,8 +181,17 @@ final class OpenDocumentsStore {
 
     func reopenLastClosed() async {
         guard let record = recentlyClosed.first else { return }
-        recentlyClosed.removeFirst()
         await open(url: record.fileURL)
+        guard !Task.isCancelled,
+              let reopened = session(for: record.fileURL) else { return }
+        switch reopened.loadState {
+        case .loaded, .binaryPlaceholder:
+            if let index = recentlyClosed.firstIndex(of: record) {
+                recentlyClosed.remove(at: index)
+            }
+        case .idle, .loading, .error:
+            break
+        }
     }
 
     func closeOthers(than sessionID: UUID, force: Bool = false) -> [EditorDocumentSession] {
@@ -329,7 +342,11 @@ final class OpenDocumentsStore {
             let selection = session.selectionRange
             let scroll = session.scrollOffset
             session.prepareLoadedContent(content, url: url)
-            guard await prepareInitialSyntax(for: session, text: content.text) else {
+            guard await prepareInitialSyntax(
+                for: session,
+                text: content.text,
+                prioritizeInitialPage: content.openPolicy != .normal
+            ) else {
                 session.setLoadError("Could not prepare syntax highlighting.", url: url)
                 return
             }
@@ -377,7 +394,11 @@ final class OpenDocumentsStore {
         }
     }
 
-    private func prepareInitialSyntax(for session: EditorDocumentSession, text: String) async -> Bool {
+    private func prepareInitialSyntax(
+        for session: EditorDocumentSession,
+        text: String,
+        prioritizeInitialPage: Bool
+    ) async -> Bool {
         var attemptsRemaining = 3
         while attemptsRemaining > 0 {
             guard !Task.isCancelled else { return false }
@@ -392,17 +413,39 @@ final class OpenDocumentsStore {
                 return false
             }
             session.highlighter = highlighter
-            let batch = await highlighter.load(text: text, revision: revision)
+            let syntaxConfigurationRevision = session.syntaxConfigurationRevision
+            let page: InitialHighlightPage
+            if prioritizeInitialPage {
+                let priorityRange = InitialHighlightPaging.priorityRange(
+                    in: text,
+                    aroundUTF16Offset: session.selectionRange.location
+                )
+                page = await highlighter.prepareInitial(
+                    text: text,
+                    revision: revision,
+                    priorityUTF16Range: priorityRange
+                )
+            } else {
+                page = InitialHighlightPage(
+                    batch: await highlighter.load(text: text, revision: revision),
+                    next: nil
+                )
+            }
             guard !Task.isCancelled else { return false }
 
             guard session.language == language,
                   session.revision == revision,
-                  batch.revision == revision else {
+                  session.syntaxConfigurationRevision == syntaxConfigurationRevision,
+                  session.highlighter.map({ ObjectIdentifier($0) == ObjectIdentifier(highlighter) }) == true,
+                  page.batch.revision == revision else {
                 attemptsRemaining -= 1
                 continue
             }
 
-            session.applyInitialHighlighting(batch)
+            session.applyInitialHighlighting(page.batch)
+            if session.hasAppliedSyntaxHighlighting {
+                session.deferInitialHighlighting(page.next)
+            }
             return session.hasAppliedSyntaxHighlighting
         }
 

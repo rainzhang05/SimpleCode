@@ -54,6 +54,7 @@ final class EditorDocumentSession: Identifiable {
         didSet { syntaxConfigurationRevision &+= 1 }
     }
     private var semanticTokens: [SyntaxToken] = []
+    private(set) var deferredInitialHighlightCursor: InitialHighlightCursor?
     private(set) var syntaxContext: SyntaxContext = .empty
     private(set) var didApplySyntaxHighlighting = false
 
@@ -143,6 +144,18 @@ final class EditorDocumentSession: Identifiable {
         mergeSyntaxTokens(batch.tokens, replacingCoveredRanges: batch.coveredRanges)
     }
 
+    func deferInitialHighlighting(_ cursor: InitialHighlightCursor?) {
+        deferredInitialHighlightCursor = cursor
+    }
+
+    func advanceDeferredInitialHighlighting(
+        from cursor: InitialHighlightCursor,
+        to next: InitialHighlightCursor?
+    ) {
+        guard deferredInitialHighlightCursor == cursor else { return }
+        deferredInitialHighlightCursor = next
+    }
+
     func refreshSyntaxAttributes() {
         guard didApplySyntaxHighlighting else { return }
         let fullRange = NSRange(location: 0, length: textStorage.length)
@@ -179,6 +192,7 @@ final class EditorDocumentSession: Identifiable {
         }
         loadState = .error(message)
         enablesSyntaxHighlighting = false
+        releaseSyntaxResources()
     }
 
     func setLoading() {
@@ -231,6 +245,7 @@ final class EditorDocumentSession: Identifiable {
     func mergeSyntaxTokens(_ tokens: [SyntaxToken], replacingCoveredRanges coveredRanges: [NSRange]) {
         if coveredRanges.contains(where: { $0.location == 0 && $0.length >= textStorage.length }) {
             semanticTokens = tokens
+            deferredInitialHighlightCursor = nil
         } else {
             semanticTokens.removeAll { token in
                 coveredRanges.contains { NSIntersectionRange(token.range, $0).length > 0 }
@@ -243,6 +258,7 @@ final class EditorDocumentSession: Identifiable {
 
     func clearSyntaxContext() {
         semanticTokens = []
+        deferredInitialHighlightCursor = nil
         syntaxContext = .empty
         didApplySyntaxHighlighting = false
     }

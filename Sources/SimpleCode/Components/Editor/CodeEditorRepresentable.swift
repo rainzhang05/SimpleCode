@@ -111,6 +111,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
         private var pendingHighlightTask: Task<Void, Never>?
         private var viewportHighlightTask: Task<Void, Never>?
+        private var initialRemainderTask: Task<Void, Never>?
         private var lastAppliedViewportRange: NSRange?
         private var lastBaseFont: NSFont?
         private var lastBaseForeground: StoredColorPair?
@@ -211,8 +212,10 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
             pendingHighlightTask?.cancel()
             viewportHighlightTask?.cancel()
+            initialRemainderTask?.cancel()
             pendingHighlightTask = nil
             viewportHighlightTask = nil
+            initialRemainderTask = nil
             lastAppliedViewportRange = nil
             attachmentGeneration &+= 1
 
@@ -259,14 +262,14 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 let storage = session.textStorage
                 pendingHighlightTask = Task { [weak self] in
                     let batch = await highlighter.load(text: text, revision: revision)
-                    guard let self,
+                    guard !Task.isCancelled,
+                          let self,
                           self.recordParsedRevision(
                             revision,
                             expectedSessionID: sessionID,
                             expectedAttachmentGeneration: generation,
                             expectedTextStorage: storage
-                          ),
-                          !Task.isCancelled else { return }
+                          ) else { return }
                     self.apply(
                         batch: batch,
                         expectedSessionID: sessionID,
@@ -276,6 +279,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 }
             } else {
                 scheduleViewportHighlight()
+                scheduleInitialRemainderIfNeeded()
             }
         }
 
@@ -285,8 +289,10 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             attachmentGeneration &+= 1
             pendingHighlightTask?.cancel()
             viewportHighlightTask?.cancel()
+            initialRemainderTask?.cancel()
             pendingHighlightTask = nil
             viewportHighlightTask = nil
+            initialRemainderTask = nil
             NotificationCenter.default.removeObserver(self)
             scrollView?.contentView.postsBoundsChangedNotifications = false
 
@@ -352,12 +358,13 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             session.markDirty()
             onTextChanged()
 
-            let insertedText = (textStorage.string as NSString).substring(with: editedRange)
+            let insertedText = textStorage.attributedSubstring(from: editedRange).string
             session.lineStartIndex.applyEdit(
                 editedRange: editedRange,
                 changeInLength: delta,
                 insertedText: insertedText,
-                fullText: textStorage.string
+                documentLength: textStorage.length,
+                fullTextFallback: { textStorage.string }
             )
             gutter?.lineStartIndex = session.lineStartIndex
             if let textView,
@@ -371,12 +378,13 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             overlay?.needsDisplay = true
 
             guard session.enablesSyntaxHighlighting, let highlighter = session.highlighter else { return }
+            initialRemainderTask?.cancel()
+            initialRemainderTask = nil
             let descriptor = TextEditDescriptor(
                 startUTF16: editedRange.location,
                 oldEndUTF16: editedRange.location + editedRange.length - delta,
                 newEndUTF16: editedRange.location + editedRange.length
             )
-            let visibleRange = currentVisibleUTF16Range(fallbackAround: editedRange.location)
             let sessionID = session.id
             let generation = attachmentGeneration
             pendingHighlightTask?.cancel()
@@ -395,7 +403,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                         revision: revision,
                         expectedSessionID: sessionID,
                         expectedAttachmentGeneration: generation,
-                        expectedTextStorage: textStorage
+                        expectedTextStorage: textStorage,
+                        priorityOffset: descriptor.startUTF16
                       ) else { return }
                 let result: (priority: HighlightBatch, remainder: HighlightBatch?)
                 switch request.strategy {
@@ -404,7 +413,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                         fullText: request.sourceText,
                         edit: descriptor,
                         revision: revision,
-                        priorityUTF16Range: visibleRange
+                        priorityUTF16Range: request.priorityRange
                     )
                 case .full:
                     result = (
@@ -412,13 +421,14 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                         remainder: nil
                     )
                 }
-                guard let self,
+                guard !Task.isCancelled,
+                      let self,
                       self.recordParsedRevision(
                     revision,
                     expectedSessionID: sessionID,
                     expectedAttachmentGeneration: generation,
                     expectedTextStorage: textStorage
-                ), !Task.isCancelled else { return }
+                ) else { return }
                 self.apply(
                     batch: result.priority,
                     expectedSessionID: sessionID,
@@ -483,6 +493,57 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             }
         }
 
+        private func scheduleInitialRemainderIfNeeded() {
+            initialRemainderTask?.cancel()
+            guard !isTornDown, session.deferredInitialHighlightCursor != nil else {
+                initialRemainderTask = nil
+                return
+            }
+            let sessionID = session.id
+            let generation = attachmentGeneration
+            let storage = session.textStorage
+            initialRemainderTask = Task { [weak self] in
+                await Task.yield()
+                while !Task.isCancelled {
+                    guard let request = self?.makeInitialRemainderRequest(
+                        expectedSessionID: sessionID,
+                        expectedAttachmentGeneration: generation,
+                        expectedTextStorage: storage
+                    ) else { return }
+                    let page = await request.highlighter.continueInitial(
+                        request.cursor,
+                        pageSizeUTF16: InitialHighlightPaging.pageSizeUTF16
+                    )
+                    guard !Task.isCancelled,
+                          let self,
+                          self.isCurrent(
+                            sessionID: sessionID,
+                            attachmentGeneration: generation,
+                            textStorage: storage
+                          ),
+                          self.session.revision == request.cursor.revision,
+                          self.session.deferredInitialHighlightCursor == request.cursor else { return }
+                    guard let page else {
+                        self.session.advanceDeferredInitialHighlighting(from: request.cursor, to: nil)
+                        return
+                    }
+                    guard page.batch.revision == request.cursor.revision,
+                          self.apply(
+                            batch: page.batch,
+                            expectedSessionID: sessionID,
+                            expectedAttachmentGeneration: generation,
+                            expectedTextStorage: storage
+                          ) else { return }
+                    self.session.advanceDeferredInitialHighlighting(from: request.cursor, to: page.next)
+                    guard page.next != nil else {
+                        self.scheduleViewportHighlight()
+                        return
+                    }
+                    await Task.yield()
+                }
+            }
+        }
+
         private func currentVisibleUTF16Range(fallbackAround offset: Int) -> NSRange {
             guard let textView else {
                 return NSRange(location: max(0, offset), length: 0)
@@ -513,7 +574,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 sessionID: expectedSessionID,
                 attachmentGeneration: expectedAttachmentGeneration,
                 textStorage: expectedTextStorage
-            ) else { return false }
+            ), session.revision == revision else { return false }
             lastParsedRevision = revision
             return true
         }
@@ -521,13 +582,15 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         private struct EditHighlightRequest {
             let sourceText: String
             let strategy: HighlightParseStrategy
+            let priorityRange: NSRange
         }
 
         private func makeEditHighlightRequest(
             revision: Int,
             expectedSessionID: UUID,
             expectedAttachmentGeneration: Int,
-            expectedTextStorage: NSTextStorage
+            expectedTextStorage: NSTextStorage,
+            priorityOffset: Int
         ) -> EditHighlightRequest? {
             guard isCurrent(
                 sessionID: expectedSessionID,
@@ -536,10 +599,13 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             ), session.revision == revision else { return nil }
             return EditHighlightRequest(
                 sourceText: expectedTextStorage.string,
-                strategy: HighlightBatchApplicator.parseStrategy(
-                    lastParsedRevision: lastParsedRevision,
-                    requestedRevision: revision
-                )
+                strategy: session.deferredInitialHighlightCursor == nil
+                    ? HighlightBatchApplicator.parseStrategy(
+                        lastParsedRevision: lastParsedRevision,
+                        requestedRevision: revision
+                    )
+                    : .full,
+                priorityRange: currentVisibleUTF16Range(fallbackAround: priorityOffset)
             )
         }
 
@@ -548,6 +614,27 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             let sourceText: String
             let revision: Int
             let visibleRange: NSRange
+        }
+
+        private struct InitialRemainderRequest {
+            let highlighter: any SyntaxHighlighter
+            let cursor: InitialHighlightCursor
+        }
+
+        private func makeInitialRemainderRequest(
+            expectedSessionID: UUID,
+            expectedAttachmentGeneration: Int,
+            expectedTextStorage: NSTextStorage
+        ) -> InitialRemainderRequest? {
+            guard isCurrent(
+                sessionID: expectedSessionID,
+                attachmentGeneration: expectedAttachmentGeneration,
+                textStorage: expectedTextStorage
+            ), session.enablesSyntaxHighlighting,
+               let highlighter = session.highlighter,
+               let cursor = session.deferredInitialHighlightCursor,
+               cursor.revision == session.revision else { return nil }
+            return InitialRemainderRequest(highlighter: highlighter, cursor: cursor)
         }
 
         private func makeViewportHighlightRequest(
@@ -575,18 +662,19 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             )
         }
 
+        @discardableResult
         private func apply(
             batch: HighlightBatch,
             expectedSessionID: UUID,
             expectedAttachmentGeneration: Int,
             expectedTextStorage: NSTextStorage
-        ) {
+        ) -> Bool {
             guard isCurrent(
                 sessionID: expectedSessionID,
                 attachmentGeneration: expectedAttachmentGeneration,
                 textStorage: expectedTextStorage
-            ) else { return }
-            guard HighlightBatchApplicator.shouldApply(batchRevision: batch.revision, currentRevision: session.revision) else { return }
+            ) else { return false }
+            guard HighlightBatchApplicator.shouldApply(batchRevision: batch.revision, currentRevision: session.revision) else { return false }
             let textStorage = expectedTextStorage
             session.mergeSyntaxTokens(batch.tokens, replacingCoveredRanges: batch.coveredRanges)
             isApplyingHighlighting = true
@@ -594,6 +682,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             isApplyingHighlighting = false
             overlay?.needsDisplay = true
             textView?.needsDisplay = true
+            return true
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -861,9 +950,12 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             guard session.enablesSyntaxHighlighting,
                   let highlighter = session.highlighter,
                   let storage = textView.textStorage else { return }
+            initialRemainderTask?.cancel()
+            initialRemainderTask = nil
             pendingHighlightTask?.cancel()
             let sessionID = session.id
             let generation = attachmentGeneration
+            let priorityOffset = session.selectionRange.location
             pendingHighlightTask = Task { [weak self] in
                 do {
                     try await Task.sleep(for: .milliseconds(40))
@@ -875,16 +967,18 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                         revision: revision,
                         expectedSessionID: sessionID,
                         expectedAttachmentGeneration: generation,
-                        expectedTextStorage: storage
+                        expectedTextStorage: storage,
+                        priorityOffset: priorityOffset
                       ) else { return }
                 let batch = await highlighter.load(text: request.sourceText, revision: revision)
-                guard let self,
+                guard !Task.isCancelled,
+                      let self,
                       self.recordParsedRevision(
                     revision,
                     expectedSessionID: sessionID,
                     expectedAttachmentGeneration: generation,
                     expectedTextStorage: storage
-                ), !Task.isCancelled else { return }
+                ) else { return }
                 self.apply(
                     batch: batch,
                     expectedSessionID: sessionID,

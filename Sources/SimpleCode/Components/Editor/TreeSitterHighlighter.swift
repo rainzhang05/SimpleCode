@@ -15,6 +15,8 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
     private var tree: MutableTree?
     private var lastParsedText = ""
     private var pendingRetryUTF16Ranges: [NSRange] = []
+    private var initialGeneration: UInt64 = 0
+    private var initialRevision: Int?
 
     init?(languageID: LanguageID) {
         guard let configuration = Self.configuration(for: languageID) else {
@@ -60,6 +62,7 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
     }
 
     func load(text: String, revision: Int) async -> HighlightBatch {
+        invalidateInitialContinuation()
         let newTree = parser.parse(text)
         tree = newTree
         lastParsedText = text
@@ -69,12 +72,79 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         return HighlightBatch(revision: revision, coveredRanges: [wholeDocument], tokens: tokens)
     }
 
+    func prepareInitial(
+        text: String,
+        revision: Int,
+        priorityUTF16Range: NSRange
+    ) async -> InitialHighlightPage {
+        initialGeneration &+= 1
+        initialRevision = revision
+        let newTree = parser.parse(text)
+        tree = newTree
+        lastParsedText = text
+        pendingRetryUTF16Ranges = []
+        let priority = NSIntersectionRange(
+            priorityUTF16Range,
+            NSRange(location: 0, length: text.utf16.count)
+        )
+        let tokens = newTree.map {
+            highlightTokens(
+                in: $0,
+                restrictedTo: utf16RangeToByteRange(priority, documentUTF16Count: text.utf16.count)
+            )
+        } ?? []
+        let remaining = InitialHighlightPaging.remainingRanges(
+            documentLength: text.utf16.count,
+            excluding: priority
+        )
+        return InitialHighlightPage(
+            batch: HighlightBatch(revision: revision, coveredRanges: [priority], tokens: tokens),
+            next: remaining.isEmpty
+                ? nil
+                : InitialHighlightCursor(
+                    generation: initialGeneration,
+                    revision: revision,
+                    remainingRanges: remaining
+                )
+        )
+    }
+
+    func continueInitial(
+        _ cursor: InitialHighlightCursor,
+        pageSizeUTF16: Int
+    ) async -> InitialHighlightPage? {
+        guard cursor.generation == initialGeneration,
+              cursor.revision == initialRevision,
+              let tree,
+              let pageRange = InitialHighlightPaging.nextPageRange(
+                in: lastParsedText,
+                cursor: cursor,
+                pageSizeUTF16: pageSizeUTF16
+              ) else { return nil }
+        let tokens = highlightTokens(
+            in: tree,
+            restrictedTo: utf16RangeToByteRange(
+                pageRange,
+                documentUTF16Count: lastParsedText.utf16.count
+            )
+        )
+        return InitialHighlightPage(
+            batch: HighlightBatch(
+                revision: cursor.revision,
+                coveredRanges: [pageRange],
+                tokens: tokens
+            ),
+            next: InitialHighlightPaging.advancing(cursor, past: pageRange)
+        )
+    }
+
     func applyEdit(
         fullText: String,
         edit: TextEditDescriptor,
         revision: Int,
         priorityUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+        invalidateInitialContinuation()
         let editPointRange = NSRange(location: edit.startUTF16, length: max(0, edit.newEndUTF16 - edit.startUTF16))
         let priorityRanges = mergedRanges(
             [priorityUTF16Range, editPointRange],
@@ -97,6 +167,11 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
             documentUTF16Count: fullText.utf16.count,
             includePendingRetry: true
         )
+    }
+
+    private func invalidateInitialContinuation() {
+        initialGeneration &+= 1
+        initialRevision = nil
     }
 
     func scheduleViewport(

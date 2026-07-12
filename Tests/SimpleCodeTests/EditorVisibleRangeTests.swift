@@ -98,6 +98,68 @@ struct EditorVisibleRangeTests {
         }
     }
 
+    private actor PagedRemainderHighlighter: SyntaxHighlighter {
+        private let text: String
+        private var continuationCount = 0
+
+        init(text: String) {
+            self.text = text
+        }
+
+        func pageCount() -> Int { continuationCount }
+
+        func load(text: String, revision: Int) -> HighlightBatch {
+            HighlightBatch(
+                revision: revision,
+                coveredRanges: [NSRange(location: 0, length: text.utf16.count)],
+                tokens: []
+            )
+        }
+
+        func continueInitial(
+            _ cursor: InitialHighlightCursor,
+            pageSizeUTF16: Int
+        ) -> InitialHighlightPage? {
+            guard let pageRange = InitialHighlightPaging.nextPageRange(
+                in: text,
+                cursor: cursor,
+                pageSizeUTF16: pageSizeUTF16
+            ) else { return nil }
+            continuationCount += 1
+            return InitialHighlightPage(
+                batch: HighlightBatch(
+                    revision: cursor.revision,
+                    coveredRanges: [pageRange],
+                    tokens: [SyntaxToken(
+                        range: NSRange(location: pageRange.location, length: min(3, pageRange.length)),
+                        category: .string
+                    )]
+                ),
+                next: InitialHighlightPaging.advancing(cursor, past: pageRange)
+            )
+        }
+
+        func applyEdit(
+            fullText: String,
+            edit: TextEditDescriptor,
+            revision: Int,
+            priorityUTF16Range: NSRange
+        ) -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            (load(text: fullText, revision: revision), nil)
+        }
+
+        func scheduleViewport(
+            fullText: String,
+            revision: Int,
+            visibleUTF16Range: NSRange
+        ) -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            (
+                HighlightBatch(revision: revision, coveredRanges: [visibleUTF16Range], tokens: []),
+                nil
+            )
+        }
+    }
+
     @MainActor
     private final class MutationApplierSpy: EditorTextMutationApplying {
         private(set) var applicationCount = 0
@@ -328,6 +390,74 @@ struct EditorVisibleRangeTests {
         let calls = await highlighter.snapshot()
         #expect(calls.loadTexts == ["let gap12"])
         #expect(calls.editTexts.isEmpty)
+        coordinator.tearDown()
+    }
+
+    @MainActor
+    @Test func nativeAttachmentCompletesDeferredInitialHighlightPages() async throws {
+        let suiteName = "SimpleCode.EditorInitialPages.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "EditorInitialPages-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "editor-initial-pages")
+        )
+        defer { workspace.tearDown() }
+        let text = String(repeating: "let paged = true\n", count: 8_000)
+        let highlighter = PagedRemainderHighlighter(text: text)
+        let session = EditorDocumentSession(displayName: "Paged.swift")
+        session.textStorage.setAttributedString(NSAttributedString(string: text))
+        session.highlighter = highlighter
+        let priorityRange = InitialHighlightPaging.priorityRange(in: text, aroundUTF16Offset: 0)
+        session.applyInitialHighlighting(HighlightBatch(
+            revision: 0,
+            coveredRanges: [priorityRange],
+            tokens: [SyntaxToken(range: NSRange(location: 0, length: 3), category: .keyword)]
+        ))
+        let remaining = InitialHighlightPaging.remainingRanges(
+            documentLength: text.utf16.count,
+            excluding: priorityRange
+        )
+        let cursor = InitialHighlightCursor(generation: 1, revision: 0, remainingRanges: remaining)
+        session.deferInitialHighlighting(cursor)
+
+        let textView = CodeTextView()
+        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let scrollView = NSScrollView()
+        scrollView.documentView = textView
+        let coordinator = CodeEditorRepresentable.Coordinator(
+            session: session,
+            settings: settings,
+            workspace: workspace,
+            onTextChanged: {}
+        )
+        coordinator.textView = textView
+        coordinator.scrollView = scrollView
+        coordinator.attach(session: session, to: textView)
+
+        for _ in 0..<100 where session.deferredInitialHighlightCursor != nil {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        #expect(session.deferredInitialHighlightCursor == nil)
+        #expect(await highlighter.pageCount() > 0)
+        let firstRemainderOffset = try #require(remaining.first?.location)
+        let remainderColor = session.textStorage.attribute(
+            .foregroundColor,
+            at: firstRemainderOffset,
+            effectiveRange: nil
+        ) as? NSColor
+        #expect(remainderColor != nil)
+        #expect(remainderColor != ColorRole.editorForegroundNSColor)
         coordinator.tearDown()
     }
 

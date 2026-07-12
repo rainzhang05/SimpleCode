@@ -3,6 +3,26 @@ import Testing
 @testable import SimpleCode
 
 struct LineStartIndexTests {
+    @Test func ordinaryCharacterEditDoesNotReadFullTextFallback() {
+        var index = LineStartIndex()
+        index.rebuild(from: "hello")
+        var fallbackReadCount = 0
+
+        index.applyEdit(
+            editedRange: NSRange(location: 5, length: 1),
+            changeInLength: 1,
+            insertedText: "!",
+            documentLength: 6,
+            fullTextFallback: {
+                fallbackReadCount += 1
+                return "hello!"
+            }
+        )
+
+        #expect(fallbackReadCount == 0)
+        #expect(index.lineCount == 1)
+    }
+
     @Test func emptyDocumentHasOneLine() {
         var index = LineStartIndex()
         index.rebuild(from: "")

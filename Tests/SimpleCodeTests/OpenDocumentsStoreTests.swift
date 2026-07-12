@@ -6,6 +6,110 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct OpenDocumentsStoreTests {
+    private actor StaticLargeFileLoader: FileContentLoading {
+        let text: String
+
+        init(text: String) {
+            self.text = text
+        }
+
+        func metadata(for url: URL) -> FileMetadata {
+            FileMetadata(byteCount: Int64(text.utf8.count), openPolicy: .warnLargeFile)
+        }
+
+        func load(url: URL, choice: LargeFileOpenChoice?) -> LoadedFileContent {
+            LoadedFileContent(
+                text: text,
+                encoding: .utf8,
+                hadBOM: false,
+                lineEnding: .lf,
+                byteCount: Int64(text.utf8.count),
+                modificationDate: nil,
+                fileResourceIdentifier: nil,
+                language: .swift,
+                openPolicy: .warnLargeFile
+            )
+        }
+    }
+
+    private actor PriorityInitialHighlighter: SyntaxHighlighter {
+        private var fullLoadCount = 0
+        private var priorityLoadCount = 0
+        private var remainderLoadCount = 0
+        private var lastPriorityRange: NSRange?
+
+        func snapshot() -> (full: Int, priority: Int, remainder: Int, range: NSRange?) {
+            (fullLoadCount, priorityLoadCount, remainderLoadCount, lastPriorityRange)
+        }
+
+        func load(text: String, revision: Int) -> HighlightBatch {
+            fullLoadCount += 1
+            return HighlightBatch(
+                revision: revision,
+                coveredRanges: [NSRange(location: 0, length: text.utf16.count)],
+                tokens: [SyntaxToken(range: NSRange(location: 0, length: min(3, text.utf16.count)), category: .keyword)]
+            )
+        }
+
+        func prepareInitial(
+            text: String,
+            revision: Int,
+            priorityUTF16Range: NSRange
+        ) -> InitialHighlightPage {
+            priorityLoadCount += 1
+            lastPriorityRange = priorityUTF16Range
+            let remaining = InitialHighlightPaging.remainingRanges(
+                documentLength: text.utf16.count,
+                excluding: priorityUTF16Range
+            )
+            return InitialHighlightPage(
+                batch: HighlightBatch(
+                    revision: revision,
+                    coveredRanges: [priorityUTF16Range],
+                    tokens: [SyntaxToken(range: NSRange(location: 0, length: min(3, priorityUTF16Range.length)), category: .keyword)]
+                ),
+                next: remaining.isEmpty
+                    ? nil
+                    : InitialHighlightCursor(generation: 1, revision: revision, remainingRanges: remaining)
+            )
+        }
+
+        func continueInitial(
+            _ cursor: InitialHighlightCursor,
+            pageSizeUTF16: Int
+        ) -> InitialHighlightPage? {
+            remainderLoadCount += 1
+            return InitialHighlightPage(
+                batch: HighlightBatch(
+                    revision: cursor.revision,
+                    coveredRanges: [cursor.remainingRanges[0]],
+                    tokens: []
+                ),
+                next: nil
+            )
+        }
+
+        func applyEdit(
+            fullText: String,
+            edit: TextEditDescriptor,
+            revision: Int,
+            priorityUTF16Range: NSRange
+        ) -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            (load(text: fullText, revision: revision), nil)
+        }
+
+        func scheduleViewport(
+            fullText: String,
+            revision: Int,
+            visibleUTF16Range: NSRange
+        ) -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+            (
+                HighlightBatch(revision: revision, coveredRanges: [visibleUTF16Range], tokens: []),
+                nil
+            )
+        }
+    }
+
     private actor ControlledHighlighter: SyntaxHighlighter {
         private let category: SyntaxCategory
         private let suspendsLoad: Bool
@@ -191,6 +295,29 @@ struct OpenDocumentsStoreTests {
         try expect(tokenColor, resolvesLike: expectedPair)
     }
 
+    @Test func largeFilePublishesAfterPrioritySyntaxAndDefersRemainder() async throws {
+        let text = String(repeating: "let visible = true\n", count: 8_000)
+        let loader = StaticLargeFileLoader(text: text)
+        let highlighter = PriorityInitialHighlighter()
+        let store = OpenDocumentsStore(loader: loader, highlighterFactory: { _ in highlighter })
+        let file = FileManager.default.temporaryDirectory.appending(path: "LargePriority-\(UUID().uuidString).swift")
+
+        await store.open(url: file, choice: .openAnyway)
+
+        let session = try #require(store.activeSession)
+        let calls = await highlighter.snapshot()
+        let priorityRange = try #require(calls.range)
+        #expect(session.loadState == .loaded)
+        #expect(session.hasAppliedSyntaxHighlighting)
+        #expect(calls.full == 0)
+        #expect(calls.priority == 1)
+        #expect(calls.remainder == 0)
+        #expect(priorityRange.location == 0)
+        #expect(priorityRange.length < text.utf16.count)
+        #expect(session.deferredInitialHighlightCursor != nil)
+        #expect(session.textStorage.attribute(.foregroundColor, at: 0, effectiveRange: nil) != nil)
+    }
+
     @Test func staleInitialHighlightRetriesCurrentLanguageBeforePublishing() async throws {
         let firstHighlighter = ControlledHighlighter(suspendsLoad: true)
         let retryHighlighter = ControlledHighlighter(category: .string, suspendsLoad: false)
@@ -241,6 +368,61 @@ struct OpenDocumentsStoreTests {
 
         await store.reopenLastClosed()
         #expect(store.activeSession?.fileURL?.standardizedFileURL == file.standardizedFileURL)
+    }
+
+    @Test func reloadSyntaxFailureReleasesHighlighterResources() async throws {
+        let firstHighlighter = ControlledHighlighter(suspendsLoad: false)
+        var factoryCalls = 0
+        let store = OpenDocumentsStore(highlighterFactory: { _ in
+            factoryCalls += 1
+            return factoryCalls == 1 ? firstHighlighter : nil
+        })
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Reload.swift")
+        try "let original = true\n".write(to: file, atomically: true, encoding: .utf8)
+
+        await store.open(url: file)
+        let session = try #require(store.activeSession)
+        #expect(session.highlighter != nil)
+        try "let reloaded = false\n".write(to: file, atomically: true, encoding: .utf8)
+
+        await store.reloadFromDisk(session: session)
+
+        #expect(session.loadState == .error("Could not prepare syntax highlighting."))
+        #expect(session.highlighter == nil)
+        #expect(!session.hasAppliedSyntaxHighlighting)
+    }
+
+    @Test func supersededReopenKeepsRecentlyClosedRecord() async throws {
+        let loader = DeferredFileContentLoader()
+        let store = OpenDocumentsStore(loader: loader)
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let closedFile = directory.appendingPathComponent("Closed.swift")
+        let replacementFile = directory.appendingPathComponent("Replacement.swift")
+
+        let initialOpen = Task { @MainActor in await store.open(url: closedFile) }
+        await waitForPendingLoad(of: closedFile, in: loader)
+        await loader.resolve(closedFile, text: "let closed = true")
+        await initialOpen.value
+        let closedSession = try #require(store.activeSession)
+        #expect(store.close(sessionID: closedSession.id, force: true))
+        #expect(store.recentlyClosed.first?.fileURL == closedFile)
+
+        let reopen = Task { @MainActor in await store.reopenLastClosed() }
+        await waitForPendingLoad(of: closedFile, in: loader)
+        let replacementOpen = Task { @MainActor in await store.open(url: replacementFile) }
+        await waitForPendingLoad(of: replacementFile, in: loader)
+        await loader.resolve(closedFile, text: "let closed = true")
+        await loader.resolve(replacementFile, text: "let replacement = true")
+        await reopen.value
+        await replacementOpen.value
+
+        #expect(store.activeSession?.fileURL == replacementFile)
+        #expect(store.recentlyClosed.first?.fileURL == closedFile)
     }
 
     @Test func rapidFileSelectionKeepsOnlyTheLatestOpenRequest() async throws {

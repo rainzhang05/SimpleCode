@@ -47,12 +47,16 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
     private var cachedRevision = -1
     private var cachedTokens: [SyntaxToken] = []
     private var hasMultilineConstructs = false
+    private var initialGeneration: UInt64 = 0
+    private var initialRevision: Int?
+    private var initialFullTokens: [SyntaxToken]?
 
     init(languageID: LanguageID) {
         configuration = Configuration(languageID: languageID)
     }
 
     func load(text: String, revision: Int) async -> HighlightBatch {
+        invalidateInitialContinuation()
         let tokens = highlightEntireDocument(text)
         cachedText = text
         cachedRevision = revision
@@ -62,12 +66,72 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         return HighlightBatch(revision: revision, coveredRanges: [wholeDocument], tokens: tokens)
     }
 
+    func prepareInitial(
+        text: String,
+        revision: Int,
+        priorityUTF16Range: NSRange
+    ) async -> InitialHighlightPage {
+        initialGeneration &+= 1
+        initialRevision = revision
+        initialFullTokens = nil
+        let priority = NSIntersectionRange(
+            priorityUTF16Range,
+            NSRange(location: 0, length: text.utf16.count)
+        )
+        let tokens = highlight(text, restrictedTo: priority)
+        cachedText = text
+        cachedRevision = revision
+        cachedTokens = tokens
+        hasMultilineConstructs = Self.containsMultilineConstructs(
+            text,
+            supportsBackticks: configuration.supportsBackticks
+        )
+        let remaining = InitialHighlightPaging.remainingRanges(
+            documentLength: text.utf16.count,
+            excluding: priority
+        )
+        return InitialHighlightPage(
+            batch: HighlightBatch(revision: revision, coveredRanges: [priority], tokens: tokens),
+            next: remaining.isEmpty
+                ? nil
+                : InitialHighlightCursor(
+                    generation: initialGeneration,
+                    revision: revision,
+                    remainingRanges: remaining
+                )
+        )
+    }
+
+    func continueInitial(
+        _ cursor: InitialHighlightCursor,
+        pageSizeUTF16: Int
+    ) async -> InitialHighlightPage? {
+        guard cursor.generation == initialGeneration,
+              cursor.revision == initialRevision,
+              cachedRevision == cursor.revision,
+              let pageRange = InitialHighlightPaging.nextPageRange(
+                in: cachedText,
+                cursor: cursor,
+                pageSizeUTF16: pageSizeUTF16
+              ) else { return nil }
+        let allTokens = completeInitialTokenCacheIfNeeded()
+        return InitialHighlightPage(
+            batch: HighlightBatch(
+                revision: cursor.revision,
+                coveredRanges: [pageRange],
+                tokens: tokens(in: [pageRange], from: allTokens)
+            ),
+            next: InitialHighlightPaging.advancing(cursor, past: pageRange)
+        )
+    }
+
     func applyEdit(
         fullText: String,
         edit: TextEditDescriptor,
         revision: Int,
         priorityUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+        invalidateInitialContinuation()
         guard cachedRevision == revision - 1,
               !hasMultilineConstructs,
               !Self.editTouchesMultilineSyntax(
@@ -149,6 +213,9 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
             )
         }
 
+        if initialRevision == revision, initialFullTokens == nil {
+            _ = completeInitialTokenCacheIfNeeded()
+        }
         let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count)
         return (
             HighlightBatch(
@@ -158,6 +225,20 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
             ),
             nil
         )
+    }
+
+    private func completeInitialTokenCacheIfNeeded() -> [SyntaxToken] {
+        if let initialFullTokens { return initialFullTokens }
+        let tokens = highlightEntireDocument(cachedText)
+        initialFullTokens = tokens
+        cachedTokens = tokens
+        return tokens
+    }
+
+    private func invalidateInitialContinuation() {
+        initialGeneration &+= 1
+        initialRevision = nil
+        initialFullTokens = nil
     }
 
     private func highlightEntireDocument(_ text: String) -> [SyntaxToken] {
@@ -179,7 +260,7 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
                 continue
             }
 
-            let lineEnd = Self.lineEnd(after: location, in: nsText)
+            let lineEnd = min(end, Self.lineEnd(after: location, in: nsText))
             if configuration.supportsSlashComments,
                unit == 47,
                location + 1 < nsText.length {
@@ -190,12 +271,15 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
                     continue
                 }
                 if next == 42 {
-                    let closing = nsText.range(
-                        of: "*/",
-                        options: [],
-                        range: NSRange(location: location + 2, length: nsText.length - location - 2)
-                    )
-                    let commentEnd = closing.location == NSNotFound ? nsText.length : NSMaxRange(closing)
+                    let searchStart = location + 2
+                    let closing = searchStart < end
+                        ? nsText.range(
+                            of: "*/",
+                            options: [],
+                            range: NSRange(location: searchStart, length: end - searchStart)
+                        )
+                        : NSRange(location: NSNotFound, length: 0)
+                    let commentEnd = closing.location == NSNotFound ? end : min(end, NSMaxRange(closing))
                     tokens.append(SyntaxToken(range: NSRange(location: location, length: commentEnd - location), category: .comment))
                     location = commentEnd
                     continue
@@ -212,18 +296,21 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
                nsText.character(at: location + 1) == unit,
                nsText.character(at: location + 2) == unit {
                 let delimiter = String(UnicodeScalar(unit)!) + String(UnicodeScalar(unit)!) + String(UnicodeScalar(unit)!)
-                let closing = nsText.range(
-                    of: delimiter,
-                    options: [],
-                    range: NSRange(location: location + 3, length: nsText.length - location - 3)
-                )
-                let stringEnd = closing.location == NSNotFound ? nsText.length : NSMaxRange(closing)
+                let searchStart = location + 3
+                let closing = searchStart < end
+                    ? nsText.range(
+                        of: delimiter,
+                        options: [],
+                        range: NSRange(location: searchStart, length: end - searchStart)
+                    )
+                    : NSRange(location: NSNotFound, length: 0)
+                let stringEnd = closing.location == NSNotFound ? end : min(end, NSMaxRange(closing))
                 tokens.append(SyntaxToken(range: NSRange(location: location, length: stringEnd - location), category: .string))
                 location = stringEnd
                 continue
             }
             if unit == 34 || unit == 39 || (configuration.supportsBackticks && unit == 96) {
-                let limit = unit == 96 ? nsText.length : lineEnd
+                let limit = unit == 96 ? end : lineEnd
                 let stringEnd = endOfString(in: nsText, startingAt: location, limit: limit, delimiter: unit)
                 tokens.append(SyntaxToken(
                     range: NSRange(location: location, length: max(1, stringEnd - location)),
