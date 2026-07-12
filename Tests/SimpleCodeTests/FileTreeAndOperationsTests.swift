@@ -48,6 +48,16 @@ struct WorkspaceFileTreeServiceTests {
 
 @MainActor
 struct FileTreeModelRefreshTests {
+    @Test func changedExclusionGenerationRejectsStaleLoad() {
+        var currentGeneration = FileTreeExclusionGeneration()
+        let loadGeneration = currentGeneration
+
+        currentGeneration.advance()
+
+        #expect(!currentGeneration.permitsCommit(from: loadGeneration))
+        #expect(currentGeneration.permitsCommit(from: currentGeneration))
+    }
+
     @Test func exclusionRefreshPreservesExpandedDirectories() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let sources = root.appendingPathComponent("Sources")

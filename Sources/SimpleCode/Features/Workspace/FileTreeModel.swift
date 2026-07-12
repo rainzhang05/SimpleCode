@@ -21,6 +21,20 @@ struct FileTreeVisibleRow: Identifiable, Equatable {
     var id: FileTreeNodeID { node.id }
 }
 
+/// Monotonic identity for the exclusion rules captured by an asynchronous tree
+/// load. A result may only commit when its captured generation is still current.
+struct FileTreeExclusionGeneration: Equatable, Sendable {
+    private var value: UInt = 0
+
+    mutating func advance() {
+        value &+= 1
+    }
+
+    func permitsCommit(from captured: Self) -> Bool {
+        self == captured
+    }
+}
+
 @MainActor
 @Observable
 final class FileTreeModel {
@@ -38,6 +52,10 @@ final class FileTreeModel {
     private(set) var isLoadingRoot = false
 
     private let treeService = WorkspaceFileTreeService()
+    private var exclusionGeneration = FileTreeExclusionGeneration()
+    private var nextLoadRequestID: UInt = 0
+    private var activeRootRequestID: UInt?
+    private var activeChildRequestIDs: [FileTreeNodeID: UInt] = [:]
 
     init(workspaceRoot: URL, userExclusions: [String] = []) {
         self.workspaceRoot = workspaceRoot
@@ -49,20 +67,36 @@ final class FileTreeModel {
     func applyUserExclusions(_ exclusions: [String]) -> Bool {
         guard exclusions != userExclusions else { return false }
         userExclusions = exclusions
+        exclusionGeneration.advance()
         return true
     }
 
     func loadRoot() async {
-        await loadRoot(userPatterns: userExclusions)
+        _ = await loadRoot(
+            userPatterns: userExclusions,
+            generation: exclusionGeneration
+        )
     }
 
-    private func loadRoot(userPatterns: [String]) async {
+    private func loadRoot(
+        userPatterns: [String],
+        generation: FileTreeExclusionGeneration
+    ) async -> Bool {
+        let requestID = makeLoadRequestID()
+        activeRootRequestID = requestID
+        activeChildRequestIDs.removeAll()
         isLoadingRoot = true
         let listing = await treeService.listDirectory(
             at: workspaceRoot,
             workspaceRoot: workspaceRoot,
             userPatterns: userPatterns
         )
+        guard activeRootRequestID == requestID else { return false }
+        guard exclusionGeneration.permitsCommit(from: generation) else {
+            activeRootRequestID = nil
+            isLoadingRoot = false
+            return false
+        }
         rootChildren = listing.children.map { child in
             FileTreeNodeState(
                 id: child.id,
@@ -85,15 +119,18 @@ final class FileTreeModel {
             )]
         }
         rebuildVisibleRows()
+        activeRootRequestID = nil
         isLoadingRoot = false
+        return true
     }
 
     func refresh() async {
         // A settings observation can run while directory I/O is suspended. Use one
         // immutable exclusion snapshot for the complete root-and-descendant replay.
         let userPatterns = userExclusions
+        let generation = exclusionGeneration
         let preserved = expandedNodeIDs
-        await loadRoot(userPatterns: userPatterns)
+        guard await loadRoot(userPatterns: userPatterns, generation: generation) else { return }
         expandedNodeIDs = preserved
         // Parents have to be restored before their descendants can be found in the
         // freshly rebuilt tree. Deterministic shallow-to-deep replay also avoids
@@ -101,7 +138,12 @@ final class FileTreeModel {
         for id in preserved.sorted(by: { lhs, rhs in
             lhs.path.split(separator: "/").count < rhs.path.split(separator: "/").count
         }) {
-            await loadChildrenIfNeeded(for: id, userPatterns: userPatterns)
+            guard exclusionGeneration.permitsCommit(from: generation) else { return }
+            await loadChildrenIfNeeded(
+                for: id,
+                userPatterns: userPatterns,
+                generation: generation
+            )
         }
     }
 
@@ -121,25 +163,39 @@ final class FileTreeModel {
     }
 
     func loadChildrenIfNeeded(for nodeID: FileTreeNodeID) async {
-        await loadChildrenIfNeeded(for: nodeID, userPatterns: userExclusions)
+        await loadChildrenIfNeeded(
+            for: nodeID,
+            userPatterns: userExclusions,
+            generation: exclusionGeneration
+        )
     }
 
     private func loadChildrenIfNeeded(
         for nodeID: FileTreeNodeID,
-        userPatterns: [String]
+        userPatterns: [String],
+        generation: FileTreeExclusionGeneration
     ) async {
+        guard exclusionGeneration.permitsCommit(from: generation) else { return }
         guard let node = findNode(id: nodeID) else { return }
         guard node.isDirectory else { return }
         if node.children != nil && node.loadError == nil && !node.isLoading {
             return
         }
 
+        let requestID = makeLoadRequestID()
+        activeChildRequestIDs[nodeID] = requestID
         setLoading(true, for: nodeID)
         let listing = await treeService.listDirectory(
             at: node.url,
             workspaceRoot: workspaceRoot,
             userPatterns: userPatterns
         )
+        guard activeChildRequestIDs[nodeID] == requestID else { return }
+        activeChildRequestIDs[nodeID] = nil
+        guard exclusionGeneration.permitsCommit(from: generation) else {
+            setLoading(false, for: nodeID)
+            return
+        }
         let children = listing.children.map { child in
             FileTreeNodeState(
                 id: child.id,
@@ -155,6 +211,11 @@ final class FileTreeModel {
             node.isLoading = false
             node.loadError = listing.error
         }
+    }
+
+    private func makeLoadRequestID() -> UInt {
+        nextLoadRequestID &+= 1
+        return nextLoadRequestID
     }
 
     func destinationDirectoryForCreation() -> URL {
