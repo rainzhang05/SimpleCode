@@ -69,7 +69,7 @@ struct WelcomeView: View {
         .fileImporter(isPresented: $isChoosingExistingFolder, allowedContentTypes: [.folder]) { result in
             switch result {
             case .success(let url):
-                appModel.openWorkspace(at: url, provenance: .openedExisting)
+                appModel.openWorkspace(at: url)
             case .failure(let error):
                 errorMessage = error.localizedDescription
             }
@@ -78,7 +78,7 @@ struct WelcomeView: View {
             NewFolderSheet(
                 onCreate: { url in
                     isShowingNewFolderSheet = false
-                    appModel.openWorkspace(at: url, provenance: .userCreated)
+                    appModel.openWorkspace(at: url)
                 },
                 onCancel: { isShowingNewFolderSheet = false }
             )
@@ -238,6 +238,6 @@ private struct RecentWorkspaceRow: View {
 
     private func open() {
         guard let url = appModel.recentWorkspaces.resolvedURL(for: record.id) else { return }
-        appModel.openWorkspace(at: url, provenance: .openedExisting)
+        appModel.openWorkspace(at: url)
     }
 }

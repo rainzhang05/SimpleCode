@@ -42,18 +42,6 @@ struct SimpleCodeApp: App {
                     appModel.workspace?.showRestartTerminalConfirmation = true
                 }
                 .disabled(appModel.workspace == nil)
-                Divider()
-                if appModel.workspace?.trust.isTrusted == true {
-                    Button("Mark Workspace as Untrusted") {
-                        appModel.workspace?.trust.markUntrusted()
-                    }
-                    .disabled(appModel.workspace == nil)
-                } else {
-                    Button("Mark Workspace as Trusted") {
-                        appModel.workspace?.trust.markTrusted()
-                    }
-                    .disabled(appModel.workspace == nil)
-                }
             }
 
             CommandGroup(after: .saveItem) {

@@ -78,4 +78,44 @@ struct RunConfigurationStoreTests {
         #expect(reloaded.configuration.revealTerminalOnRun == false)
         #expect(reloaded.configuration.clearTerminalBeforeRun == true)
     }
+
+    @Test func legacyTrustFieldsAreIgnoredWhileRunConfigurationSurvives() throws {
+        let suiteName = "com.simplecode.tests.legacy-runconfig.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let storageKey = "workspaceState.v1"
+        let workspaceID = UUID()
+        let legacyPayload: [String: Any] = [
+            workspaceID.uuidString: [
+                "runConfiguration": [
+                    "command": "swift test",
+                    "isCommandExplicit": true,
+                    "suggestedCommand": NSNull(),
+                    "revealTerminalOnRun": false,
+                    "clearTerminalBeforeRun": true
+                ],
+                "trust": "trusted",
+                "rootFilesystemIdentity": "legacy-root-identity"
+            ]
+        ]
+        defaults.set(try JSONSerialization.data(withJSONObject: legacyPayload), forKey: storageKey)
+
+        let store = WorkspaceStateStore(defaults: defaults, storageKey: storageKey)
+        #expect(store.state(for: workspaceID).runConfiguration.command == "swift test")
+        #expect(store.state(for: workspaceID).runConfiguration.isCommandExplicit)
+        #expect(store.state(for: workspaceID).runConfiguration.revealTerminalOnRun == false)
+        #expect(store.state(for: workspaceID).runConfiguration.clearTerminalBeforeRun)
+
+        store.updateRunConfiguration(for: workspaceID) { $0.command = "swift run" }
+
+        let persistedData = try #require(defaults.data(forKey: storageKey))
+        let persistedPayload = try #require(
+            JSONSerialization.jsonObject(with: persistedData) as? [String: Any]
+        )
+        let persistedWorkspace = try #require(
+            persistedPayload[workspaceID.uuidString] as? [String: Any]
+        )
+        #expect(persistedWorkspace["trust"] == nil)
+        #expect(persistedWorkspace["rootFilesystemIdentity"] == nil)
+    }
 }

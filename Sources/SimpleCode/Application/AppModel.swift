@@ -55,7 +55,6 @@ final class AppModel {
                     rootURL: folderURL,
                     appSettings: self.appSettings,
                     workspaceStateStore: self.workspaceStateStore,
-                    provenance: .openedExisting,
                     useSyntaxStressSample: launchConfiguration.useSyntaxStressSample,
                     launchConfiguration: launchConfiguration
                 ))
@@ -70,29 +69,28 @@ final class AppModel {
 
     var isWorkspaceOpen: Bool { workspace != nil }
 
-    func openWorkspace(at url: URL, provenance: WorkspaceOpenProvenance = .openedExisting) {
+    func openWorkspace(at url: URL) {
         if case .workspace(let existing) = route {
             if !existing.openDocuments.dirtySessions().isEmpty {
                 pendingWorkspaceURL = url
                 existing.unsavedSessionsForSheet = existing.openDocuments.dirtySessions()
                 existing.pendingCloseAction = { [weak self] in
-                    self?.performOpenWorkspace(at: url, provenance: provenance)
+                    self?.performOpenWorkspace(at: url)
                 }
                 return
             }
             existing.tearDown()
         }
-        performOpenWorkspace(at: url, provenance: provenance)
+        performOpenWorkspace(at: url)
     }
 
-    private func performOpenWorkspace(at url: URL, provenance: WorkspaceOpenProvenance) {
+    private func performOpenWorkspace(at url: URL) {
         let record = recentWorkspaces.recordOpened(url: url)
         let workspace = WorkspaceModel(
             id: record.id,
             rootURL: url,
             appSettings: appSettings,
             workspaceStateStore: workspaceStateStore,
-            provenance: provenance,
             launchConfiguration: launchConfiguration
         )
         route = .workspace(workspace)
@@ -124,6 +122,6 @@ final class AppModel {
 
     func handleCloneSuccess(destination: URL) {
         showCloneSheet = false
-        openWorkspace(at: destination, provenance: .cloned)
+        openWorkspace(at: destination)
     }
 }

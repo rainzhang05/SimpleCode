@@ -57,22 +57,6 @@ struct RunConfigurationPopover: View {
                     .font(.system(size: 12))
                     .accessibilityIdentifier("run.popover.clearTerminal")
 
-                if workspace.trust.isTrusted {
-                    Button("Mark Workspace as Untrusted") {
-                        workspace.trust.markUntrusted()
-                    }
-                    .pointingHandCursor()
-                    .font(.system(size: 11))
-                    .accessibilityIdentifier("run.popover.markUntrusted")
-                } else {
-                    Button("Mark Workspace as Trusted") {
-                        workspace.trust.markTrusted()
-                    }
-                    .pointingHandCursor()
-                    .font(.system(size: 11))
-                    .accessibilityIdentifier("run.popover.markTrusted")
-                }
-
                 HStack {
                     Spacer()
                     Button("Done") {

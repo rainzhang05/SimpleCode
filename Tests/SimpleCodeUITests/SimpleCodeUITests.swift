@@ -136,26 +136,6 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         XCTAssertTrue(saved.contains("message"))
     }
 
-    func testRunConfigurationShowsTrustGateAndCancelDoesNotRun() throws {
-        _ = try openFixtureWorkspace()
-
-        app.buttons["workspace.runConfigButton"].click()
-        let commandField = app.textFields["run.popover.commandField"]
-        XCTAssertTrue(commandField.waitForExistence(timeout: 5), debugSnapshot())
-        focusTextField(commandField)
-        typeInField(commandField, text: "printf 'simplecode-ui-run\\n'")
-        clickElement(app.buttons["Done"])
-
-        let runButton = app.buttons["workspace.runButton"]
-        waitForEnabled(runButton)
-        runButton.click()
-
-        let cancel = app.buttons["trust.sheet.cancel"]
-        XCTAssertTrue(cancel.waitForExistence(timeout: 8), debugSnapshot())
-        cancel.click()
-        XCTAssertFalse(app.buttons["workspace.stopButton"].waitForExistence(timeout: 1))
-    }
-
     func testTerminalPanelTogglesOnce() throws {
         _ = try openFixtureWorkspace()
 

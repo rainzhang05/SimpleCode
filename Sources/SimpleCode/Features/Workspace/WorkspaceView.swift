@@ -27,21 +27,6 @@ struct WorkspaceView: View {
                 await workspace.refreshFileTreeIfSettingsChanged()
             }
         }
-        .sheet(isPresented: Binding(
-            get: { workspace.runExecution.showTrustSheet },
-            set: { if !$0 { workspace.runExecution.cancelTrustPrompt() } }
-        )) {
-            if let command = workspace.runExecution.pendingTrustCommand {
-                WorkspaceTrustSheet(
-                    workspacePath: workspace.rootURL.path,
-                    command: command,
-                    onCancel: { workspace.runExecution.cancelTrustPrompt() },
-                    onRunOnce: { workspace.runExecution.runOnceAfterTrustPrompt() },
-                    onTrustAndRun: { workspace.runExecution.trustAndRun() }
-                )
-                .accessibilityIdentifier("trust.sheet")
-            }
-        }
         .alert("Restart Terminal?", isPresented: Binding(
             get: { workspace.showRestartTerminalConfirmation },
             set: { workspace.showRestartTerminalConfirmation = $0 }

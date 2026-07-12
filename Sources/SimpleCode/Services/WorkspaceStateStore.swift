@@ -2,13 +2,9 @@ import Foundation
 
 struct WorkspacePersistedState: Codable, Equatable, Sendable {
     var runConfiguration: RunConfiguration
-    var trust: WorkspaceTrustState
-    var rootFilesystemIdentity: String?
 
     static let `default` = WorkspacePersistedState(
-        runConfiguration: .default,
-        trust: .untrusted,
-        rootFilesystemIdentity: nil
+        runConfiguration: .default
     )
 }
 
@@ -40,18 +36,6 @@ final class WorkspaceStateStore {
     ) {
         var state = state(for: workspaceID)
         transform(&state.runConfiguration)
-        setState(state, for: workspaceID)
-    }
-
-    func updateTrust(for workspaceID: UUID, trust: WorkspaceTrustState) {
-        var state = state(for: workspaceID)
-        state.trust = trust
-        setState(state, for: workspaceID)
-    }
-
-    func updateRootIdentity(for workspaceID: UUID, identity: String) {
-        var state = state(for: workspaceID)
-        state.rootFilesystemIdentity = identity
         setState(state, for: workspaceID)
     }
 

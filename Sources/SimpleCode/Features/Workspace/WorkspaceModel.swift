@@ -40,7 +40,6 @@ final class WorkspaceModel {
     let terminal: TerminalSessionController
     let appSettings: AppSettingsStore
     let runCommands: RunCommandStore
-    let trust: WorkspaceTrustController
     let runExecution: RunExecutionController
     let useSyntaxStressSample: Bool
     private let launchConfiguration: LaunchConfiguration
@@ -110,7 +109,6 @@ final class WorkspaceModel {
         rootURL: URL,
         appSettings: AppSettingsStore,
         workspaceStateStore: WorkspaceStateStore,
-        provenance: WorkspaceOpenProvenance = .openedExisting,
         useSyntaxStressSample: Bool = false,
         launchConfiguration: LaunchConfiguration = .parse()
     ) {
@@ -125,12 +123,6 @@ final class WorkspaceModel {
             workspaceID: id,
             rootURL: rootURL,
             stateStore: workspaceStateStore
-        )
-        self.trust = WorkspaceTrustController(
-            workspaceID: id,
-            stateStore: workspaceStateStore,
-            provenance: provenance,
-            rootURL: rootURL
         )
         self.launchConfiguration = launchConfiguration
         self.runExecution = RunExecutionController()
@@ -164,9 +156,6 @@ final class WorkspaceModel {
             }
             if let command = self.launchConfiguration.uiTestRunCommand {
                 self.runCommands.setCommand(command, explicit: true)
-            }
-            if self.launchConfiguration.uiTestTrustDecision == "trusted" {
-                self.trust.markTrusted()
             }
             self.hasBootstrapped = true
         }

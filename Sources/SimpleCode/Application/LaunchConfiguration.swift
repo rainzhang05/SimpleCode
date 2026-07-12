@@ -8,7 +8,6 @@ struct LaunchConfiguration: Sendable, Equatable {
     var fixtureRunWorkspacePath: String?
     var uiTestCloneSource: String?
     var uiTestCloneDestination: String?
-    var uiTestTrustDecision: String?
     var uiTestUserDefaultsSuite: String?
     var uiTestRunCommand: String?
     var uiTestSeedRecentWorkspacePaths: [String] = []
@@ -41,11 +40,6 @@ struct LaunchConfiguration: Sendable, Equatable {
             case "-UITestCloneDestination":
                 if index + 1 < arguments.count {
                     config.uiTestCloneDestination = arguments[index + 1]
-                    index += 1
-                }
-            case "-UITestTrustDecision":
-                if index + 1 < arguments.count {
-                    config.uiTestTrustDecision = arguments[index + 1]
                     index += 1
                 }
             case "-UITestRunCommand":
