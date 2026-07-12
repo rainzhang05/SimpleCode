@@ -416,9 +416,12 @@ final class OpenDocumentsStore {
             let syntaxConfigurationRevision = session.syntaxConfigurationRevision
             let page: InitialHighlightPage
             if prioritizeInitialPage {
+                let priorityOffset = session.lastVisibleUTF16Range.map { visibleRange in
+                    visibleRange.location + visibleRange.length / 2
+                } ?? session.selectionRange.location
                 let priorityRange = InitialHighlightPaging.priorityRange(
                     in: text,
-                    aroundUTF16Offset: session.selectionRange.location
+                    aroundUTF16Offset: priorityOffset
                 )
                 page = await highlighter.prepareInitial(
                     text: text,

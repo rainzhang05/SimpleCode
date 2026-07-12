@@ -42,6 +42,23 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         }
     }
 
+    private enum InitialLexicalMode: Equatable {
+        case normal
+        case lineComment
+        case blockComment
+        case string(delimiter: UInt16, triple: Bool, allowsNewline: Bool)
+    }
+
+    private struct InitialLexicalState: Equatable {
+        var mode: InitialLexicalMode = .normal
+        var escaped = false
+    }
+
+    private struct InitialLexicalCheckpoint {
+        let location: Int
+        let state: InitialLexicalState
+    }
+
     private let configuration: Configuration
     private var cachedText = ""
     private var cachedRevision = -1
@@ -49,7 +66,11 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
     private var hasMultilineConstructs = false
     private var initialGeneration: UInt64 = 0
     private var initialRevision: Int?
-    private var initialFullTokens: [SyntaxToken]?
+    private var initialLexicalCheckpoint = InitialLexicalCheckpoint(
+        location: 0,
+        state: InitialLexicalState()
+    )
+    private var initialSawMultilineConstructs = false
 
     init(languageID: LanguageID) {
         configuration = Configuration(languageID: languageID)
@@ -73,32 +94,45 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
     ) async -> InitialHighlightPage {
         initialGeneration &+= 1
         initialRevision = revision
-        initialFullTokens = nil
+        initialLexicalCheckpoint = InitialLexicalCheckpoint(
+            location: 0,
+            state: InitialLexicalState()
+        )
+        initialSawMultilineConstructs = false
         let priority = NSIntersectionRange(
             priorityUTF16Range,
             NSRange(location: 0, length: text.utf16.count)
-        )
-        let tokens = highlight(text, restrictedTo: priority)
-        cachedText = text
-        cachedRevision = revision
-        cachedTokens = tokens
-        hasMultilineConstructs = Self.containsMultilineConstructs(
-            text,
-            supportsBackticks: configuration.supportsBackticks
         )
         let remaining = InitialHighlightPaging.remainingRanges(
             documentLength: text.utf16.count,
             excluding: priority
         )
+        let initialCursor = remaining.isEmpty
+            ? nil
+            : InitialHighlightCursor(
+                generation: initialGeneration,
+                revision: revision,
+                remainingRanges: remaining
+            )
+        let tokens = highlightInitialPage(
+            text,
+            restrictedTo: priority
+        )
+        _ = initialCheckpoint(at: NSMaxRange(priority), in: text)
+        cachedText = text
+        cachedRevision = revision
+        cachedTokens = tokens
+        hasMultilineConstructs = initialCursor != nil || initialSawMultilineConstructs
+        if initialCursor == nil {
+            initialRevision = nil
+            initialLexicalCheckpoint = InitialLexicalCheckpoint(
+                location: 0,
+                state: InitialLexicalState()
+            )
+        }
         return InitialHighlightPage(
             batch: HighlightBatch(revision: revision, coveredRanges: [priority], tokens: tokens),
-            next: remaining.isEmpty
-                ? nil
-                : InitialHighlightCursor(
-                    generation: initialGeneration,
-                    revision: revision,
-                    remainingRanges: remaining
-                )
+            next: initialCursor
         )
     }
 
@@ -114,14 +148,28 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
                 cursor: cursor,
                 pageSizeUTF16: pageSizeUTF16
               ) else { return nil }
-        let allTokens = completeInitialTokenCacheIfNeeded()
+        let pageTokens = highlightInitialPage(
+            cachedText,
+            restrictedTo: pageRange
+        )
+        _ = initialCheckpoint(at: NSMaxRange(pageRange), in: cachedText)
+        cachedTokens.append(contentsOf: pageTokens)
+        let next = InitialHighlightPaging.advancing(cursor, past: pageRange)
+        if next == nil {
+            initialRevision = nil
+            hasMultilineConstructs = initialSawMultilineConstructs
+            initialLexicalCheckpoint = InitialLexicalCheckpoint(
+                location: 0,
+                state: InitialLexicalState()
+            )
+        }
         return InitialHighlightPage(
             batch: HighlightBatch(
                 revision: cursor.revision,
                 coveredRanges: [pageRange],
-                tokens: tokens(in: [pageRange], from: allTokens)
+                tokens: pageTokens
             ),
-            next: InitialHighlightPaging.advancing(cursor, past: pageRange)
+            next: next
         )
     }
 
@@ -131,8 +179,10 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         revision: Int,
         priorityUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+        let wasPreparingInitialPages = initialRevision != nil
         invalidateInitialContinuation()
-        guard cachedRevision == revision - 1,
+        guard !wasPreparingInitialPages,
+              cachedRevision == revision - 1,
               !hasMultilineConstructs,
               !Self.editTouchesMultilineSyntax(
                 oldText: cachedText,
@@ -213,10 +263,24 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
             )
         }
 
-        if initialRevision == revision, initialFullTokens == nil {
-            _ = completeInitialTokenCacheIfNeeded()
-        }
         let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count)
+        if initialRevision == revision {
+            var visibleTokens: [SyntaxToken] = []
+            for range in visibleRanges {
+                visibleTokens.append(contentsOf: highlightInitialPage(
+                    fullText,
+                    restrictedTo: range
+                ))
+            }
+            return (
+                HighlightBatch(
+                    revision: revision,
+                    coveredRanges: visibleRanges,
+                    tokens: visibleTokens
+                ),
+                nil
+            )
+        }
         return (
             HighlightBatch(
                 revision: revision,
@@ -227,18 +291,339 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         )
     }
 
-    private func completeInitialTokenCacheIfNeeded() -> [SyntaxToken] {
-        if let initialFullTokens { return initialFullTokens }
-        let tokens = highlightEntireDocument(cachedText)
-        initialFullTokens = tokens
-        cachedTokens = tokens
-        return tokens
-    }
-
     private func invalidateInitialContinuation() {
         initialGeneration &+= 1
         initialRevision = nil
-        initialFullTokens = nil
+        initialLexicalCheckpoint = InitialLexicalCheckpoint(
+            location: 0,
+            state: InitialLexicalState()
+        )
+        initialSawMultilineConstructs = false
+    }
+
+    private func initialCheckpoint(at offset: Int, in text: String) -> InitialLexicalCheckpoint {
+        let string = text as NSString
+        let target = max(0, min(offset, string.length))
+        let startingCheckpoint = initialLexicalCheckpoint.location <= target
+            ? initialLexicalCheckpoint
+            : InitialLexicalCheckpoint(location: 0, state: InitialLexicalState())
+        guard startingCheckpoint.location < target else { return startingCheckpoint }
+        var state = startingCheckpoint.state
+        var sawMultilineConstruct = false
+        let reachedLocation = advanceInitialLexicalState(
+            in: string,
+            from: startingCheckpoint.location,
+            to: target,
+            state: &state,
+            hasMultilineConstructs: &sawMultilineConstruct
+        )
+        initialSawMultilineConstructs = initialSawMultilineConstructs || sawMultilineConstruct
+        let checkpoint = InitialLexicalCheckpoint(location: reachedLocation, state: state)
+        initialLexicalCheckpoint = checkpoint
+        return checkpoint
+    }
+
+    @discardableResult
+    private func advanceInitialLexicalState(
+        in text: NSString,
+        from start: Int,
+        to end: Int,
+        state: inout InitialLexicalState,
+        hasMultilineConstructs: inout Bool
+    ) -> Int {
+        var location = max(0, start)
+        let limit = max(location, min(end, text.length))
+        while location < limit {
+            let unit = text.character(at: location)
+            switch state.mode {
+            case .normal:
+                if configuration.supportsSlashComments,
+                   unit == 47,
+                   location + 1 < text.length {
+                    guard location + 1 < limit else { return location }
+                    let next = text.character(at: location + 1)
+                    if next == 47 {
+                        state.mode = .lineComment
+                        location += 2
+                        continue
+                    }
+                    if next == 42 {
+                        state.mode = .blockComment
+                        state.escaped = false
+                        hasMultilineConstructs = true
+                        location += 2
+                        continue
+                    }
+                }
+                if !configuration.supportsSlashComments, unit == configuration.lineComment {
+                    state.mode = .lineComment
+                    location += 1
+                    continue
+                }
+                if (unit == 34 || unit == 39),
+                   location + 2 < text.length,
+                   text.character(at: location + 1) == unit,
+                   text.character(at: location + 2) == unit {
+                    guard location + 2 < limit else { return location }
+                    state.mode = .string(delimiter: unit, triple: true, allowsNewline: true)
+                    state.escaped = false
+                    hasMultilineConstructs = true
+                    location += 3
+                    continue
+                }
+                if unit == 34 || unit == 39 || (configuration.supportsBackticks && unit == 96) {
+                    let allowsNewline = unit == 96
+                    state.mode = .string(delimiter: unit, triple: false, allowsNewline: allowsNewline)
+                    state.escaped = false
+                    if allowsNewline { hasMultilineConstructs = true }
+                    location += 1
+                    continue
+                }
+                location += 1
+
+            case .lineComment:
+                if unit == 10 || unit == 13 {
+                    state.mode = .normal
+                }
+                location += 1
+
+            case .blockComment:
+                if unit == 42,
+                   location + 1 < text.length,
+                   text.character(at: location + 1) == 47 {
+                    guard location + 1 < limit else { return location }
+                    state.mode = .normal
+                    location += 2
+                } else {
+                    location += 1
+                }
+
+            case let .string(delimiter, triple, allowsNewline):
+                if state.escaped {
+                    state.escaped = false
+                    location += 1
+                    continue
+                }
+                if unit == 92 {
+                    state.escaped = true
+                    location += 1
+                    continue
+                }
+                if triple,
+                   unit == delimiter,
+                   location + 2 < text.length,
+                   text.character(at: location + 1) == delimiter,
+                   text.character(at: location + 2) == delimiter {
+                    guard location + 2 < limit else { return location }
+                    state.mode = .normal
+                    location += 3
+                    continue
+                }
+                if !triple, unit == delimiter {
+                    state.mode = .normal
+                    location += 1
+                    continue
+                }
+                if !allowsNewline, (unit == 10 || unit == 13) {
+                    state.mode = .normal
+                }
+                location += 1
+            }
+        }
+        return location
+    }
+
+    private func highlightInitialPage(
+        _ text: String,
+        restrictedTo range: NSRange
+    ) -> [SyntaxToken] {
+        let string = text as NSString
+        let covered = NSIntersectionRange(range, NSRange(location: 0, length: string.length))
+        guard covered.length > 0 else { return [] }
+        let end = NSMaxRange(covered)
+        // A checkpoint stops before a multi-unit delimiter that crosses its
+        // requested offset. Re-lexing those one or two preceding units and then
+        // clipping emitted tokens keeps both pages correct without partial state.
+        let checkpoint = initialCheckpoint(at: covered.location, in: text)
+        var location = checkpoint.location
+        var state = checkpoint.state
+        var tokens: [SyntaxToken] = []
+
+        while location < end {
+            let unit = string.character(at: location)
+            switch state.mode {
+            case .lineComment:
+                let start = location
+                while location < end {
+                    let current = string.character(at: location)
+                    if current == 10 || current == 13 {
+                        state.mode = .normal
+                        break
+                    }
+                    location += 1
+                }
+                if location > start {
+                    tokens.append(SyntaxToken(
+                        range: NSRange(location: start, length: location - start),
+                        category: .comment
+                    ))
+                }
+
+            case .blockComment:
+                let start = location
+                while location < end {
+                    if string.character(at: location) == 42,
+                       location + 1 < end,
+                       string.character(at: location + 1) == 47 {
+                        location += 2
+                        state.mode = .normal
+                        break
+                    }
+                    location += 1
+                }
+                tokens.append(SyntaxToken(
+                    range: NSRange(location: start, length: location - start),
+                    category: .comment
+                ))
+
+            case let .string(delimiter, triple, allowsNewline):
+                let start = location
+                while location < end {
+                    let current = string.character(at: location)
+                    if state.escaped {
+                        state.escaped = false
+                        location += 1
+                        continue
+                    }
+                    if current == 92 {
+                        state.escaped = true
+                        location += 1
+                        continue
+                    }
+                    if triple,
+                       current == delimiter,
+                       location + 2 < end,
+                       string.character(at: location + 1) == delimiter,
+                       string.character(at: location + 2) == delimiter {
+                        location += 3
+                        state.mode = .normal
+                        break
+                    }
+                    location += 1
+                    if !triple, current == delimiter {
+                        state.mode = .normal
+                        break
+                    }
+                    if !allowsNewline, (current == 10 || current == 13) {
+                        state.mode = .normal
+                        break
+                    }
+                }
+                tokens.append(SyntaxToken(
+                    range: NSRange(location: start, length: location - start),
+                    category: .string
+                ))
+
+            case .normal:
+                if isWhitespace(unit) || unit == 10 || unit == 13 {
+                    location += 1
+                    continue
+                }
+                if configuration.supportsSlashComments,
+                   unit == 47,
+                   location + 1 < string.length {
+                    let next = string.character(at: location + 1)
+                    if next == 47 {
+                        tokens.append(SyntaxToken(
+                            range: NSRange(location: location, length: min(2, end - location)),
+                            category: .comment
+                        ))
+                        location = min(end, location + 2)
+                        state.mode = .lineComment
+                        continue
+                    }
+                    if next == 42 {
+                        tokens.append(SyntaxToken(
+                            range: NSRange(location: location, length: min(2, end - location)),
+                            category: .comment
+                        ))
+                        location = min(end, location + 2)
+                        state.mode = .blockComment
+                        continue
+                    }
+                }
+                if !configuration.supportsSlashComments, unit == configuration.lineComment {
+                    tokens.append(SyntaxToken(
+                        range: NSRange(location: location, length: 1),
+                        category: .comment
+                    ))
+                    location += 1
+                    state.mode = .lineComment
+                    continue
+                }
+                if (unit == 34 || unit == 39),
+                   location + 2 < string.length,
+                   string.character(at: location + 1) == unit,
+                   string.character(at: location + 2) == unit {
+                    tokens.append(SyntaxToken(
+                        range: NSRange(location: location, length: min(3, end - location)),
+                        category: .string
+                    ))
+                    location = min(end, location + 3)
+                    state.mode = .string(delimiter: unit, triple: true, allowsNewline: true)
+                    continue
+                }
+                if unit == 34 || unit == 39 || (configuration.supportsBackticks && unit == 96) {
+                    tokens.append(SyntaxToken(
+                        range: NSRange(location: location, length: 1),
+                        category: .string
+                    ))
+                    location += 1
+                    state.mode = .string(
+                        delimiter: unit,
+                        triple: false,
+                        allowsNewline: unit == 96
+                    )
+                    continue
+                }
+
+                if isDigit(unit) {
+                    let numberEnd = endOfNumber(in: string, startingAt: location, limit: end)
+                    tokens.append(SyntaxToken(
+                        range: NSRange(location: location, length: numberEnd - location),
+                        category: .number
+                    ))
+                    location = numberEnd
+                    continue
+                }
+                if isIdentifierStart(unit) {
+                    let identifierEnd = endOfIdentifier(in: string, startingAt: location, limit: end)
+                    let identifier = string.substring(with: NSRange(
+                        location: location,
+                        length: identifierEnd - location
+                    ))
+                    if configuration.keywords.contains(identifier) {
+                        tokens.append(SyntaxToken(
+                            range: NSRange(location: location, length: identifierEnd - location),
+                            category: .keyword
+                        ))
+                    } else if configuration.constants.contains(identifier) {
+                        tokens.append(SyntaxToken(
+                            range: NSRange(location: location, length: identifierEnd - location),
+                            category: .constant
+                        ))
+                    }
+                    location = identifierEnd
+                    continue
+                }
+                location += 1
+            }
+        }
+        return tokens.compactMap { token in
+            let clippedRange = NSIntersectionRange(token.range, covered)
+            guard clippedRange.length > 0 else { return nil }
+            return SyntaxToken(range: clippedRange, category: token.category)
+        }
     }
 
     private func highlightEntireDocument(_ text: String) -> [SyntaxToken] {
@@ -251,6 +636,7 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         var tokens: [SyntaxToken] = []
         var location = max(0, min(range.location, nsText.length))
         let end = min(nsText.length, NSMaxRange(range))
+        var cachedLineEnd = location
 
         while location < end {
             let unit = nsText.character(at: location)
@@ -260,7 +646,10 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
                 continue
             }
 
-            let lineEnd = min(end, Self.lineEnd(after: location, in: nsText))
+            if location >= cachedLineEnd {
+                cachedLineEnd = min(end, Self.lineEnd(after: location, in: nsText))
+            }
+            let lineEnd = cachedLineEnd
             if configuration.supportsSlashComments,
                unit == 47,
                location + 1 < nsText.length {

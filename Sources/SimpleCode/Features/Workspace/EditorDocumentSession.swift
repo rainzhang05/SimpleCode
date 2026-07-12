@@ -40,6 +40,7 @@ final class EditorDocumentSession: Identifiable {
     var selectionRange = NSRange(location: 0, length: 0)
     var pendingSelectionRange: NSRange?
     var scrollOffset: CGPoint = .zero
+    private(set) var lastVisibleUTF16Range: NSRange?
     /// Changes whenever the highlighting configuration changes. The AppKit editor
     /// uses this to invalidate work from the previously selected language without
     /// treating a language override as a different document.
@@ -83,6 +84,15 @@ final class EditorDocumentSession: Identifiable {
     func updateCursor(line: Int, column: Int) {
         cursorLine = max(1, line)
         cursorColumn = max(1, column)
+    }
+
+    /// Remembers the most recently laid-out viewport so a disk reload can color
+    /// the region the user is actually looking at before deferred pages finish.
+    func recordVisibleUTF16Range(_ range: NSRange) {
+        let documentRange = NSRange(location: 0, length: textStorage.length)
+        let clampedRange = NSIntersectionRange(range, documentRange)
+        guard clampedRange.length > 0 else { return }
+        lastVisibleUTF16Range = clampedRange
     }
 
     func markDirty() {
@@ -246,6 +256,14 @@ final class EditorDocumentSession: Identifiable {
         if coveredRanges.contains(where: { $0.location == 0 && $0.length >= textStorage.length }) {
             semanticTokens = tokens
             deferredInitialHighlightCursor = nil
+        } else if deferredInitialHighlightCursor != nil {
+            // Deferred initial pages are disjoint by construction. Appending keeps
+            // hundreds of large-file pages linear instead of repeatedly filtering
+            // and rebuilding every token accumulated so far on the main actor.
+            semanticTokens.append(contentsOf: tokens)
+            appendSyntaxContext(from: tokens)
+            didApplySyntaxHighlighting = true
+            return
         } else {
             semanticTokens.removeAll { token in
                 coveredRanges.contains { NSIntersectionRange(token.range, $0).length > 0 }
@@ -287,5 +305,14 @@ final class EditorDocumentSession: Identifiable {
             .filter { $0.category == .comment || $0.category == .documentationComment }
             .map(\.range)
         syntaxContext = SyntaxContext(stringRanges: stringRanges, commentRanges: commentRanges)
+    }
+
+    private func appendSyntaxContext(from tokens: [SyntaxToken]) {
+        syntaxContext.stringRanges.append(contentsOf: tokens.lazy
+            .filter { $0.category == .string }
+            .map(\.range))
+        syntaxContext.commentRanges.append(contentsOf: tokens.lazy
+            .filter { $0.category == .comment || $0.category == .documentationComment }
+            .map(\.range))
     }
 }

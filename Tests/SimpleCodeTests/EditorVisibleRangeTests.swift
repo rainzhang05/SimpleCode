@@ -715,6 +715,54 @@ struct EditorVisibleRangeTests {
     }
 
     @MainActor
+    @Test func coordinatorPersistsScrollOffsetAndVisibleRangeWhenBoundsChange() throws {
+        let suiteName = "SimpleCode.EditorScrollState.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "EditorScrollState-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "editor-scroll-state")
+        )
+        defer { workspace.tearDown() }
+
+        let session = EditorDocumentSession(displayName: "Scrolled.swift")
+        session.textStorage.setAttributedString(NSAttributedString(
+            string: String(repeating: "let visible = true\n", count: 500)
+        ))
+        session.enablesSyntaxHighlighting = false
+        let textView = CodeTextView(frame: NSRect(x: 0, y: 0, width: 320, height: 8_000))
+        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
+        scrollView.documentView = textView
+        let coordinator = CodeEditorRepresentable.Coordinator(
+            session: session,
+            settings: settings,
+            workspace: workspace,
+            onTextChanged: {}
+        )
+        coordinator.textView = textView
+        coordinator.scrollView = scrollView
+        coordinator.attach(session: session, to: textView)
+
+        scrollView.contentView.scroll(to: CGPoint(x: 0, y: 900))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        coordinator.boundsDidChange()
+
+        #expect(session.scrollOffset.y == 900)
+        #expect(session.lastVisibleUTF16Range?.length ?? 0 > 0)
+        coordinator.tearDown()
+    }
+
+    @MainActor
     @Test func coordinatorStylesContentThatArrivesAfterAttachment() throws {
         let suiteName = "SimpleCode.EditorVisibleRangeTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

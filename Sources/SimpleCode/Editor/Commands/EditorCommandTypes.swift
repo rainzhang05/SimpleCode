@@ -12,8 +12,8 @@ struct EditorCommandResult: Equatable, Sendable {
 
 /// Token ranges (UTF-16) used to skip strings and comments during bracket/pair logic.
 struct SyntaxContext: Equatable, Sendable {
-    let stringRanges: [NSRange]
-    let commentRanges: [NSRange]
+    var stringRanges: [NSRange]
+    var commentRanges: [NSRange]
 
     static let empty = SyntaxContext(stringRanges: [], commentRanges: [])
 

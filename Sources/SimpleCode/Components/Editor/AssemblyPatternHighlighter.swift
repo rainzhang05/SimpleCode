@@ -24,7 +24,6 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
     private var cachedTokens: [SyntaxToken] = []
     private var initialGeneration: UInt64 = 0
     private var initialRevision: Int?
-    private var initialFullTokens: [SyntaxToken]?
 
     func load(text: String, revision: Int) async -> HighlightBatch {
         invalidateInitialContinuation()
@@ -46,7 +45,6 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
     ) async -> InitialHighlightPage {
         initialGeneration &+= 1
         initialRevision = revision
-        initialFullTokens = nil
         let priority = NSIntersectionRange(
             priorityUTF16Range,
             NSRange(location: 0, length: text.utf16.count)
@@ -59,6 +57,9 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
             documentLength: text.utf16.count,
             excluding: priority
         )
+        if remaining.isEmpty {
+            initialRevision = nil
+        }
         return InitialHighlightPage(
             batch: HighlightBatch(revision: revision, coveredRanges: [priority], tokens: tokens),
             next: remaining.isEmpty
@@ -83,14 +84,19 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
                 cursor: cursor,
                 pageSizeUTF16: pageSizeUTF16
               ) else { return nil }
-        let allTokens = completeInitialTokenCacheIfNeeded()
+        let pageTokens = highlight(cachedText, restrictedTo: pageRange)
+        cachedTokens.append(contentsOf: pageTokens)
+        let next = InitialHighlightPaging.advancing(cursor, past: pageRange)
+        if next == nil {
+            initialRevision = nil
+        }
         return InitialHighlightPage(
             batch: HighlightBatch(
                 revision: cursor.revision,
                 coveredRanges: [pageRange],
-                tokens: tokens(in: [pageRange], from: allTokens)
+                tokens: pageTokens
             ),
-            next: InitialHighlightPaging.advancing(cursor, past: pageRange)
+            next: next
         )
     }
 
@@ -100,8 +106,9 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
         revision: Int,
         priorityUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+        let wasPreparingInitialPages = initialRevision != nil
         invalidateInitialContinuation()
-        guard cachedRevision == revision - 1 else {
+        guard !wasPreparingInitialPages, cachedRevision == revision - 1 else {
             let batch = await load(text: fullText, revision: revision)
             return (batch, nil)
         }
@@ -172,10 +179,18 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
             )
         }
 
-        if initialRevision == revision, initialFullTokens == nil {
-            _ = completeInitialTokenCacheIfNeeded()
-        }
         let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count)
+        if initialRevision == revision, let viewportRange = visibleRanges.first {
+            let viewportTokens = highlight(fullText, restrictedTo: viewportRange)
+            return (
+                HighlightBatch(
+                    revision: revision,
+                    coveredRanges: visibleRanges,
+                    tokens: viewportTokens
+                ),
+                nil
+            )
+        }
         return (
             HighlightBatch(
                 revision: revision,
@@ -186,18 +201,9 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
         )
     }
 
-    private func completeInitialTokenCacheIfNeeded() -> [SyntaxToken] {
-        if let initialFullTokens { return initialFullTokens }
-        let tokens = highlight(cachedText, restrictedTo: NSRange(location: 0, length: cachedText.utf16.count))
-        initialFullTokens = tokens
-        cachedTokens = tokens
-        return tokens
-    }
-
     private func invalidateInitialContinuation() {
         initialGeneration &+= 1
         initialRevision = nil
-        initialFullTokens = nil
     }
 
     private func highlight(_ text: String, restrictedTo range: NSRange) -> [SyntaxToken] {

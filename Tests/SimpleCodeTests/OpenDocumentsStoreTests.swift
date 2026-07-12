@@ -318,6 +318,29 @@ struct OpenDocumentsStoreTests {
         #expect(session.textStorage.attribute(.foregroundColor, at: 0, effectiveRange: nil) != nil)
     }
 
+    @Test func largeReloadPrioritizesLastVisibleRangeInsteadOfCaret() async throws {
+        let text = String(repeating: "let visible = true\n", count: 10_000)
+        let loader = StaticLargeFileLoader(text: text)
+        let highlighter = PriorityInitialHighlighter()
+        let store = OpenDocumentsStore(loader: loader, highlighterFactory: { _ in highlighter })
+        let file = FileManager.default.temporaryDirectory.appending(path: "LargeReload-\(UUID().uuidString).swift")
+
+        await store.open(url: file, choice: .openAnyway)
+        let session = try #require(store.activeSession)
+        session.selectionRange = NSRange(location: 0, length: 0)
+        let visibleRange = NSRange(location: text.utf16.count * 3 / 4, length: 2_000)
+        session.recordVisibleUTF16Range(visibleRange)
+
+        await store.reloadFromDisk(session: session)
+
+        let calls = await highlighter.snapshot()
+        let priorityRange = try #require(calls.range)
+        let visibleMidpoint = visibleRange.location + visibleRange.length / 2
+        #expect(calls.priority == 2)
+        #expect(NSLocationInRange(visibleMidpoint, priorityRange))
+        #expect(!NSLocationInRange(session.selectionRange.location, priorityRange))
+    }
+
     @Test func staleInitialHighlightRetriesCurrentLanguageBeforePublishing() async throws {
         let firstHighlighter = ControlledHighlighter(suspendsLoad: true)
         let retryHighlighter = ControlledHighlighter(category: .string, suspendsLoad: false)

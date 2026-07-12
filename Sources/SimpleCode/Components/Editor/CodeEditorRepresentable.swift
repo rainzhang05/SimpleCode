@@ -222,6 +222,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             if let previous = self.textView, attachedSessionID != nil, attachedSessionID != session.id {
                 self.session.selectionRange = previous.selectedRange()
                 self.session.scrollOffset = scrollView?.contentView.bounds.origin ?? .zero
+                recordCurrentVisibleRange()
             }
 
             if attachedSessionID != session.id,
@@ -253,7 +254,9 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             textView.setSelectedRange(session.selectionRange)
             if let scrollView {
                 scrollView.contentView.scroll(to: session.scrollOffset)
+                scrollView.reflectScrolledClipView(scrollView.contentView)
             }
+            recordCurrentVisibleRange()
             if session.enablesSyntaxHighlighting, let highlighter = session.highlighter, !session.hasAppliedSyntaxHighlighting {
                 let revision = session.bumpRevision()
                 let text = session.textStorage.string
@@ -301,6 +304,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                     session.selectionRange = textView.selectedRange()
                 }
                 session.scrollOffset = scrollView?.contentView.bounds.origin ?? session.scrollOffset
+                recordCurrentVisibleRange()
             }
 
             if session.textStorage.delegate === self {
@@ -335,6 +339,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
         @objc func boundsDidChange() {
             guard !isTornDown else { return }
+            session.scrollOffset = scrollView?.contentView.bounds.origin ?? session.scrollOffset
+            recordCurrentVisibleRange()
             gutter?.invalidate()
             overlay?.needsDisplay = true
             scheduleViewportHighlight()
@@ -552,6 +558,13 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 ?? NSRange(location: max(0, offset), length: 0)
         }
 
+        private func recordCurrentVisibleRange() {
+            guard let textView,
+                  textView.textStorage === session.textStorage,
+                  let visibleRange = EditorVisibleRange.visibleUTF16Range(in: textView) else { return }
+            session.recordVisibleUTF16Range(visibleRange)
+        }
+
         private func isCurrent(
             sessionID: UUID,
             attachmentGeneration: Int,
@@ -649,8 +662,10 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             ), session.enablesSyntaxHighlighting,
                let highlighter = session.highlighter,
                let textView,
+               session.deferredInitialHighlightCursor == nil,
                lastParsedRevision == session.revision else { return nil }
             let visibleRange = currentVisibleUTF16Range(fallbackAround: 0)
+            session.recordVisibleUTF16Range(visibleRange)
             guard lastAppliedViewportRange.map({ !NSEqualRanges($0, visibleRange) }) ?? true else {
                 return nil
             }

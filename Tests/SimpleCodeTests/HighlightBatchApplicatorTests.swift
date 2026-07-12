@@ -49,12 +49,16 @@ struct HighlightBatchApplicatorTests {
 
     @Test func initialPriorityPageStaysBoundedForOneLongLine() {
         let text = String(repeating: "x", count: InitialHighlightPaging.pageSizeUTF16 * 3)
+        let requestedOffset = InitialHighlightPaging.pageSizeUTF16 * 2
 
-        let range = InitialHighlightPaging.priorityRange(in: text, aroundUTF16Offset: 0)
+        let range = InitialHighlightPaging.priorityRange(
+            in: text,
+            aroundUTF16Offset: requestedOffset
+        )
 
-        #expect(range.location == 0)
         #expect(range.length <= InitialHighlightPaging.pageSizeUTF16)
         #expect(range.length < text.utf16.count)
+        #expect(NSLocationInRange(requestedOffset, range))
     }
 
     @Test func initialPagesPartitionDocumentWithoutGaps() throws {

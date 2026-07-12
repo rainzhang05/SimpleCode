@@ -41,8 +41,16 @@ enum InitialHighlightPaging {
             return NSRange(location: 0, length: string.length)
         }
 
-        let centeredStart = max(0, min(string.length - 1, offset) - pageSizeUTF16 / 4)
-        let start = string.lineRange(for: NSRange(location: centeredStart, length: 0)).location
+        let requestedOffset = max(0, min(string.length - 1, offset))
+        let centeredStart = max(
+            0,
+            min(string.length - pageSizeUTF16, requestedOffset - pageSizeUTF16 / 4)
+        )
+        let lineStart = string.lineRange(for: NSRange(location: centeredStart, length: 0)).location
+        // A minified or generated file can contain a single multi-megabyte line.
+        // Pulling such a page back to the line start would exclude the requested
+        // viewport, so keep a bounded centered window when no nearby boundary exists.
+        let start = centeredStart - lineStart > pageSizeUTF16 / 2 ? centeredStart : lineStart
         let proposedEnd = min(string.length, start + pageSizeUTF16)
         guard proposedEnd < string.length else {
             return NSRange(location: start, length: string.length - start)
