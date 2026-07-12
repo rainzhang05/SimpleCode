@@ -45,7 +45,7 @@ struct PerformanceAcceptanceTests {
         let closing = try! #require(store.activeSession)
         #expect(closing.highlighter != nil)
         _ = store.close(sessionID: closing.id, force: true)
-        #expect(store.recentlyClosed.first?.highlighter == nil)
+        #expect(store.recentlyClosed.isEmpty)
 
         print("PERF tabs.open10=\(openElapsed)")
         print("PERF tabs.switch200=\(switchElapsed)")

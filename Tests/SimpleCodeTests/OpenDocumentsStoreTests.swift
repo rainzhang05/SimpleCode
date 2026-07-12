@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import SimpleCode
@@ -69,8 +70,55 @@ struct OpenDocumentsStoreTests {
         await store.open(url: file)
         let id = store.activeSessionID!
         _ = store.close(sessionID: id, force: true)
-        store.reopenLastClosed()
+        await store.reopenLastClosed()
         #expect(store.sessions.count == 1)
+    }
+
+    @Test func loadedSwiftDocumentPublishesWithInitialSyntaxAlreadyApplied() async throws {
+        let store = OpenDocumentsStore()
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Prepared.swift")
+        try "let answer = 42\n".write(to: file, atomically: true, encoding: .utf8)
+
+        await store.open(url: file)
+
+        let session = try #require(store.activeSession)
+        #expect(session.loadState == .loaded)
+        #expect(session.highlighter != nil)
+        #expect(session.hasAppliedSyntaxHighlighting)
+        let keywordColor = session.textStorage.attribute(
+            .foregroundColor,
+            at: 0,
+            effectiveRange: nil
+        ) as? NSColor
+        #expect(keywordColor != nil)
+    }
+
+    @Test func recentlyClosedRecordDoesNotRetainTheEditorSession() async throws {
+        let store = OpenDocumentsStore()
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("Closed.swift")
+        try "let closed = true\n".write(to: file, atomically: true, encoding: .utf8)
+        await store.open(url: file)
+
+        weak var releasedSession: EditorDocumentSession?
+        let closedID: UUID
+        do {
+            let session = try #require(store.activeSession)
+            releasedSession = session
+            closedID = session.id
+        }
+
+        #expect(store.close(sessionID: closedID, force: true))
+        #expect(store.recentlyClosed.count == 1)
+        #expect(releasedSession == nil)
+
+        await store.reopenLastClosed()
+        #expect(store.activeSession?.fileURL?.standardizedFileURL == file.standardizedFileURL)
     }
 
     @Test func rapidFileSelectionKeepsOnlyTheLatestOpenRequest() async throws {

@@ -1,12 +1,17 @@
 import Foundation
 import UniformTypeIdentifiers
 
+struct RecentlyClosedDocument: Equatable, Sendable {
+    let fileURL: URL
+    let displayName: String
+}
+
 @MainActor
 @Observable
 final class OpenDocumentsStore {
     private(set) var sessions: [EditorDocumentSession] = []
     private(set) var activeSessionID: UUID?
-    private(set) var recentlyClosed: [EditorDocumentSession] = []
+    private(set) var recentlyClosed: [RecentlyClosedDocument] = []
     private let maxRecentlyClosed = 10
 
     private let loader: any FileContentLoading
@@ -91,10 +96,13 @@ final class OpenDocumentsStore {
                 discardLoadingSession(session)
                 return
             }
-            session.applyLoadedContent(content, url: url, choice: choice)
-            if session.enablesSyntaxHighlighting {
-                session.highlighter = HighlightProviderFactory.makeHighlighter(for: session.language)
+            session.prepareLoadedContent(content, url: url, choice: choice)
+            await prepareInitialSyntax(for: session, text: content.text)
+            guard isCurrentOpenRequest(request, session: session) else {
+                discardLoadingSession(session)
+                return
             }
+            session.publishLoadedContent()
             startWatching(session: session)
         } catch FileLoadError.binary {
             guard isCurrentOpenRequest(request, session: session) else {
@@ -139,11 +147,16 @@ final class OpenDocumentsStore {
         if session.isDirty && !force { return false }
 
         watcherRegistry.stopWatching(sessionID: sessionID)
+        let recentlyClosedDocument = session.fileURL.map {
+            RecentlyClosedDocument(fileURL: $0, displayName: session.displayName)
+        }
         sessions.remove(at: index)
         session.releaseSyntaxResources()
-        recentlyClosed.insert(session, at: 0)
-        if recentlyClosed.count > maxRecentlyClosed {
-            recentlyClosed.removeLast()
+        if let recentlyClosedDocument {
+            recentlyClosed.insert(recentlyClosedDocument, at: 0)
+            if recentlyClosed.count > maxRecentlyClosed {
+                recentlyClosed.removeLast()
+            }
         }
 
         if activeSessionID == sessionID {
@@ -152,15 +165,10 @@ final class OpenDocumentsStore {
         return true
     }
 
-    func reopenLastClosed() {
-        guard let session = recentlyClosed.first else { return }
+    func reopenLastClosed() async {
+        guard let record = recentlyClosed.first else { return }
         recentlyClosed.removeFirst()
-        if session.enablesSyntaxHighlighting && session.highlighter == nil {
-            session.highlighter = HighlightProviderFactory.makeHighlighter(for: session.language)
-        }
-        sessions.append(session)
-        activate(session)
-        startWatching(session: session)
+        await open(url: record.fileURL)
     }
 
     func closeOthers(than sessionID: UUID, force: Bool = false) -> [EditorDocumentSession] {
@@ -310,7 +318,9 @@ final class OpenDocumentsStore {
             let content = try await loader.load(url: url, choice: nil)
             let selection = session.selectionRange
             let scroll = session.scrollOffset
-            session.reloadFromDisk(content)
+            session.prepareLoadedContent(content, url: url)
+            await prepareInitialSyntax(for: session, text: content.text)
+            session.publishLoadedContent()
             session.selectionRange = selection
             session.scrollOffset = scroll
             session.pendingSelectionRange = selection
@@ -352,6 +362,18 @@ final class OpenDocumentsStore {
         watcherRegistry.startWatching(session: session) { [weak self] session, event in
             self?.handleWatchEvent(session: session, event: event)
         }
+    }
+
+    private func prepareInitialSyntax(for session: EditorDocumentSession, text: String) async {
+        guard session.enablesSyntaxHighlighting,
+              let highlighter = HighlightProviderFactory.makeHighlighter(for: session.language) else {
+            session.highlighter = nil
+            return
+        }
+        session.highlighter = highlighter
+        let batch = await highlighter.load(text: text, revision: session.revision)
+        guard !Task.isCancelled, session.revision == batch.revision else { return }
+        session.applyInitialHighlighting(batch)
     }
 
     private func beginOpenRequest() -> Int {

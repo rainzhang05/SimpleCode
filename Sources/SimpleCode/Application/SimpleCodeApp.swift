@@ -74,7 +74,9 @@ struct SimpleCodeApp: App {
                 }
                 .keyboardShortcut("w", modifiers: .command)
                 .disabled(appModel.workspace?.openDocuments.activeSession == nil)
-                Button("Reopen Closed Editor") { appModel.workspace?.openDocuments.reopenLastClosed() }
+                Button("Reopen Closed Editor") {
+                    Task { await appModel.workspace?.openDocuments.reopenLastClosed() }
+                }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
                 Button("Reveal Active File in Finder") {
                     if let url = appModel.workspace?.openDocuments.activeSession?.fileURL {
@@ -114,7 +116,9 @@ struct SimpleCodeApp: App {
                     .keyboardShortcut("]", modifiers: [.command, .shift])
                 Button("Previous Editor") { appModel.workspace?.activatePreviousTab() }
                     .keyboardShortcut("[", modifiers: [.command, .shift])
-                Button("Reopen Closed Editor") { appModel.workspace?.openDocuments.reopenLastClosed() }
+                Button("Reopen Closed Editor") {
+                    Task { await appModel.workspace?.openDocuments.reopenLastClosed() }
+                }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
                 Divider()
                 Button("Go to Line…") { appModel.workspace?.showGoToLine() }

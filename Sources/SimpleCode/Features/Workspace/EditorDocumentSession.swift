@@ -99,7 +99,11 @@ final class EditorDocumentSession: Identifiable {
         }
     }
 
-    func applyLoadedContent(_ content: LoadedFileContent, url: URL, choice: LargeFileOpenChoice? = nil) {
+    /// Installs decoded content while deliberately keeping the session out of the
+    /// published `.loaded` state. The store can prepare syntax attributes before a
+    /// visible editor is created, avoiding a monochrome first frame.
+    func prepareLoadedContent(_ content: LoadedFileContent, url: URL, choice: LargeFileOpenChoice? = nil) {
+        loadState = .loading
         fileURL = url
         fileIdentity = FileIdentity(url: url)
         displayName = url.lastPathComponent
@@ -128,10 +132,24 @@ final class EditorDocumentSession: Identifiable {
         undoManager.removeAllActions()
         lineStartIndex.rebuild(from: content.text)
         clearSyntaxContext()
-        loadState = .loaded
         isDirty = false
         externalChangeState = .none
         revision = 0
+    }
+
+    func applyInitialHighlighting(_ batch: HighlightBatch) {
+        guard batch.revision == revision else { return }
+        HighlightBatchApplicator.apply(batch, to: textStorage)
+        mergeSyntaxTokens(batch.tokens, replacingCoveredRanges: batch.coveredRanges)
+    }
+
+    func publishLoadedContent() {
+        loadState = .loaded
+    }
+
+    func applyLoadedContent(_ content: LoadedFileContent, url: URL, choice: LargeFileOpenChoice? = nil) {
+        prepareLoadedContent(content, url: url, choice: choice)
+        publishLoadedContent()
     }
 
     func setBinaryPlaceholder(url: URL, byteCount: Int64) {
