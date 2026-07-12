@@ -9,13 +9,30 @@ final class AppSettingsStore {
 
     private let defaults: UserDefaults
     private let permitsPersistence: Bool
-    private(set) var revision: Int = 0
 
-    var appearance: AppearanceSettings { didSet { SettingsColorResolver.updateSnapshot(appearance); persist() } }
-    var typography: TypographySettings { didSet { persist() } }
-    var editor: EditorBehaviorSettings { didSet { persist() } }
-    var files: FileDisplaySettings { didSet { persist() } }
-    var terminal: TerminalAppearanceSettings { didSet { persist() } }
+    private(set) var snapshot: AppSettingsSnapshot {
+        didSet { settingsDidChange() }
+    }
+
+    var appearance: AppearanceSettings {
+        get { snapshot.appearance }
+        set { apply(appearance: newValue) }
+    }
+
+    var typography: TypographySettings {
+        get { snapshot.typography }
+        set { apply(typography: newValue) }
+    }
+
+    var editor: EditorBehaviorSettings {
+        get { snapshot.editor }
+        set { apply(editor: newValue) }
+    }
+
+    var files: FileDisplaySettings {
+        get { snapshot.files }
+        set { apply(files: newValue) }
+    }
 
     init(defaults: UserDefaults = .standard) {
         let loaded = Self.load(from: defaults)
@@ -26,12 +43,13 @@ final class AppSettingsStore {
 
         self.defaults = defaults
         self.permitsPersistence = loaded.permitsPersistence
-        self.appearance = blob.appearance
-        self.typography = blob.typography
-        self.editor = blob.editor
-        self.files = blob.files
-        self.terminal = blob.terminal
-        SettingsColorResolver.updateSnapshot(blob.appearance)
+        self.snapshot = AppSettingsSnapshot(
+            appearance: blob.appearance,
+            typography: blob.typography,
+            editor: blob.editor,
+            files: blob.files
+        )
+        SettingsColorResolver.updateSnapshot(snapshot)
     }
 
     var editorFontSize: CGFloat {
@@ -50,60 +68,83 @@ final class AppSettingsStore {
     func restoreDefaults(for section: SettingsSection) {
         switch section {
         case .appearance:
-            appearance = .defaults
-            SettingsColorResolver.updateSnapshot(appearance)
+            apply(appearance: .defaults)
         case .typography:
-            typography = .defaults
+            apply(typography: .defaults)
         case .editor:
-            editor = .defaults
+            apply(editor: .defaults)
         case .files:
-            files = .defaults
-        case .terminal:
-            terminal = .defaults
+            apply(files: .defaults)
         }
-        bumpRevision()
     }
 
     func restoreAllDefaults() {
-        let blob = AppSettingsBlob.defaults
-        appearance = blob.appearance
-        typography = blob.typography
-        editor = blob.editor
-        files = blob.files
-        terminal = blob.terminal
-        SettingsColorResolver.updateSnapshot(appearance)
-        bumpRevision()
+        apply(.defaults)
     }
 
     func resetSyntaxPalette() {
         appearance.syntaxPalette = .defaults
-        SettingsColorResolver.updateSnapshot(appearance)
-        bumpRevision()
     }
 
-    func bumpRevision() {
-        revision += 1
+    private func settingsDidChange() {
+        SettingsColorResolver.updateSnapshot(snapshot)
+        persist()
+    }
+
+    private func apply(_ snapshot: AppSettingsSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    private func apply(appearance: AppearanceSettings) {
+        apply(AppSettingsSnapshot(
+            appearance: appearance,
+            typography: snapshot.typography,
+            editor: snapshot.editor,
+            files: snapshot.files
+        ))
+    }
+
+    private func apply(typography: TypographySettings) {
+        apply(AppSettingsSnapshot(
+            appearance: snapshot.appearance,
+            typography: typography,
+            editor: snapshot.editor,
+            files: snapshot.files
+        ))
+    }
+
+    private func apply(editor: EditorBehaviorSettings) {
+        apply(AppSettingsSnapshot(
+            appearance: snapshot.appearance,
+            typography: snapshot.typography,
+            editor: editor,
+            files: snapshot.files
+        ))
+    }
+
+    private func apply(files: FileDisplaySettings) {
+        apply(AppSettingsSnapshot(
+            appearance: snapshot.appearance,
+            typography: snapshot.typography,
+            editor: snapshot.editor,
+            files: files
+        ))
     }
 
     private func persist() {
-        guard permitsPersistence else {
-            bumpRevision()
-            return
-        }
+        guard permitsPersistence else { return }
 
         let blob = AppSettingsBlob(
             schemaVersion: AppSettingsBlob.currentSchemaVersion,
-            appearance: appearance,
-            typography: typography,
-            editor: editor,
-            files: files,
-            terminal: terminal
+            appearance: snapshot.appearance,
+            typography: snapshot.typography,
+            editor: snapshot.editor,
+            files: snapshot.files
         )
         let encoder = JSONEncoder()
         if let data = try? encoder.encode(blob) {
             defaults.set(data, forKey: Self.storageKey)
         }
-        bumpRevision()
     }
 
     private struct LoadedSettings {
@@ -131,7 +172,7 @@ final class AppSettingsStore {
             )
         }
         return LoadedSettings(
-            blob: SettingsMigration.migrate(blob),
+            blob: SettingsMigration.migrate(blob, legacyData: data),
             hasPersistedBlob: true,
             permitsPersistence: blob.schemaVersion <= AppSettingsBlob.currentSchemaVersion
         )

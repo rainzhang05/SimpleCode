@@ -5,19 +5,17 @@ enum SettingsSection: String, CaseIterable, Sendable {
     case typography
     case editor
     case files
-    case terminal
 }
 
 /// Versioned root settings blob persisted under the stable legacy storage key.
 struct AppSettingsBlob: Codable, Equatable, Sendable {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     var schemaVersion: Int
     var appearance: AppearanceSettings
     var typography: TypographySettings
     var editor: EditorBehaviorSettings
     var files: FileDisplaySettings
-    var terminal: TerminalAppearanceSettings
 
     static var defaults: AppSettingsBlob {
         AppSettingsBlob(
@@ -25,10 +23,25 @@ struct AppSettingsBlob: Codable, Equatable, Sendable {
             appearance: .defaults,
             typography: .defaults,
             editor: .defaults,
-            files: .defaults,
-            terminal: .defaults
+            files: .defaults
         )
     }
+}
+
+/// Immutable value passed to runtime consumers so a render or native-view
+/// update observes one coherent settings generation.
+struct AppSettingsSnapshot: Equatable, Sendable {
+    let appearance: AppearanceSettings
+    let typography: TypographySettings
+    let editor: EditorBehaviorSettings
+    let files: FileDisplaySettings
+
+    static let defaults = AppSettingsSnapshot(
+        appearance: .defaults,
+        typography: .defaults,
+        editor: .defaults,
+        files: .defaults
+    )
 }
 
 // MARK: - Appearance
@@ -139,7 +152,6 @@ struct TypographySettings: Codable, Equatable, Sendable {
     var editorFontLigatures: Bool
     var terminalFontFamily: String
     var terminalFontSize: Double
-    var terminalLineSpacing: Double
 
     static var defaults: TypographySettings {
         TypographySettings(
@@ -148,8 +160,7 @@ struct TypographySettings: Codable, Equatable, Sendable {
             editorLineHeight: 1.2,
             editorFontLigatures: false,
             terminalFontFamily: Typography.systemMonospacedFamilyName,
-            terminalFontSize: Double(Typography.defaultEditorFontSize),
-            terminalLineSpacing: 1.0
+            terminalFontSize: Double(Typography.defaultEditorFontSize)
         )
     }
 }
@@ -171,8 +182,6 @@ struct EditorBehaviorSettings: Codable, Equatable, Sendable {
     var showTrailingWhitespace: Bool
     var showLongLineGuide: Bool
     var longLineGuideColumn: Int
-    var automaticSyntaxHighlighting: Bool
-    var restoreOpenEditors: Bool
     var trimTrailingWhitespaceOnSave: Bool
     var ensureFinalNewlineOnSave: Bool
 
@@ -192,8 +201,6 @@ struct EditorBehaviorSettings: Codable, Equatable, Sendable {
             showTrailingWhitespace: false,
             showLongLineGuide: true,
             longLineGuideColumn: 100,
-            automaticSyntaxHighlighting: true,
-            restoreOpenEditors: true,
             trimTrailingWhitespaceOnSave: false,
             ensureFinalNewlineOnSave: true
         )
@@ -203,67 +210,11 @@ struct EditorBehaviorSettings: Codable, Equatable, Sendable {
 // MARK: - Files
 
 struct FileDisplaySettings: Codable, Equatable, Sendable {
-    var showHiddenFiles: Bool
-    var confirmBeforeTrash: Bool
     var userExclusions: [String]
-    var defaultEncoding: TextEncodingMode
-    var defaultLineEnding: LineEndingMode
-    var confirmBeforeOpeningLargeFiles: Bool
-    var restoreRecentWorkspaces: Bool
-    var maximumRecentWorkspaceCount: Int
 
     static var defaults: FileDisplaySettings {
         FileDisplaySettings(
-            showHiddenFiles: true,
-            confirmBeforeTrash: true,
-            userExclusions: [],
-            defaultEncoding: .utf8,
-            defaultLineEnding: .lf,
-            confirmBeforeOpeningLargeFiles: true,
-            restoreRecentWorkspaces: true,
-            maximumRecentWorkspaceCount: 10
-        )
-    }
-}
-
-// MARK: - Terminal
-
-enum TerminalCursorStyle: String, Codable, Equatable, Sendable {
-    case block
-    case underline
-    case bar
-}
-
-struct TerminalAppearanceSettings: Codable, Equatable, Sendable {
-    /// Deprecated compatibility fields. Typography and colors now live in their
-    /// dedicated settings sections; these values are read only during migration.
-    var fontFamily: String
-    var fontSize: Double
-    var background: StoredColorPair
-    var foreground: StoredColorPair
-    var scrollbackLimit: Int
-    var cursorStyle: TerminalCursorStyle
-    var cursorBlink: Bool
-    var audibleBell: Bool
-    var visualBell: Bool
-    var copyOnSelection: Bool
-    var clearTerminalBeforeRun: Bool
-    var revealTerminalOnRun: Bool
-
-    static var defaults: TerminalAppearanceSettings {
-        TerminalAppearanceSettings(
-            fontFamily: Typography.systemMonospacedFamilyName,
-            fontSize: Double(Typography.defaultEditorFontSize),
-            background: StoredColorPair(pair: ColorRoleDefaults.terminalBackground),
-            foreground: StoredColorPair(pair: ColorRoleDefaults.terminalForeground),
-            scrollbackLimit: 10_000,
-            cursorStyle: .block,
-            cursorBlink: true,
-            audibleBell: true,
-            visualBell: false,
-            copyOnSelection: false,
-            clearTerminalBeforeRun: false,
-            revealTerminalOnRun: true
+            userExclusions: []
         )
     }
 }

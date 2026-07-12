@@ -2,7 +2,7 @@ import Foundation
 
 enum SettingsMigration {
     /// Migrates a decoded blob to the current schema, merging unknown future keys safely.
-    static func migrate(_ blob: AppSettingsBlob) -> AppSettingsBlob {
+    static func migrate(_ blob: AppSettingsBlob, legacyData: Data? = nil) -> AppSettingsBlob {
         guard blob.schemaVersion >= 1 else {
             return AppSettingsBlob.defaults
         }
@@ -15,7 +15,10 @@ enum SettingsMigration {
 
         var result = blob
         if blob.schemaVersion == 1 {
-            result = migrateVersionOne(result)
+            result = migrateVersionOne(result, legacyData: legacyData)
+        }
+        if blob.schemaVersion == 2 {
+            migrateVersionTwoPaletteDefaults(in: &result.appearance)
         }
         result.schemaVersion = AppSettingsBlob.currentSchemaVersion
         return clamp(result)
@@ -29,32 +32,95 @@ enum SettingsMigration {
         }
     }
 
-    private static func migrateVersionOne(_ blob: AppSettingsBlob) -> AppSettingsBlob {
+    private static func migrateVersionOne(_ blob: AppSettingsBlob, legacyData: Data?) -> AppSettingsBlob {
         var result = blob
+        let legacyTerminal = legacyData.flatMap { try? JSONDecoder().decode(VersionOneCompatibility.self, from: $0) }.flatMap(\.terminal)
 
         // v1 exposed terminal typography and colors twice. A deliberate value
         // in the old Terminal pane wins only when the dedicated v1 counterpart
         // is still its default, so a newer explicit choice is never discarded.
         if result.typography.terminalFontFamily == TypographySettings.defaults.terminalFontFamily,
-           result.terminal.fontFamily != VersionOneDefaults.terminalFontFamily {
-            result.typography.terminalFontFamily = result.terminal.fontFamily
+           let fontFamily = legacyTerminal?.fontFamily,
+           fontFamily != VersionOneDefaults.terminalFontFamily {
+            result.typography.terminalFontFamily = fontFamily
         }
         if result.typography.terminalFontSize == VersionOneDefaults.terminalFontSize,
-           result.terminal.fontSize != VersionOneDefaults.terminalFontSize {
-            result.typography.terminalFontSize = result.terminal.fontSize
+           let fontSize = legacyTerminal?.fontSize,
+           fontSize != VersionOneDefaults.terminalFontSize {
+            result.typography.terminalFontSize = fontSize
         }
         if result.appearance.terminalBackground == VersionOneDefaults.terminalBackground,
-           result.terminal.background != VersionOneDefaults.terminalBackground {
-            result.appearance.terminalBackground = result.terminal.background
+           let background = legacyTerminal?.background,
+           background != VersionOneDefaults.terminalBackground {
+            result.appearance.terminalBackground = background
         }
         if result.appearance.terminalForeground == VersionOneDefaults.terminalForeground,
-           result.terminal.foreground != VersionOneDefaults.terminalForeground {
-            result.appearance.terminalForeground = result.terminal.foreground
+           let foreground = legacyTerminal?.foreground,
+           foreground != VersionOneDefaults.terminalForeground {
+            result.appearance.terminalForeground = foreground
         }
 
         migrateVersionOnePaletteDefaults(in: &result.appearance)
-        result.files.showHiddenFiles = true
         return result
+    }
+
+    private static func migrateVersionTwoPaletteDefaults(in appearance: inout AppearanceSettings) {
+        let current = AppearanceSettings.defaults
+        replaceExactLegacyDefault(
+            &appearance.editorBackground,
+            with: current.editorBackground,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.editorBackground)
+        )
+        replaceExactLegacyDefault(
+            &appearance.editorForeground,
+            with: current.editorForeground,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.editorForeground)
+        )
+        replaceExactLegacyDefault(
+            &appearance.editorCurrentLine,
+            with: current.editorCurrentLine,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.editorCurrentLine)
+        )
+        replaceExactLegacyDefault(
+            &appearance.editorSelection,
+            with: current.editorSelection,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.editorSelection)
+        )
+        replaceExactLegacyDefault(
+            &appearance.gutterBackground,
+            with: current.gutterBackground,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.gutterBackground)
+        )
+        replaceExactLegacyDefault(
+            &appearance.lineNumber,
+            with: current.lineNumber,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.lineNumber)
+        )
+        replaceExactLegacyDefault(
+            &appearance.activeLineNumber,
+            with: current.activeLineNumber,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.activeLineNumber)
+        )
+        replaceExactLegacyDefault(
+            &appearance.longLineGuide,
+            with: current.longLineGuide,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.longLineGuide)
+        )
+        replaceExactLegacyDefault(
+            &appearance.whitespaceMarker,
+            with: current.whitespaceMarker,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.whitespaceMarker)
+        )
+        replaceExactLegacyDefault(
+            &appearance.terminalBackground,
+            with: current.terminalBackground,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.terminalBackground)
+        )
+        replaceExactLegacyDefault(
+            &appearance.terminalForeground,
+            with: current.terminalForeground,
+            legacy: StoredColorPair(pair: LegacyVioletColorRoleDefaults.terminalForeground)
+        )
     }
 
     private static func migrateVersionOnePaletteDefaults(in appearance: inout AppearanceSettings) {
@@ -82,11 +148,19 @@ enum SettingsMigration {
         }
     }
 
+    private static func replaceExactLegacyDefault(
+        _ value: inout StoredColorPair,
+        with current: StoredColorPair,
+        legacy: StoredColorPair
+    ) {
+        guard value == legacy else { return }
+        value = current
+    }
+
     private static func clamp(_ blob: AppSettingsBlob) -> AppSettingsBlob {
         var copy = blob
         copy.typography.editorFontFamily = FontCatalog.resolvedMonospacedFamily(copy.typography.editorFontFamily)
         copy.typography.terminalFontFamily = FontCatalog.resolvedMonospacedFamily(copy.typography.terminalFontFamily)
-        copy.terminal.fontFamily = FontCatalog.resolvedMonospacedFamily(copy.terminal.fontFamily)
         copy.typography.editorFontSize = clampFinite(
             copy.typography.editorFontSize,
             min: Double(Typography.minimumEditorFontSize),
@@ -99,21 +173,10 @@ enum SettingsMigration {
             max: Double(Typography.maximumEditorFontSize),
             fallback: Double(Typography.defaultEditorFontSize)
         )
-        copy.terminal.fontSize = clampFinite(
-            copy.terminal.fontSize,
-            min: Double(Typography.minimumEditorFontSize),
-            max: Double(Typography.maximumEditorFontSize),
-            fallback: Double(Typography.defaultEditorFontSize)
-        )
         copy.typography.editorLineHeight = clampFinite(copy.typography.editorLineHeight, min: 1.0, max: 2.5, fallback: 1.2)
-        copy.typography.terminalLineSpacing = clampFinite(copy.typography.terminalLineSpacing, min: 0.5, max: 2.5, fallback: 1.0)
         copy.editor.tabWidth = min(max(copy.editor.tabWidth, 1), 16)
         copy.editor.longLineGuideColumn = min(max(copy.editor.longLineGuideColumn, 40), 200)
-        copy.files.maximumRecentWorkspaceCount = min(max(copy.files.maximumRecentWorkspaceCount, 1), 50)
-        copy.terminal.scrollbackLimit = min(max(copy.terminal.scrollbackLimit, 1_000), 100_000)
         sanitizeColors(in: &copy.appearance)
-        sanitizeColors(in: &copy.terminal.background)
-        sanitizeColors(in: &copy.terminal.foreground)
         return copy
     }
 
@@ -175,6 +238,17 @@ enum SettingsMigration {
         color.blue = clampFinite(color.blue, min: 0, max: 1, fallback: 0)
         color.alpha = clampFinite(color.alpha, min: 0, max: 1, fallback: 1)
     }
+}
+
+private struct VersionOneCompatibility: Decodable {
+    struct Terminal: Decodable {
+        var fontFamily: String?
+        var fontSize: Double?
+        var background: StoredColorPair?
+        var foreground: StoredColorPair?
+    }
+
+    var terminal: Terminal?
 }
 
 private enum VersionOneDefaults {
