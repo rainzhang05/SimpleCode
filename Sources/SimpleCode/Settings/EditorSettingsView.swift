@@ -3,16 +3,13 @@ import SwiftUI
 struct EditorSettingsView: View {
     @Bindable var settings: AppSettingsStore
 
-    private let tabWidthOptions = [2, 4, 8]
-
     var body: some View {
         Form {
             Section("Indentation") {
-                Picker("Tab Width", selection: $settings.editor.tabWidth) {
-                    ForEach(tabWidthOptions, id: \.self) { width in
-                        Text("\(width) spaces").tag(width)
+                Picker("Tab Width", selection: tabWidthSelection) {
+                    ForEach(EditorTabWidthChoice.options, id: \.self) { choice in
+                        Text(choice.label).tag(choice)
                     }
-                    Text("Custom").tag(settings.editor.tabWidth)
                 }
                 Stepper(
                     "Custom Width: \(settings.editor.tabWidth)",
@@ -40,11 +37,9 @@ struct EditorSettingsView: View {
                     value: $settings.editor.longLineGuideColumn,
                     in: 40...200
                 )
-                Toggle("Automatic Syntax Highlighting", isOn: $settings.editor.automaticSyntaxHighlighting)
             }
 
-            Section("Session & Save") {
-                Toggle("Restore Open Editors", isOn: $settings.editor.restoreOpenEditors)
+            Section("Save") {
                 Toggle("Trim Trailing Whitespace on Save", isOn: $settings.editor.trimTrailingWhitespaceOnSave)
                 Toggle("Ensure Final Newline on Save", isOn: $settings.editor.ensureFinalNewlineOnSave)
             }
@@ -59,5 +54,40 @@ struct EditorSettingsView: View {
         .formStyle(.grouped)
         .padding()
         .accessibilityIdentifier("settings.section.editor")
+    }
+
+    private var tabWidthSelection: Binding<EditorTabWidthChoice> {
+        Binding(
+            get: { EditorTabWidthChoice.selection(for: settings.editor.tabWidth) },
+            set: { choice in
+                settings.editor.tabWidth = choice.width ?? EditorTabWidthChoice.defaultCustomWidth
+            }
+        )
+    }
+}
+
+enum EditorTabWidthChoice: Hashable {
+    case preset(Int)
+    case custom
+
+    static let options: [EditorTabWidthChoice] = [.preset(2), .preset(4), .preset(8), .custom]
+    static let defaultCustomWidth = 3
+
+    static func selection(for width: Int) -> EditorTabWidthChoice {
+        options.contains(.preset(width)) ? .preset(width) : .custom
+    }
+
+    var width: Int? {
+        guard case let .preset(width) = self else { return nil }
+        return width
+    }
+
+    var label: String {
+        switch self {
+        case let .preset(width):
+            "\(width) spaces"
+        case .custom:
+            "Custom"
+        }
     }
 }

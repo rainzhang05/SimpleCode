@@ -10,7 +10,6 @@ struct FilesSettingsView: View {
                 Text("Hidden files and folders are always shown in the workspace tree.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Toggle("Confirm Before Moving to Trash", isOn: $settings.files.confirmBeforeTrash)
             }
 
             Section("Excluded Directories") {
@@ -49,36 +48,6 @@ struct FilesSettingsView: View {
 
                 Button("Reset Exclusions") {
                     settings.files.userExclusions = []
-                }
-                .pointingHandCursor()
-            }
-
-            Section("New Files") {
-                Picker("Default Encoding", selection: $settings.files.defaultEncoding) {
-                    ForEach([TextEncodingMode.utf8, .utf8WithBOM, .utf16LittleEndian, .utf16BigEndian, .isoLatin1], id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-                Picker("Default Line Endings", selection: $settings.files.defaultLineEnding) {
-                    ForEach([LineEndingMode.lf, .crlf, .cr], id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
-            }
-
-            Section("Workspaces") {
-                Toggle("Confirm Before Opening Large Files", isOn: $settings.files.confirmBeforeOpeningLargeFiles)
-                Toggle("Restore Recent Workspaces", isOn: $settings.files.restoreRecentWorkspaces)
-                Stepper(
-                    "Maximum Recent: \(settings.files.maximumRecentWorkspaceCount)",
-                    value: $settings.files.maximumRecentWorkspaceCount,
-                    in: 1...50
-                )
-            }
-
-            Section {
-                Button("Restore Files Defaults") {
-                    settings.restoreDefaults(for: .files)
                 }
                 .pointingHandCursor()
             }

@@ -119,7 +119,6 @@
 		8B22EC7D9A49912B69FFCDD6 /* SaveTransformService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DFC7BEE0D9CFFA66551C590 /* SaveTransformService.swift */; };
 		8C6A703B6EDB3B38CA106B79 /* DocumentWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 204806F9E9117866F4FFBE90 /* DocumentWatcherTests.swift */; };
 		8DD146B5DC725419BB811C7C /* EditorVisibleRangeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3006013EB93CE3A9D96E97E0 /* EditorVisibleRangeTests.swift */; };
-		8DE12922B80AE4737F514191 /* TerminalSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7416AE35CF4C4B4C61C9FEBF /* TerminalSettingsView.swift */; };
 		8F4A06949253C21499665C0A /* TreeSitterJSON in Frameworks */ = {isa = PBXBuildFile; productRef = 07EDAEF165375C041CD0D755 /* TreeSitterJSON */; };
 		90D59425875DE474C5A5B023 /* GitCloneServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0563CCC8C43E3EE761B895 /* GitCloneServiceTests.swift */; };
 		91675028AA1F1CA03A89BF2F /* pre-merge-commit.sample in Resources */ = {isa = PBXBuildFile; fileRef = 05703869FBBABE15D52A73D4 /* pre-merge-commit.sample */; };
@@ -317,7 +316,6 @@
 		72E4AEFE1C93A33D219CE319 /* AppSettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsStoreTests.swift; sourceTree = "<group>"; };
 		73B967E786C45BFF2334AAC5 /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		73C08559719BD81703816D45 /* description */ = {isa = PBXFileReference; path = description; sourceTree = "<group>"; };
-		7416AE35CF4C4B4C61C9FEBF /* TerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSettingsView.swift; sourceTree = "<group>"; };
 		7483D5FCEC5287584395AFE9 /* NewFolderSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFolderSheet.swift; sourceTree = "<group>"; };
 		77108F88C3239A7C60ACA228 /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
 		79D29143E9B9F05B41310E51 /* ColorRoleDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorRoleDefaults.swift; sourceTree = "<group>"; };
@@ -802,7 +800,6 @@
 				CA7C94017C6CC853379B88FC /* SettingsRootView.swift */,
 				8541155A02D9329C73E1F8EF /* SettingsSchema.swift */,
 				AB2FB0DFBA90F1191A0CB2DE /* StoredColor.swift */,
-				7416AE35CF4C4B4C61C9FEBF /* TerminalSettingsView.swift */,
 				D761C0F83ADAA4983171F747 /* TypographySettingsView.swift */,
 			);
 			path = Settings;
@@ -1166,7 +1163,6 @@
 				85C860A556C5384C8D606E60 /* TerminalPanelView.swift in Sources */,
 				948033235578D9BA280DCA0C /* TerminalRepresentable.swift in Sources */,
 				A409F34243BE64365502FCC0 /* TerminalSessionController.swift in Sources */,
-				8DE12922B80AE4737F514191 /* TerminalSettingsView.swift in Sources */,
 				1ED997DF5EB1C24B0EEDE0A8 /* TextEncodingDetector.swift in Sources */,
 				880A7EFE269FBEFA1978683E /* TextEncodingMode.swift in Sources */,
 				99E77F187F89335D618D3908 /* TreeSitterHighlighter.swift in Sources */,

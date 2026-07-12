@@ -95,7 +95,7 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         XCTAssertTrue(element("settings.root").waitForExistence(timeout: 8), debugSnapshot())
         XCTAssertTrue(app.scrollViews.firstMatch.waitForExistence(timeout: 5))
 
-        for section in ["Appearance", "Typography", "Editor", "Files", "Terminal"] {
+        for section in ["Appearance", "Typography", "Editor", "Files"] {
             let tab = app.buttons[section]
             XCTAssertTrue(tab.waitForExistence(timeout: 5), debugSnapshot())
             clickElement(tab)

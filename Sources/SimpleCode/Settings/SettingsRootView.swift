@@ -13,8 +13,6 @@ struct SettingsRootView: View {
                 .tabItem { Label("Editor", systemImage: "chevron.left.forwardslash.chevron.right") }
             FilesSettingsView(settings: settings)
                 .tabItem { Label("Files", systemImage: "folder") }
-            TerminalSettingsView(settings: settings)
-                .tabItem { Label("Terminal", systemImage: "terminal") }
         }
         .frame(minWidth: 520, minHeight: 420)
         .accessibilityElement(children: .contain)

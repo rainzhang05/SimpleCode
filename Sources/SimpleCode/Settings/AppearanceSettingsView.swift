@@ -75,9 +75,6 @@ struct AppearanceSettingsView: View {
                 } else {
                     settings.appearance[keyPath: pair].light = newColor
                 }
-                if pair == \.editorForeground, !newColor.isEditorForegroundReadable {
-                    // Keep alpha readable; user sees reduced opacity warning via binding clamp in row.
-                }
             }
         )
     }
@@ -109,9 +106,7 @@ private struct ColorSettingRow: View {
             ColorPicker("", selection: Binding(
                 get: { color.swiftUIColor },
                 set: { picked in
-                    var stored = StoredColor(nsColor: NSColor(picked))
-                    if stored.alpha < 0.5 { stored.alpha = 0.5 }
-                    onChange(stored)
+                    onChange(StoredColor(nsColor: NSColor(picked)))
                 }
             ), supportsOpacity: true)
             .labelsHidden()
