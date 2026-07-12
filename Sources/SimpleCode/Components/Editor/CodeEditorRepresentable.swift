@@ -413,10 +413,10 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         private func currentVisibleUTF16Range(fallbackAround offset: Int) -> NSRange {
-            guard let textView, let scrollView else {
+            guard let textView else {
                 return NSRange(location: max(0, offset), length: 0)
             }
-            return EditorVisibleRange.visibleUTF16Range(in: textView, scrollView: scrollView)
+            return EditorVisibleRange.visibleUTF16Range(in: textView)
                 ?? NSRange(location: max(0, offset), length: 0)
         }
 

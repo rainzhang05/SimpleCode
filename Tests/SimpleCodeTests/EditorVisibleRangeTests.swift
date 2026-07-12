@@ -66,6 +66,55 @@ struct EditorVisibleRangeTests {
     }
 
     @MainActor
+    @Test func wrappedParagraphUsesItsFirstVisualLineForGutterAlignment() throws {
+        let (textView, fragment) = try makeLaidOutTextView(
+            text: String(repeating: "wrapped words need several visual rows ", count: 8),
+            wordWrap: true,
+            width: 150
+        )
+        #expect(fragment.textLineFragments.count > 1)
+
+        let firstLineFrame = try #require(
+            EditorTextGeometry.firstLineViewFrame(in: fragment, textView: textView)
+        )
+        let firstLineBounds = try #require(fragment.textLineFragments.first).typographicBounds
+        let expectedLayoutFrame = firstLineBounds.offsetBy(
+            dx: fragment.layoutFragmentFrame.minX,
+            dy: fragment.layoutFragmentFrame.minY
+        )
+        let expectedViewFrame = EditorTextGeometry.viewFrame(for: expectedLayoutFrame, in: textView)
+
+        #expect(abs(firstLineFrame.minY - expectedViewFrame.minY) < 0.001)
+        #expect(abs(firstLineFrame.midY - expectedViewFrame.midY) < 0.001)
+        #expect(firstLineFrame.maxY < EditorTextGeometry.viewFrame(
+            for: fragment.layoutFragmentFrame,
+            in: textView
+        ).maxY)
+    }
+
+    @MainActor
+    @Test func unwrappedParagraphKeepsGutterOnItsSingleVisualLine() throws {
+        let (textView, fragment) = try makeLaidOutTextView(
+            text: String(repeating: "one horizontal line ", count: 12),
+            wordWrap: false,
+            width: 150
+        )
+        #expect(fragment.textLineFragments.count == 1)
+
+        let firstLineFrame = try #require(
+            EditorTextGeometry.firstLineViewFrame(in: fragment, textView: textView)
+        )
+        let firstLineBounds = try #require(fragment.textLineFragments.first).typographicBounds
+        let expectedLayoutFrame = firstLineBounds.offsetBy(
+            dx: fragment.layoutFragmentFrame.minX,
+            dy: fragment.layoutFragmentFrame.minY
+        )
+        let expectedViewFrame = EditorTextGeometry.viewFrame(for: expectedLayoutFrame, in: textView)
+
+        #expect(abs(firstLineFrame.midY - expectedViewFrame.midY) < 0.001)
+    }
+
+    @MainActor
     @Test func codeTextViewBuildsOneTextKit2Graph() throws {
         let textView = CodeTextView()
 
@@ -75,6 +124,30 @@ struct EditorVisibleRangeTests {
         #expect(textView.textContentStorage === contentStorage)
         #expect(contentStorage.textStorage === textView.textStorage)
         #expect(layoutManager.textContainer === textView.textContainer)
+    }
+
+    @MainActor
+    private func makeLaidOutTextView(
+        text: String,
+        wordWrap: Bool,
+        width: CGFloat
+    ) throws -> (CodeTextView, NSTextLayoutFragment) {
+        let textView = CodeTextView()
+        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.string = text
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: width, height: 180))
+        scrollView.documentView = textView
+        textView.frame = NSRect(x: 0, y: 0, width: width, height: 600)
+        textView.configureWordWrap(enabled: wordWrap, in: scrollView)
+        scrollView.layoutSubtreeIfNeeded()
+        let layoutManager = try #require(textView.textLayoutManager)
+        let contentManager = try #require(layoutManager.textContentManager)
+        layoutManager.ensureLayout(for: contentManager.documentRange)
+        let fragment = try #require(layoutManager.textLayoutFragment(for: NSPoint(
+            x: textView.textContainer?.lineFragmentPadding ?? 0,
+            y: 0
+        )))
+        return (textView, fragment)
     }
 
     @MainActor

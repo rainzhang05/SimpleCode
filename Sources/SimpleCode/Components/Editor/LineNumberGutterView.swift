@@ -91,7 +91,10 @@ final class LineNumberGutterView: NSView {
         }
 
         layoutManager.enumerateTextLayoutFragments(from: startFragment.rangeInElement.location, options: [.ensuresLayout]) { fragment in
-            let frame = EditorTextGeometry.viewFrame(for: fragment.layoutFragmentFrame, in: codeTextView)
+            guard let frame = EditorTextGeometry.firstLineViewFrame(
+                in: fragment,
+                textView: codeTextView
+            ) else { return true }
             guard frame.minY < visibleRect.maxY else { return false }
 
             let offset = contentManager.offset(

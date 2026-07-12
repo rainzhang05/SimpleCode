@@ -18,6 +18,18 @@ enum EditorTextGeometry {
     static func textLookupX(in textView: NSTextView) -> CGFloat {
         textView.textContainerOrigin.x + (textView.textContainer?.lineFragmentPadding ?? 0)
     }
+
+    static func firstLineViewFrame(
+        in fragment: NSTextLayoutFragment,
+        textView: NSTextView
+    ) -> NSRect? {
+        guard let firstLine = fragment.textLineFragments.first else { return nil }
+        let lineLayoutFrame = firstLine.typographicBounds.offsetBy(
+            dx: fragment.layoutFragmentFrame.minX,
+            dy: fragment.layoutFragmentFrame.minY
+        )
+        return viewFrame(for: lineLayoutFrame, in: textView)
+    }
 }
 
 /// Computes the UTF-16 character range currently visible in the editor scroll view,
@@ -28,7 +40,6 @@ enum EditorVisibleRange {
     @MainActor
     static func visibleUTF16Range(
         in textView: CodeTextView,
-        scrollView: NSScrollView,
         marginUTF16: Int = defaultMarginUTF16
     ) -> NSRange? {
         guard let layoutManager = textView.textLayoutManager,
