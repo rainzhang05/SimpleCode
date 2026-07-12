@@ -32,25 +32,36 @@ final class FileTreeModel {
     }
     var selectedNodeID: FileTreeNodeID?
     var activeFileURL: URL?
-    /// Source folders are part of the workspace even when their name starts with a
-    /// dot. Filtering them made common project configuration disappear unexpectedly.
-    var showHiddenFiles = true
-    var userExclusions: [String] = []
+    /// Dotfiles are always part of the workspace. Only explicit user exclusions
+    /// filter directories from the tree.
+    private(set) var userExclusions: [String]
     private(set) var isLoadingRoot = false
 
     private let treeService = WorkspaceFileTreeService()
 
-    init(workspaceRoot: URL) {
+    init(workspaceRoot: URL, userExclusions: [String] = []) {
         self.workspaceRoot = workspaceRoot
+        self.userExclusions = userExclusions
+    }
+
+    /// Applies a new exclusion snapshot and reports whether a refresh is needed.
+    @discardableResult
+    func applyUserExclusions(_ exclusions: [String]) -> Bool {
+        guard exclusions != userExclusions else { return false }
+        userExclusions = exclusions
+        return true
     }
 
     func loadRoot() async {
+        await loadRoot(userPatterns: userExclusions)
+    }
+
+    private func loadRoot(userPatterns: [String]) async {
         isLoadingRoot = true
         let listing = await treeService.listDirectory(
             at: workspaceRoot,
             workspaceRoot: workspaceRoot,
-            showHidden: showHiddenFiles,
-            userPatterns: userExclusions
+            userPatterns: userPatterns
         )
         rootChildren = listing.children.map { child in
             FileTreeNodeState(
@@ -78,8 +89,11 @@ final class FileTreeModel {
     }
 
     func refresh() async {
+        // A settings observation can run while directory I/O is suspended. Use one
+        // immutable exclusion snapshot for the complete root-and-descendant replay.
+        let userPatterns = userExclusions
         let preserved = expandedNodeIDs
-        await loadRoot()
+        await loadRoot(userPatterns: userPatterns)
         expandedNodeIDs = preserved
         // Parents have to be restored before their descendants can be found in the
         // freshly rebuilt tree. Deterministic shallow-to-deep replay also avoids
@@ -87,7 +101,7 @@ final class FileTreeModel {
         for id in preserved.sorted(by: { lhs, rhs in
             lhs.path.split(separator: "/").count < rhs.path.split(separator: "/").count
         }) {
-            await loadChildrenIfNeeded(for: id)
+            await loadChildrenIfNeeded(for: id, userPatterns: userPatterns)
         }
     }
 
@@ -107,6 +121,13 @@ final class FileTreeModel {
     }
 
     func loadChildrenIfNeeded(for nodeID: FileTreeNodeID) async {
+        await loadChildrenIfNeeded(for: nodeID, userPatterns: userExclusions)
+    }
+
+    private func loadChildrenIfNeeded(
+        for nodeID: FileTreeNodeID,
+        userPatterns: [String]
+    ) async {
         guard let node = findNode(id: nodeID) else { return }
         guard node.isDirectory else { return }
         if node.children != nil && node.loadError == nil && !node.isLoading {
@@ -117,8 +138,7 @@ final class FileTreeModel {
         let listing = await treeService.listDirectory(
             at: node.url,
             workspaceRoot: workspaceRoot,
-            showHidden: showHiddenFiles,
-            userPatterns: userExclusions
+            userPatterns: userPatterns
         )
         let children = listing.children.map { child in
             FileTreeNodeState(

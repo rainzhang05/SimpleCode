@@ -10,24 +10,71 @@ struct WorkspaceFileTreeServiceTests {
         try "z".write(to: root.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
 
         let service = WorkspaceFileTreeService()
-        let listing = await service.listDirectory(at: root, workspaceRoot: root, showHidden: false)
+        let listing = await service.listDirectory(at: root, workspaceRoot: root)
         #expect(listing.children.first?.isDirectory == true)
+    }
+
+    @Test func includesDotfilesWithoutAVisibilityOption() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent(".config"),
+            withIntermediateDirectories: true
+        )
+        try "token".write(to: root.appendingPathComponent(".env"), atomically: true, encoding: .utf8)
+
+        let service = WorkspaceFileTreeService()
+        let listing = await service.listDirectory(at: root, workspaceRoot: root)
+
+        #expect(Set(listing.children.map(\.name)).isSuperset(of: [".config", ".env"]))
     }
 
     @Test func includesProjectDirectoriesUnlessTheUserExcludesThem() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: root.appendingPathComponent("node_modules"), withIntermediateDirectories: true)
         let service = WorkspaceFileTreeService()
-        let listing = await service.listDirectory(at: root, workspaceRoot: root, showHidden: false)
+        let listing = await service.listDirectory(at: root, workspaceRoot: root)
         #expect(listing.children.map(\.name) == ["node_modules"])
 
         let filtered = await service.listDirectory(
             at: root,
             workspaceRoot: root,
-            showHidden: false,
             userPatterns: ["node_modules"]
         )
         #expect(filtered.children.isEmpty)
+    }
+}
+
+@MainActor
+struct FileTreeModelRefreshTests {
+    @Test func exclusionRefreshPreservesExpandedDirectories() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let sources = root.appendingPathComponent("Sources")
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("Generated"),
+            withIntermediateDirectories: true
+        )
+        try "let value = 1".write(
+            to: sources.appendingPathComponent("App.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let tree = FileTreeModel(workspaceRoot: root)
+        await tree.loadRoot()
+        let sourcesID = try #require(tree.rootChildren.first { $0.name == "Sources" }?.id)
+        await tree.toggleExpansion(for: sourcesID)
+
+        #expect(tree.applyUserExclusions(["Generated"]))
+        #expect(!tree.applyUserExclusions(["Generated"]))
+        await tree.refresh()
+
+        #expect(tree.expandedNodeIDs.contains(sourcesID))
+        #expect(tree.visibleRows.map(\.node.name).contains("App.swift"))
+        #expect(!tree.rootChildren.map(\.name).contains("Generated"))
     }
 }
 

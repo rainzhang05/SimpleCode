@@ -116,7 +116,10 @@ final class WorkspaceModel {
         self.rootURL = rootURL
         self.appSettings = appSettings
         self.useSyntaxStressSample = useSyntaxStressSample
-        self.fileTree = FileTreeModel(workspaceRoot: rootURL)
+        self.fileTree = FileTreeModel(
+            workspaceRoot: rootURL,
+            userExclusions: appSettings.files.userExclusions
+        )
         self.openDocuments = OpenDocumentsStore()
         self.terminal = TerminalSessionController(workingDirectory: rootURL)
         self.runCommands = RunCommandStore(
@@ -131,8 +134,6 @@ final class WorkspaceModel {
             self?.runExecution.resetStateForNewRun()
         }
         self.openDocuments.appSettings = appSettings
-        fileTree.showHiddenFiles = true
-        fileTree.userExclusions = appSettings.files.userExclusions
     }
 
     func bootstrapAfterOpen() async {
@@ -524,13 +525,13 @@ final class WorkspaceModel {
         goToLine.dismiss()
     }
 
-    func syncFileTreeFromSettings() {
-        fileTree.showHiddenFiles = true
-        fileTree.userExclusions = appSettings.files.userExclusions
+    @discardableResult
+    func syncFileTreeFromSettings() -> Bool {
+        fileTree.applyUserExclusions(appSettings.files.userExclusions)
     }
 
     func refreshFileTreeIfSettingsChanged() async {
-        syncFileTreeFromSettings()
+        guard syncFileTreeFromSettings() else { return }
         await fileTree.refresh()
     }
 

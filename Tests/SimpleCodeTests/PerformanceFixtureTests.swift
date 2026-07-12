@@ -63,7 +63,7 @@ struct PerformanceFixtureTests {
         try PerformanceFixtureGenerator.createLargeWorkspace(at: root)
         let service = WorkspaceFileTreeService()
         let start = Date()
-        let listing = await service.listDirectory(at: root, workspaceRoot: root, showHidden: false)
+        let listing = await service.listDirectory(at: root, workspaceRoot: root)
         let elapsed = Date().timeIntervalSince(start)
         #expect(!listing.children.isEmpty)
         #expect(elapsed < 3.0)
@@ -76,11 +76,11 @@ struct PerformanceFixtureTests {
         let root = FileManager.default.temporaryDirectory.appending(path: "PerfSym-\(UUID().uuidString)")
         try PerformanceFixtureGenerator.createLargeWorkspace(at: root, fileCount: 20, directoryCount: 5)
         let service = WorkspaceFileTreeService()
-        let listing = await service.listDirectory(at: root, workspaceRoot: root, showHidden: false)
+        let listing = await service.listDirectory(at: root, workspaceRoot: root)
         let linked = listing.children.first { $0.name == "linked" }
         #expect(linked?.isSymlink == true)
         guard let linked else { return }
-        let childListing = await service.listDirectory(at: linked.url, workspaceRoot: root, showHidden: false)
+        let childListing = await service.listDirectory(at: linked.url, workspaceRoot: root)
         #expect(childListing.children.isEmpty)
     }
 }

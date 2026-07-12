@@ -34,22 +34,20 @@ actor WorkspaceFileTreeService {
     func listDirectory(
         at url: URL,
         workspaceRoot: URL,
-        showHidden: Bool,
         userPatterns: [String] = []
     ) -> FileTreeDirectoryListing {
         let rootPath = workspaceRoot.standardizedFileURL.path
         let keys: [URLResourceKey] = [
             .isDirectoryKey,
             .isSymbolicLinkKey,
-            .isPackageKey,
-            .isHiddenKey
+            .isPackageKey
         ]
 
         do {
             let items = try FileManager.default.contentsOfDirectory(
                 at: url,
                 includingPropertiesForKeys: keys,
-                options: showHidden ? [] : [.skipsHiddenFiles]
+                options: []
             )
 
             var children: [FileTreeChild] = []
