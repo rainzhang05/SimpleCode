@@ -161,6 +161,10 @@ struct AppModelTests {
         ) == 0)
     }
 
+    @Test func workspacePanelLayoutUsesSharedMotionDuration() {
+        #expect(WorkspacePanelLayout.motionDuration == 0.20)
+    }
+
     @Test func workspaceBootstrapIsIdempotentAndTeardownIsSafeToRepeat() async throws {
         let suiteName = "com.simplecode.tests.bootstrap.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

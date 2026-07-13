@@ -156,7 +156,7 @@ struct WorkspaceView: View {
                 .padding(.leading, sidebarReservation)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(
-                    reduceMotion ? nil : .easeInOut(duration: 0.22),
+                    reduceMotion ? nil : .easeInOut(duration: WorkspacePanelLayout.motionDuration),
                     value: workspace.isSidebarVisible
                 )
 
@@ -186,7 +186,7 @@ struct WorkspaceView: View {
             .allowsHitTesting(workspace.isSidebarVisible)
             .accessibilityHidden(!workspace.isSidebarVisible)
             .animation(
-                reduceMotion ? nil : .easeInOut(duration: 0.20),
+                reduceMotion ? nil : .easeInOut(duration: WorkspacePanelLayout.motionDuration),
                 value: workspace.isSidebarVisible
             )
     }
@@ -214,7 +214,7 @@ struct WorkspaceView: View {
         .allowsHitTesting(workspace.isTerminalVisible)
         .accessibilityHidden(!workspace.isTerminalVisible)
         .animation(
-            reduceMotion ? nil : .easeInOut(duration: 0.20),
+            reduceMotion ? nil : .easeInOut(duration: WorkspacePanelLayout.motionDuration),
             value: workspace.isTerminalVisible
         )
     }

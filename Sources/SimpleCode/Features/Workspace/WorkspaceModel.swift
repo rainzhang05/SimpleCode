@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 
 enum WorkspacePanelLayout {
+    static let motionDuration = 0.20
     static let defaultSidebarWidth: CGFloat = 280
     static let minimumSidebarWidth: CGFloat = 240
     static let maximumSidebarWidth: CGFloat = 360
