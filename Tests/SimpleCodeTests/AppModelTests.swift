@@ -125,6 +125,19 @@ struct AppModelTests {
         #expect(WorkspacePanelLayout.fittedTerminalHeight(configuredHeight: 220, availableHeight: -1) == 0)
     }
 
+    @Test func workspacePanelLayoutReservesEditorSpaceForVisibleSidebar() {
+        #expect(WorkspacePanelLayout.sidebarReservation(
+            sidebarWidth: 280,
+            panelInset: 12,
+            isVisible: true
+        ) == 304)
+        #expect(WorkspacePanelLayout.sidebarReservation(
+            sidebarWidth: 280,
+            panelInset: 12,
+            isVisible: false
+        ) == 0)
+    }
+
     @Test func workspaceBootstrapIsIdempotentAndTeardownIsSafeToRepeat() async throws {
         let suiteName = "com.simplecode.tests.bootstrap.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

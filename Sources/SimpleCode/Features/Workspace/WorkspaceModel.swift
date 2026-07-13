@@ -14,6 +14,15 @@ enum WorkspacePanelLayout {
         return min(max(width, minimumSidebarWidth), maximumSidebarWidth)
     }
 
+    static func sidebarReservation(
+        sidebarWidth: CGFloat,
+        panelInset: CGFloat,
+        isVisible: Bool
+    ) -> CGFloat {
+        guard isVisible else { return 0 }
+        return clampedSidebarWidth(sidebarWidth) + max(0, panelInset) * 2
+    }
+
     static func clampedTerminalHeight(_ height: CGFloat) -> CGFloat {
         guard height.isFinite else { return defaultTerminalHeight }
         return min(max(height, minimumTerminalHeight), maximumTerminalHeight)

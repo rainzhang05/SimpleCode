@@ -145,10 +145,20 @@ struct WorkspaceView: View {
             configuredHeight: workspace.terminalHeight,
             availableHeight: contentHeight - (Spacing.small * 2)
         )
+        let sidebarReservation = WorkspacePanelLayout.sidebarReservation(
+            sidebarWidth: workspace.sidebarWidth,
+            panelInset: Spacing.small,
+            isVisible: workspace.isSidebarVisible
+        )
 
         return ZStack(alignment: .topLeading) {
             editorShell
+                .padding(.leading, sidebarReservation)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 0.22),
+                    value: workspace.isSidebarVisible
+                )
 
             sidebarOverlay(terminalHeight: terminalHeight)
                 .zIndex(2)
