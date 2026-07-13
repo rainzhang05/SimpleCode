@@ -857,6 +857,52 @@ struct EditorVisibleRangeTests {
         #expect(workspace.editorReturnResult(for: session, selection: NSRange(location: 1, length: 1)) == nil)
     }
 
+    @Test func programmaticUndoPayloadRetainsOnlyTheReplacedSubstring() throws {
+        let documentLength = 1_000_000
+        let editRange = NSRange(location: documentLength / 2, length: 1)
+        var requestedSubstrings: [NSRange] = []
+
+        let plan = try #require(ProgrammaticEditPlan.prepare(
+            edits: [TextEdit(range: editRange, replacement: "expanded")],
+            documentLength: documentLength,
+            undoSelection: NSRange(location: editRange.location, length: 0),
+            redoSelection: NSRange(location: editRange.location + "expanded".utf16.count, length: 0),
+            replacedText: { range in
+                requestedSubstrings.append(range)
+                return "x"
+            }
+        ))
+
+        #expect(requestedSubstrings == [editRange])
+        #expect(plan.undoPayload.retainedUTF16Length == 1)
+        #expect(plan.undoPayload.edits == [
+            TextEdit(
+                range: NSRange(location: editRange.location, length: "expanded".utf16.count),
+                replacement: "x"
+            )
+        ])
+        #expect(plan.undoPayload.selection == NSRange(location: editRange.location, length: 0))
+        #expect(plan.undoPayload.inverseSelection == NSRange(
+            location: editRange.location + "expanded".utf16.count,
+            length: 0
+        ))
+    }
+
+    @Test func multipleProgrammaticEditsChooseOneBatchedLineIndexRebuild() throws {
+        let plan = try #require(ProgrammaticEditPlan.prepare(
+            edits: [
+                TextEdit(range: NSRange(location: 0, length: 0), replacement: "    "),
+                TextEdit(range: NSRange(location: 2, length: 0), replacement: "    ")
+            ],
+            documentLength: 3,
+            undoSelection: NSRange(location: 0, length: 3),
+            redoSelection: NSRange(location: 0, length: 11),
+            replacedText: { _ in "" }
+        ))
+
+        #expect(plan.lineIndexStrategy == .rebuildOnce)
+    }
+
     @MainActor
     @Test func customEditorCommandsParticipateInNativeUndoAndRedo() throws {
         let suiteName = "SimpleCode.EditorVisibleRangeTests.Undo.\(UUID().uuidString)"
@@ -876,7 +922,8 @@ struct EditorVisibleRangeTests {
             workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "editor-undo.\(UUID().uuidString)")
         )
         let session = EditorDocumentSession(displayName: "Undo.swift")
-        session.textStorage.setAttributedString(NSAttributedString(string: "x"))
+        session.textStorage.setAttributedString(NSAttributedString(string: "x\ny"))
+        session.lineStartIndex.rebuild(from: session.textStorage.string)
         session.enablesSyntaxHighlighting = false
 
         let textView = CodeTextView()
@@ -900,20 +947,80 @@ struct EditorVisibleRangeTests {
         coordinator.textView = textView
         coordinator.scrollView = scrollView
         coordinator.attach(session: session, to: textView)
-        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        textView.setSelectedRange(NSRange(location: 0, length: 3))
         let undoManager = try #require(textView.undoManager)
         undoManager.removeAllActions()
 
         #expect(coordinator.codeTextViewHandleTab(textView, shift: false))
-        #expect(textView.string == "    x")
+        #expect(textView.string == "    x\n    y")
+        #expect(session.lineStartIndex.lineCount == 2)
+        #expect(session.lineStartIndex.lineStartUTF16Offset(forLine: 2) == 6)
         #expect(undoManager.canUndo)
+        let commandSelection = textView.selectedRange()
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
 
         undoManager.undo()
-        #expect(textView.string == "x")
+        #expect(textView.string == "x\ny")
+        #expect(session.lineStartIndex.lineStartUTF16Offset(forLine: 2) == 2)
         #expect(undoManager.canRedo)
 
         undoManager.redo()
-        #expect(textView.string == "    x")
+        #expect(textView.string == "    x\n    y")
+        #expect(session.lineStartIndex.lineStartUTF16Offset(forLine: 2) == 6)
+        #expect(textView.selectedRange() == commandSelection)
+    }
+
+    @MainActor
+    @Test func customEditorCommandsUseIncrementalHighlightingWhenParserRevisionIsContinuous() async throws {
+        let suiteName = "SimpleCode.EditorVisibleRangeTests.ProgrammaticHighlight.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "SimpleCodeProgrammaticHighlight-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "editor-programmatic-highlight.\(UUID().uuidString)")
+        )
+        defer { workspace.tearDown() }
+        let highlighter = RecordingEditorHighlighter()
+        let session = EditorDocumentSession(displayName: "Highlight.swift")
+        session.textStorage.setAttributedString(NSAttributedString(string: "x"))
+        session.highlighter = highlighter
+        session.applyInitialHighlighting(HighlightBatch(
+            revision: 0,
+            coveredRanges: [NSRange(location: 0, length: 1)],
+            tokens: []
+        ))
+
+        let textView = CodeTextView()
+        textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        let scrollView = NSScrollView()
+        scrollView.documentView = textView
+        let coordinator = CodeEditorRepresentable.Coordinator(
+            session: session,
+            settings: settings.snapshot,
+            workspace: workspace,
+            onTextChanged: {}
+        )
+        coordinator.textView = textView
+        coordinator.scrollView = scrollView
+        coordinator.attach(session: session, to: textView)
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+
+        #expect(coordinator.codeTextViewHandleTab(textView, shift: false))
+        try await Task.sleep(for: .milliseconds(120))
+
+        let calls = await highlighter.snapshot()
+        #expect(calls.loadTexts.isEmpty)
+        #expect(calls.editTexts == ["    x"])
+        coordinator.tearDown()
     }
 
     @MainActor

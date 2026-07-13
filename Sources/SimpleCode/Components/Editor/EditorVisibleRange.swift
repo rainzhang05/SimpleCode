@@ -46,7 +46,7 @@ enum EditorVisibleRange {
               let contentManager = layoutManager.textContentManager else { return nil }
 
         let visibleRect = textView.visibleRect
-        let documentLength = textView.string.utf16.count
+        let documentLength = textView.textStorage?.length ?? 0
         guard documentLength > 0 else { return NSRange(location: 0, length: 0) }
 
         let origin = textView.textContainerOrigin

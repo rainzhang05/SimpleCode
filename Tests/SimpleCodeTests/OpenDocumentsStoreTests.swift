@@ -8,13 +8,15 @@ import Testing
 struct OpenDocumentsStoreTests {
     private actor StaticLargeFileLoader: FileContentLoading {
         let text: String
+        let openPolicy: FileSizeThresholds.OpenPolicy
 
-        init(text: String) {
+        init(text: String, openPolicy: FileSizeThresholds.OpenPolicy = .warnLargeFile) {
             self.text = text
+            self.openPolicy = openPolicy
         }
 
         func metadata(for url: URL) -> FileMetadata {
-            FileMetadata(byteCount: Int64(text.utf8.count), openPolicy: .warnLargeFile)
+            FileMetadata(byteCount: Int64(text.utf8.count), openPolicy: openPolicy)
         }
 
         func load(url: URL, choice: LargeFileOpenChoice?) -> LoadedFileContent {
@@ -27,7 +29,7 @@ struct OpenDocumentsStoreTests {
                 modificationDate: nil,
                 fileResourceIdentifier: nil,
                 language: .swift,
-                openPolicy: .warnLargeFile
+                openPolicy: openPolicy
             )
         }
     }
@@ -316,6 +318,24 @@ struct OpenDocumentsStoreTests {
         #expect(priorityRange.length < text.utf16.count)
         #expect(session.deferredInitialHighlightCursor != nil)
         #expect(session.textStorage.attribute(.foregroundColor, at: 0, effectiveRange: nil) != nil)
+    }
+
+    @Test func normalPolicyDocumentLargerThanOnePageAlsoPublishesVisibleSyntaxFirst() async throws {
+        let text = String(repeating: "let responsive = true\n", count: 8_000)
+        let loader = StaticLargeFileLoader(text: text, openPolicy: .normal)
+        let highlighter = PriorityInitialHighlighter()
+        let store = OpenDocumentsStore(loader: loader, highlighterFactory: { _ in highlighter })
+        let file = FileManager.default.temporaryDirectory
+            .appending(path: "NormalPriority-\(UUID().uuidString).swift")
+
+        await store.open(url: file)
+
+        let session = try #require(store.activeSession)
+        let calls = await highlighter.snapshot()
+        #expect(session.loadState == .loaded)
+        #expect(calls.full == 0)
+        #expect(calls.priority == 1)
+        #expect(session.deferredInitialHighlightCursor != nil)
     }
 
     @Test func largeReloadPrioritizesLastVisibleRangeInsteadOfCaret() async throws {

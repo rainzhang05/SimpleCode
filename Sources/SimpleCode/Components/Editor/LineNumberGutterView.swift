@@ -90,6 +90,16 @@ final class LineNumberGutterView: NSView {
             currentLineNumber = nil
         }
 
+        let pointSize = max(10, (codeTextView.font?.pointSize ?? 13) - 1)
+        let normalAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .regular),
+            .foregroundColor: ColorRole.editorLineNumberNSColor
+        ]
+        let currentAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .semibold),
+            .foregroundColor: ColorRole.editorLineNumberEmphasizedNSColor
+        ]
+
         layoutManager.enumerateTextLayoutFragments(from: startFragment.rangeInElement.location, options: [.ensuresLayout]) { fragment in
             guard let frame = EditorTextGeometry.firstLineViewFrame(
                 in: fragment,
@@ -108,20 +118,19 @@ final class LineNumberGutterView: NSView {
                 lineNumber: lineNumber,
                 fragmentFrame: frame,
                 visibleRect: visibleRect,
-                isCurrent: currentLineNumber == lineNumber
+                attributes: currentLineNumber == lineNumber ? currentAttributes : normalAttributes
             )
             return true
         }
     }
 
-    private func draw(lineNumber: Int, fragmentFrame: CGRect, visibleRect: NSRect, isCurrent: Bool) {
+    private func draw(
+        lineNumber: Int,
+        fragmentFrame: CGRect,
+        visibleRect: NSRect,
+        attributes: [NSAttributedString.Key: Any]
+    ) {
         let numberString = "\(lineNumber)" as NSString
-        let pointSize = max(10, (codeTextView?.font?.pointSize ?? 13) - 1)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: isCurrent ? .semibold : .regular),
-            .foregroundColor: isCurrent ? ColorRole.editorLineNumberEmphasizedNSColor : ColorRole.editorLineNumberNSColor
-        ]
-
         let size = numberString.size(withAttributes: attributes)
         guard let codeTextView else { return }
         let textPoint = NSPoint(

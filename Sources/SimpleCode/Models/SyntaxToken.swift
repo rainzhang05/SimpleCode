@@ -4,7 +4,7 @@ import Foundation
 /// `keyword.function`, `variable.parameter`, `comment.documentation`) are mapped down
 /// to this small, stable set so the highlighter and the color theme never need to
 /// know about grammar-specific capture naming (see `HighlightTheme.category(forCapture:)`).
-enum SyntaxCategory: Sendable, CaseIterable, Equatable {
+enum SyntaxCategory: Sendable, CaseIterable, Hashable {
     case keyword
     case controlFlow
     case type

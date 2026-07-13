@@ -43,9 +43,11 @@ struct LineStartIndex: Equatable, Sendable {
         // Newline edits are comparatively rare, and rebuilding them is both fast
         // enough and substantially safer than trying to stitch CRLF boundary cases
         // incrementally. Ordinary character edits retain the cheap offset shift.
-        let removedLineStart = lineStartOffsets.contains { $0 > editStart && $0 <= editEnd }
-        let touchesPotentialCRLFBoundary = lineStartOffsets.contains(editStart + 1)
-            || lineStartOffsets.contains(editEnd + 1)
+        let firstLineStartAfterEditStart = firstIndex(after: editStart)
+        let removedLineStart = firstLineStartAfterEditStart < lineStartOffsets.count
+            && lineStartOffsets[firstLineStartAfterEditStart] <= editEnd
+        let touchesPotentialCRLFBoundary = containsLineStart(at: editStart + 1)
+            || containsLineStart(at: editEnd + 1)
         if insertedText.contains(where: { $0 == "\n" || $0 == "\r" })
             || removedLineStart
             || touchesPotentialCRLFBoundary {
@@ -55,15 +57,48 @@ struct LineStartIndex: Equatable, Sendable {
 
         guard delta != 0 else { return }
 
-        for index in 1..<lineStartOffsets.count where lineStartOffsets[index] > editEnd {
+        let firstShiftedIndex = max(1, firstIndex(after: editEnd))
+        for index in firstShiftedIndex..<lineStartOffsets.count {
             lineStartOffsets[index] += delta
         }
 
         if lineStartOffsets.first != 0
-            || lineStartOffsets.last.map({ $0 > fullLength }) == true
-            || lineStartOffsets != lineStartOffsets.sorted() {
+            || lineStartOffsets.last.map({ $0 > fullLength }) == true {
             rebuild(from: fullTextFallback())
         }
+    }
+
+    private func containsLineStart(at offset: Int) -> Bool {
+        let index = firstIndex(notBefore: offset)
+        return index < lineStartOffsets.count && lineStartOffsets[index] == offset
+    }
+
+    private func firstIndex(after offset: Int) -> Int {
+        var low = 0
+        var high = lineStartOffsets.count
+        while low < high {
+            let middle = low + (high - low) / 2
+            if lineStartOffsets[middle] <= offset {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        return low
+    }
+
+    private func firstIndex(notBefore offset: Int) -> Int {
+        var low = 0
+        var high = lineStartOffsets.count
+        while low < high {
+            let middle = low + (high - low) / 2
+            if lineStartOffsets[middle] < offset {
+                low = middle + 1
+            } else {
+                high = middle
+            }
+        }
+        return low
     }
 
     func lineNumber(atUTF16Offset offset: Int) -> Int {

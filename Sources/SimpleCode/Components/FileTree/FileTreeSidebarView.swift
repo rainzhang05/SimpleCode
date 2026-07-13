@@ -3,7 +3,6 @@ import UniformTypeIdentifiers
 
 struct FileTreeSidebarView: View {
     @Bindable var workspace: WorkspaceModel
-    @State private var hoveredNodeID: FileTreeNodeID?
     @State private var resizeStartWidth: CGFloat?
     @State private var isResizeHandleHovered = false
 
@@ -21,6 +20,9 @@ struct FileTreeSidebarView: View {
     }
 
     var body: some View {
+        let openFilePaths = openFilePaths
+        let dirtyFilePaths = dirtyFilePaths
+
         VStack(spacing: 0) {
             sidebarToolbar
 
@@ -35,11 +37,7 @@ struct FileTreeSidebarView: View {
                                 row: row,
                                 workspace: workspace,
                                 openFilePaths: openFilePaths,
-                                dirtyFilePaths: dirtyFilePaths,
-                                isHovered: hoveredNodeID == row.node.id,
-                                onHover: { hovering in
-                                    hoveredNodeID = hovering ? row.node.id : nil
-                                }
+                                dirtyFilePaths: dirtyFilePaths
                             )
                         }
                     }
@@ -152,8 +150,7 @@ private struct FileTreeRowView: View {
     @Bindable var workspace: WorkspaceModel
     let openFilePaths: Set<String>
     let dirtyFilePaths: Set<String>
-    let isHovered: Bool
-    let onHover: (Bool) -> Void
+    @State private var isHovered = false
     @State private var isDropTarget = false
 
     private var node: FileTreeNodeState { row.node }
@@ -202,7 +199,7 @@ private struct FileTreeRowView: View {
         .padding(.trailing, Spacing.xSmall)
         .contentShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
         .background(rowBackground, in: RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
-        .onHover(perform: onHover)
+        .onHover { isHovered = $0 }
         .onTapGesture { activateRow() }
         .pointingHandCursor()
         .contextMenu { contextMenu }

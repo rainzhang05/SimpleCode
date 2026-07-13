@@ -23,6 +23,29 @@ struct LineStartIndexTests {
         #expect(index.lineCount == 1)
     }
 
+    @Test func ordinaryEditInLargeIndexShiftsOnlyTheAffectedSuffixWithoutFallback() {
+        let original = Array(repeating: "x", count: 20_000).joined(separator: "\n")
+        var index = LineStartIndex()
+        index.rebuild(from: original)
+        let originalLastLineStart = index.lineStartUTF16Offset(forLine: index.lineCount)
+        var fallbackReadCount = 0
+
+        index.applyEdit(
+            editedRange: NSRange(location: 20_000, length: 1),
+            changeInLength: 1,
+            insertedText: "!",
+            documentLength: original.utf16.count + 1,
+            fullTextFallback: {
+                fallbackReadCount += 1
+                return String(original.prefix(20_000)) + "!" + String(original.dropFirst(20_000))
+            }
+        )
+
+        #expect(fallbackReadCount == 0)
+        #expect(index.lineCount == 20_000)
+        #expect(index.lineStartUTF16Offset(forLine: index.lineCount) == originalLastLineStart + 1)
+    }
+
     @Test func emptyDocumentHasOneLine() {
         var index = LineStartIndex()
         index.rebuild(from: "")

@@ -30,9 +30,9 @@ struct EditorDocumentView: View {
             editorContent
         }
         .background(ColorRole.editorBackground)
-        .onChange(of: session.textStorage.string) { _, newValue in
+        .onChange(of: session.revision) { _, _ in
             guard workspace.findReplace.isVisible else { return }
-            workspace.findReplace.bind(text: newValue, selection: session.selectionRange)
+            workspace.findReplace.bind(text: session.textStorage.string, selection: session.selectionRange)
         }
         .onChange(of: session.selectionRange) { _, newValue in
             guard workspace.findReplace.isVisible else { return }

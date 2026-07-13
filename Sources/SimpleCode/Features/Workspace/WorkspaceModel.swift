@@ -476,13 +476,13 @@ final class WorkspaceModel {
     }
 
     func showFind() {
-        syncFindBinding()
         findReplace.showFind()
+        syncFindBinding()
     }
 
     func showReplace() {
-        syncFindBinding()
         findReplace.showReplace()
+        syncFindBinding()
     }
 
     func findNext() {
@@ -536,7 +536,7 @@ final class WorkspaceModel {
     }
 
     func syncFindBinding() {
-        guard let session = openDocuments.activeSession else { return }
+        guard findReplace.isVisible, let session = openDocuments.activeSession else { return }
         findReplace.bind(text: session.textStorage.string, selection: session.selectionRange)
     }
 

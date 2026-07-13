@@ -106,8 +106,7 @@ final class OpenDocumentsStore {
             session.prepareLoadedContent(content, url: url, choice: choice)
             guard await prepareInitialSyntax(
                 for: session,
-                text: content.text,
-                prioritizeInitialPage: content.openPolicy != .normal
+                text: content.text
             ) else {
                 discardLoadingSession(session)
                 return
@@ -344,8 +343,7 @@ final class OpenDocumentsStore {
             session.prepareLoadedContent(content, url: url)
             guard await prepareInitialSyntax(
                 for: session,
-                text: content.text,
-                prioritizeInitialPage: content.openPolicy != .normal
+                text: content.text
             ) else {
                 session.setLoadError("Could not prepare syntax highlighting.", url: url)
                 return
@@ -396,8 +394,7 @@ final class OpenDocumentsStore {
 
     private func prepareInitialSyntax(
         for session: EditorDocumentSession,
-        text: String,
-        prioritizeInitialPage: Bool
+        text: String
     ) async -> Bool {
         var attemptsRemaining = 3
         while attemptsRemaining > 0 {
@@ -414,26 +411,18 @@ final class OpenDocumentsStore {
             }
             session.highlighter = highlighter
             let syntaxConfigurationRevision = session.syntaxConfigurationRevision
-            let page: InitialHighlightPage
-            if prioritizeInitialPage {
-                let priorityOffset = session.lastVisibleUTF16Range.map { visibleRange in
-                    visibleRange.location + visibleRange.length / 2
-                } ?? session.selectionRange.location
-                let priorityRange = InitialHighlightPaging.priorityRange(
-                    in: text,
-                    aroundUTF16Offset: priorityOffset
-                )
-                page = await highlighter.prepareInitial(
-                    text: text,
-                    revision: revision,
-                    priorityUTF16Range: priorityRange
-                )
-            } else {
-                page = InitialHighlightPage(
-                    batch: await highlighter.load(text: text, revision: revision),
-                    next: nil
-                )
-            }
+            let priorityOffset = session.lastVisibleUTF16Range.map { visibleRange in
+                visibleRange.location + visibleRange.length / 2
+            } ?? session.selectionRange.location
+            let priorityRange = InitialHighlightPaging.priorityRange(
+                in: text,
+                aroundUTF16Offset: priorityOffset
+            )
+            let page = await highlighter.prepareInitial(
+                text: text,
+                revision: revision,
+                priorityUTF16Range: priorityRange
+            )
             guard !Task.isCancelled else { return false }
 
             guard session.language == language,

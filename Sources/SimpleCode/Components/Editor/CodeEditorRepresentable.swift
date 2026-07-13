@@ -1,6 +1,92 @@
 import AppKit
 import SwiftUI
 
+struct ProgrammaticUndoPayload: Equatable, Sendable {
+    let edits: [TextEdit]
+    let selection: NSRange
+    let inverseSelection: NSRange
+
+    var retainedUTF16Length: Int {
+        edits.reduce(into: 0) { length, edit in
+            length += edit.replacement.utf16.count
+        }
+    }
+}
+
+enum ProgrammaticLineIndexStrategy: Equatable, Sendable {
+    case incremental
+    case rebuildOnce
+}
+
+struct ProgrammaticEditPlan: Sendable {
+    let forwardEdits: [TextEdit]
+    let undoPayload: ProgrammaticUndoPayload
+    let highlightEdit: TextEditDescriptor
+    let lineIndexStrategy: ProgrammaticLineIndexStrategy
+
+    static func prepare(
+        edits: [TextEdit],
+        documentLength: Int,
+        undoSelection: NSRange,
+        redoSelection: NSRange,
+        replacedText: (NSRange) -> String
+    ) -> ProgrammaticEditPlan? {
+        guard !edits.isEmpty, documentLength >= 0 else { return nil }
+
+        let ascendingEdits = edits.sorted { lhs, rhs in
+            if lhs.range.location == rhs.range.location {
+                return lhs.range.length < rhs.range.length
+            }
+            return lhs.range.location < rhs.range.location
+        }
+        guard ascendingEdits.allSatisfy({ edit in
+            edit.range.location >= 0
+                && edit.range.length >= 0
+                && NSMaxRange(edit.range) <= documentLength
+        }) else { return nil }
+        for index in ascendingEdits.indices.dropFirst() {
+            let previous = ascendingEdits[ascendingEdits.index(before: index)]
+            let current = ascendingEdits[index]
+            guard previous.range.location != current.range.location,
+                  NSMaxRange(previous.range) <= current.range.location else { return nil }
+        }
+
+        var offsetDelta = 0
+        var inverseEdits: [TextEdit] = []
+        inverseEdits.reserveCapacity(ascendingEdits.count)
+        for edit in ascendingEdits {
+            let replacementLength = edit.replacement.utf16.count
+            inverseEdits.append(TextEdit(
+                range: NSRange(
+                    location: edit.range.location + offsetDelta,
+                    length: replacementLength
+                ),
+                replacement: replacedText(edit.range)
+            ))
+            offsetDelta += replacementLength - edit.range.length
+        }
+
+        let editStart = ascendingEdits[0].range.location
+        let oldEditEnd = ascendingEdits.map { NSMaxRange($0.range) }.max() ?? editStart
+        let forwardEdits = ascendingEdits.reversed()
+
+        return ProgrammaticEditPlan(
+            forwardEdits: Array(forwardEdits),
+            undoPayload: ProgrammaticUndoPayload(
+                edits: inverseEdits,
+                selection: undoSelection,
+                inverseSelection: redoSelection
+            ),
+            highlightEdit: TextEditDescriptor(
+                startUTF16: editStart,
+                oldEndUTF16: oldEditEnd,
+                newEndUTF16: oldEditEnd + offsetDelta
+            ),
+            lineIndexStrategy: ascendingEdits.count == 1 ? .incremental : .rebuildOnce
+        )
+    }
+}
+
 struct CodeEditorRepresentable: NSViewRepresentable {
     var session: EditorDocumentSession
     var settings: AppSettingsSnapshot
@@ -529,7 +615,11 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             let generation = attachmentGeneration
             let storage = session.textStorage
             initialRemainderTask = Task { [weak self] in
-                await Task.yield()
+                do {
+                    try await Task.sleep(for: .milliseconds(8))
+                } catch {
+                    return
+                }
                 while !Task.isCancelled {
                     guard let request = self?.makeInitialRemainderRequest(
                         expectedSessionID: sessionID,
@@ -565,7 +655,11 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                         self.scheduleViewportHighlight()
                         return
                     }
-                    await Task.yield()
+                    do {
+                        try await Task.sleep(for: .milliseconds(8))
+                    } catch {
+                        return
+                    }
                 }
             }
         }
@@ -876,57 +970,65 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         private func applyTextEdits(
             _ edits: [TextEdit],
             in textView: CodeTextView,
-            resultingSelection: NSRange
+            resultingSelection: NSRange,
+            inverseSelection: NSRange? = nil
         ) {
             guard let textStorage = textView.textStorage else { return }
-            let originalText = textStorage.string
-            let originalSelection = textView.selectedRange()
-            let sortedEdits = edits.sorted { lhs, rhs in
-                if lhs.range.location == rhs.range.location {
-                    return lhs.range.length > rhs.range.length
-                }
-                return lhs.range.location > rhs.range.location
-            }
+            let originalSelection = inverseSelection ?? textView.selectedRange()
+            guard let plan = ProgrammaticEditPlan.prepare(
+                edits: edits,
+                documentLength: textStorage.length,
+                undoSelection: originalSelection,
+                redoSelection: resultingSelection,
+                replacedText: { textStorage.attributedSubstring(from: $0).string }
+            ) else { return }
 
             isApplyingCommand = true
             textStorage.beginEditing()
-            for edit in sortedEdits where edit.range.location >= 0 && NSMaxRange(edit.range) <= textStorage.length {
+            for edit in plan.forwardEdits {
+                let replacementLength = edit.replacement.utf16.count
+                let delta = replacementLength - edit.range.length
                 textView.replaceCharacters(in: edit.range, with: edit.replacement)
+                if plan.lineIndexStrategy == .incremental {
+                    session.lineStartIndex.applyEdit(
+                        editedRange: NSRange(location: edit.range.location, length: replacementLength),
+                        changeInLength: delta,
+                        insertedText: edit.replacement,
+                        documentLength: textStorage.length,
+                        fullTextFallback: { textStorage.string }
+                    )
+                }
             }
             textStorage.endEditing()
+            if plan.lineIndexStrategy == .rebuildOnce {
+                session.lineStartIndex.rebuild(from: textStorage.string)
+            }
             isApplyingCommand = false
 
             textView.setSelectedRange(resultingSelection)
             session.selectionRange = resultingSelection
 
-            let changedText = textStorage.string
             registerUndo(
                 in: textView,
-                restoringText: originalText,
-                selection: originalSelection,
-                inverseText: changedText,
-                inverseSelection: resultingSelection,
+                payload: plan.undoPayload,
                 sessionID: session.id
             )
 
-            recordProgrammaticSourceEdit(in: textView)
+            recordProgrammaticSourceEdit(
+                in: textView,
+                descriptor: plan.highlightEdit
+            )
         }
 
         private func registerUndo(
             in textView: CodeTextView,
-            restoringText: String,
-            selection: NSRange,
-            inverseText: String,
-            inverseSelection: NSRange,
+            payload: ProgrammaticUndoPayload,
             sessionID: UUID
         ) {
             textView.undoManager?.registerUndo(withTarget: self) { [weak textView] coordinator in
                 guard let textView else { return }
-                coordinator.restoreProgrammaticText(
-                    restoringText,
-                    selection: selection,
-                    inverseText: inverseText,
-                    inverseSelection: inverseSelection,
+                coordinator.applyUndoPayload(
+                    payload,
                     sessionID: sessionID,
                     in: textView
                 )
@@ -934,42 +1036,28 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             textView.undoManager?.setActionName("Edit")
         }
 
-        private func restoreProgrammaticText(
-            _ text: String,
-            selection: NSRange,
-            inverseText: String,
-            inverseSelection: NSRange,
+        private func applyUndoPayload(
+            _ payload: ProgrammaticUndoPayload,
             sessionID: UUID,
             in textView: CodeTextView
         ) {
-            guard self.session.id == sessionID, let textStorage = textView.textStorage else { return }
-
-            registerUndo(
+            guard session.id == sessionID else { return }
+            applyTextEdits(
+                payload.edits,
                 in: textView,
-                restoringText: inverseText,
-                selection: inverseSelection,
-                inverseText: text,
-                inverseSelection: selection,
-                sessionID: sessionID
+                resultingSelection: payload.selection,
+                inverseSelection: payload.inverseSelection
             )
-
-            isApplyingCommand = true
-            textStorage.replaceCharacters(
-                in: NSRange(location: 0, length: textStorage.length),
-                with: text
-            )
-            isApplyingCommand = false
-            textView.setSelectedRange(selection)
-            self.session.selectionRange = selection
-            recordProgrammaticSourceEdit(in: textView)
         }
 
-        private func recordProgrammaticSourceEdit(in textView: CodeTextView) {
+        private func recordProgrammaticSourceEdit(
+            in textView: CodeTextView,
+            descriptor: TextEditDescriptor
+        ) {
             let revision = session.bumpRevision()
             session.markDirty()
             onTextChanged()
 
-            session.lineStartIndex.rebuild(from: textView.string)
             gutter?.lineStartIndex = session.lineStartIndex
             if gutter?.updateMetrics(font: textView.font, lineCount: session.lineStartIndex.lineCount) == true {
                 textView.configureLineNumberGutter(
@@ -1002,7 +1090,21 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                         expectedTextStorage: storage,
                         priorityOffset: priorityOffset
                       ) else { return }
-                let batch = await highlighter.load(text: request.sourceText, revision: revision)
+                let result: (priority: HighlightBatch, remainder: HighlightBatch?)
+                switch request.strategy {
+                case .incremental:
+                    result = await highlighter.applyEdit(
+                        fullText: request.sourceText,
+                        edit: descriptor,
+                        revision: revision,
+                        priorityUTF16Range: request.priorityRange
+                    )
+                case .full:
+                    result = (
+                        priority: await highlighter.load(text: request.sourceText, revision: revision),
+                        remainder: nil
+                    )
+                }
                 guard !Task.isCancelled,
                       let self,
                       self.recordParsedRevision(
@@ -1012,11 +1114,19 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                     expectedTextStorage: storage
                 ) else { return }
                 self.apply(
-                    batch: batch,
+                    batch: result.priority,
                     expectedSessionID: sessionID,
                     expectedAttachmentGeneration: generation,
                     expectedTextStorage: storage
                 )
+                if let remainder = result.remainder {
+                    self.apply(
+                        batch: remainder,
+                        expectedSessionID: sessionID,
+                        expectedAttachmentGeneration: generation,
+                        expectedTextStorage: storage
+                    )
+                }
             }
         }
 

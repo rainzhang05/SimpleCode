@@ -48,6 +48,9 @@ final class FindReplaceController {
     func dismiss() {
         isVisible = false
         searchTask?.cancel()
+        searchTask = nil
+        documentText = ""
+        documentSelection = NSRange(location: 0, length: 0)
         matches = []
         currentMatchIndex = nil
         statusMessage = nil
