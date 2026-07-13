@@ -21,7 +21,6 @@ struct TerminalRepresentable: NSViewRepresentable {
     func makeNSView(context: Context) -> LocalProcessTerminalView {
         let view = LocalProcessTerminalView(frame: .zero)
         view.processDelegate = context.coordinator
-        view.isHidden = !isPanelVisible
         context.coordinator.settings = settings
         applyAppearance(to: view, coordinator: context.coordinator)
 
@@ -33,7 +32,6 @@ struct TerminalRepresentable: NSViewRepresentable {
 
     func updateNSView(_ view: LocalProcessTerminalView, context: Context) {
         context.coordinator.settings = settings
-        view.isHidden = !isPanelVisible
         applyAppearance(to: view, coordinator: context.coordinator)
         session.setPanelVisible(isPanelVisible)
         if session.consumeFocusRequest() {

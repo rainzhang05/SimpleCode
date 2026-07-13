@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftTerm
 import SwiftUI
 import Testing
 @testable import SimpleCode
@@ -84,6 +85,23 @@ struct TerminalSessionControllerTests {
                 storageKey: "terminal-layout.\(UUID().uuidString)"
             )
         )
+    }
+
+    private func firstDescendant<T: NSView>(
+        ofType type: T.Type,
+        in view: NSView
+    ) -> T? {
+        if let match = view as? T {
+            return match
+        }
+
+        for subview in view.subviews {
+            if let match = firstDescendant(ofType: type, in: subview) {
+                return match
+            }
+        }
+
+        return nil
     }
 
     @Test func notStartedIsTheInitialState() throws {
@@ -370,6 +388,22 @@ struct TerminalSessionControllerTests {
         workspace.tearDown()
         workspace.tearDown()
         #expect(driver.terminateCount == 1)
+    }
+
+    @Test func hiddenTerminalKeepsItsAppKitSurfaceMountedAndVisible() throws {
+        let workspace = try makeWorkspace()
+        defer { workspace.tearDown() }
+        #expect(!workspace.isTerminalVisible)
+
+        let host = NSHostingView(rootView: WorkspaceView(workspace: workspace, onCloseWorkspace: {}))
+        host.frame = NSRect(x: 0, y: 0, width: 1_100, height: 700)
+        host.layoutSubtreeIfNeeded()
+
+        let terminalSurface = try #require(firstDescendant(
+            ofType: LocalProcessTerminalView.self,
+            in: host
+        ))
+        #expect(!terminalSurface.isHidden)
     }
 
     @Test func restartClearsPendingCommands() throws {

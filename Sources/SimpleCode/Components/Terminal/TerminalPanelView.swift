@@ -24,7 +24,6 @@ struct TerminalPanelView: View {
                 isPanelVisible: isVisible
             )
                 .accessibilityIdentifier("terminal.surface")
-                .opacity(isVisible ? 1 : 0)
                 .allowsHitTesting(isVisible)
                 .background(Color(nsColor: settings.appearance.terminalBackground.colorRolePair.dynamic))
                 .clipShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
