@@ -160,7 +160,7 @@ struct WorkspaceView: View {
                     value: workspace.isSidebarVisible
                 )
 
-            sidebarOverlay(terminalHeight: terminalHeight)
+            sidebarOverlay
                 .zIndex(2)
 
             terminalOverlay(height: terminalHeight)
@@ -169,26 +169,26 @@ struct WorkspaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func sidebarOverlay(terminalHeight: CGFloat) -> some View {
+    private var sidebarOverlay: some View {
         FileTreeSidebarView(workspace: workspace)
             .frame(width: workspace.sidebarWidth)
             .padding(.leading, Spacing.small)
             .padding(.top, Spacing.small)
-            .padding(
-                .bottom,
-                workspace.isTerminalVisible ? terminalHeight + (Spacing.small * 2) : Spacing.small
-            )
+            .padding(.bottom, Spacing.small)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .opacity(workspace.isSidebarVisible ? 1 : 0)
-            .offset(x: reduceMotion || workspace.isSidebarVisible ? 0 : -24)
-            .scaleEffect(
-                reduceMotion || workspace.isSidebarVisible ? 1 : 0.985,
-                anchor: .leading
+            .offset(
+                x: WorkspacePanelLayout.sidebarOffset(
+                    sidebarWidth: workspace.sidebarWidth,
+                    panelInset: Spacing.small,
+                    isVisible: workspace.isSidebarVisible
+                )
             )
             .allowsHitTesting(workspace.isSidebarVisible)
             .accessibilityHidden(!workspace.isSidebarVisible)
-            .animation(.easeInOut(duration: 0.22), value: workspace.isSidebarVisible)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: workspace.isTerminalVisible)
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 0.20),
+                value: workspace.isSidebarVisible
+            )
     }
 
     private func terminalOverlay(height: CGFloat) -> some View {
@@ -204,15 +204,19 @@ struct WorkspaceView: View {
         .padding(.horizontal, Spacing.small)
         .padding(.bottom, Spacing.small)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .opacity(workspace.isTerminalVisible ? 1 : 0)
-        .offset(y: reduceMotion || workspace.isTerminalVisible ? 0 : 24)
-        .scaleEffect(
-            reduceMotion || workspace.isTerminalVisible ? 1 : 0.985,
-            anchor: .bottom
+        .offset(
+            y: WorkspacePanelLayout.terminalOffset(
+                terminalHeight: height,
+                panelInset: Spacing.small,
+                isVisible: workspace.isTerminalVisible
+            )
         )
         .allowsHitTesting(workspace.isTerminalVisible)
         .accessibilityHidden(!workspace.isTerminalVisible)
-        .animation(.easeInOut(duration: 0.22), value: workspace.isTerminalVisible)
+        .animation(
+            reduceMotion ? nil : .easeInOut(duration: 0.20),
+            value: workspace.isTerminalVisible
+        )
     }
 
     private var editorShell: some View {

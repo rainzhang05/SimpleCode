@@ -138,6 +138,29 @@ struct AppModelTests {
         ) == 0)
     }
 
+    @Test func workspacePanelLayoutUsesFullDistanceOffsets() {
+        #expect(WorkspacePanelLayout.sidebarOffset(
+            sidebarWidth: 280,
+            panelInset: 12,
+            isVisible: false
+        ) == -304)
+        #expect(WorkspacePanelLayout.sidebarOffset(
+            sidebarWidth: 280,
+            panelInset: 12,
+            isVisible: true
+        ) == 0)
+        #expect(WorkspacePanelLayout.terminalOffset(
+            terminalHeight: 220,
+            panelInset: 12,
+            isVisible: false
+        ) == 232)
+        #expect(WorkspacePanelLayout.terminalOffset(
+            terminalHeight: 220,
+            panelInset: 12,
+            isVisible: true
+        ) == 0)
+    }
+
     @Test func workspaceBootstrapIsIdempotentAndTeardownIsSafeToRepeat() async throws {
         let suiteName = "com.simplecode.tests.bootstrap.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

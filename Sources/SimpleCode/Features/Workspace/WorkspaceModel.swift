@@ -23,9 +23,27 @@ enum WorkspacePanelLayout {
         return clampedSidebarWidth(sidebarWidth) + max(0, panelInset) * 2
     }
 
+    static func sidebarOffset(
+        sidebarWidth: CGFloat,
+        panelInset: CGFloat,
+        isVisible: Bool
+    ) -> CGFloat {
+        guard !isVisible else { return 0 }
+        return -(max(0, sidebarWidth) + max(0, panelInset) * 2)
+    }
+
     static func clampedTerminalHeight(_ height: CGFloat) -> CGFloat {
         guard height.isFinite else { return defaultTerminalHeight }
         return min(max(height, minimumTerminalHeight), maximumTerminalHeight)
+    }
+
+    static func terminalOffset(
+        terminalHeight: CGFloat,
+        panelInset: CGFloat,
+        isVisible: Bool
+    ) -> CGFloat {
+        guard !isVisible else { return 0 }
+        return max(0, terminalHeight) + max(0, panelInset)
     }
 
     static func contentHeight(containerHeight: CGFloat, topInset: CGFloat) -> CGFloat {
