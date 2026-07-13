@@ -211,6 +211,7 @@ private struct FileTreeRowView: View {
         .accessibilityLabel(relativePath)
         .accessibilityIdentifier("fileTree.row.\(relativePath)")
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction { activateRow() }
     }
 
     @ViewBuilder
@@ -366,8 +367,10 @@ private struct RenameSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
+                    .pointingHandCursor()
                 Button("Rename", action: onRename)
                     .keyboardShortcut(.defaultAction)
+                    .pointingHandCursor()
                     .accessibilityIdentifier("fileTree.renameConfirm")
             }
         }

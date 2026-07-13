@@ -318,6 +318,7 @@ final class WorkspaceModel {
     func reloadActiveFromDisk() async {
         guard let session = openDocuments.activeSession else { return }
         await openDocuments.reloadFromDisk(session: session)
+        syncFindBinding()
     }
 
     func dismissExternalChange(for session: EditorDocumentSession) {

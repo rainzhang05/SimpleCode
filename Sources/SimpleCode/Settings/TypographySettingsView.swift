@@ -11,6 +11,7 @@ struct TypographySettingsView: View {
                         Text(FontCatalog.displayName(for: family)).tag(family)
                     }
                 }
+                .pointingHandCursor()
                 .accessibilityLabel("Editor font family")
 
                 Stepper(
@@ -18,6 +19,7 @@ struct TypographySettingsView: View {
                     value: $settings.typography.editorFontSize,
                     in: Double(Typography.minimumEditorFontSize)...Double(Typography.maximumEditorFontSize)
                 )
+                .pointingHandCursor()
                 .accessibilityIdentifier("settings.typography.editorFontSize")
 
                 Slider(
@@ -27,9 +29,11 @@ struct TypographySettingsView: View {
                 ) {
                     Text("Line Height")
                 }
+                .pointingHandCursor()
                 .accessibilityLabel("Editor line height")
 
                 Toggle("Font Ligatures", isOn: $settings.typography.editorFontLigatures)
+                    .pointingHandCursor()
 
                 Text("func hello() { return 42 }")
                     .font(Font(nsFont: Typography.editorFont(
@@ -47,12 +51,14 @@ struct TypographySettingsView: View {
                         Text(FontCatalog.displayName(for: family)).tag(family)
                     }
                 }
+                .pointingHandCursor()
 
                 Stepper(
                     "Font Size: \(Int(settings.typography.terminalFontSize))",
                     value: $settings.typography.terminalFontSize,
                     in: Double(Typography.minimumEditorFontSize)...Double(Typography.maximumEditorFontSize)
                 )
+                .pointingHandCursor()
 
                 Text("Terminal line spacing follows the selected terminal font for reliable cell alignment.")
                     .font(.caption)

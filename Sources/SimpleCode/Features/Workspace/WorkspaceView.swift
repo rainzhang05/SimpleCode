@@ -297,9 +297,11 @@ private struct FileCreationSheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
                     .keyboardShortcut(.cancelAction)
+                    .pointingHandCursor()
                 Button("Create", action: commit)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canCreate)
+                    .pointingHandCursor()
                     .accessibilityIdentifier("fileTree.creationConfirm")
             }
         }

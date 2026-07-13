@@ -117,6 +117,7 @@ struct CloneRepositorySheet: View {
                     .frame(maxHeight: 120)
                 }
                 .font(.system(size: 11))
+                .pointingHandCursor()
             }
         }
     }

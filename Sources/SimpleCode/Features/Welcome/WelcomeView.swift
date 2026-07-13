@@ -56,7 +56,10 @@ struct WelcomeView: View {
                     .foregroundStyle(.red)
             }
 
-            RecentWorkspacesList(appModel: appModel)
+            RecentWorkspacesList(
+                recentWorkspaces: appModel.recentWorkspaces,
+                appModel: appModel
+            )
                 .frame(maxWidth: 560)
 
             Spacer(minLength: Spacing.xLarge)
@@ -131,6 +134,7 @@ private struct WelcomeActionCard: View {
 }
 
 private struct RecentWorkspacesList: View {
+    @Bindable var recentWorkspaces: RecentWorkspaceStore
     let appModel: AppModel
 
     var body: some View {
@@ -140,18 +144,19 @@ private struct RecentWorkspacesList: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                if !appModel.recentWorkspaces.records.isEmpty {
+                if !recentWorkspaces.records.isEmpty {
                     Button("Clear All") {
-                        appModel.recentWorkspaces.clearAll()
+                        recentWorkspaces.clearAll()
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
                     .pointingHandCursor()
                     .font(.system(size: 11))
                     .accessibilityIdentifier("welcome.clearRecentWorkspaces")
                 }
             }
 
-            if appModel.recentWorkspaces.records.isEmpty {
+            if recentWorkspaces.records.isEmpty {
                 Text("No recent workspaces")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -160,7 +165,7 @@ private struct RecentWorkspacesList: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: Spacing.xSmall) {
-                        ForEach(appModel.recentWorkspaces.records) { record in
+                        ForEach(recentWorkspaces.records) { record in
                             RecentWorkspaceRow(record: record, appModel: appModel)
                         }
                     }
@@ -213,6 +218,7 @@ private struct RecentWorkspaceRow: View {
         .buttonStyle(.plain)
         .contentShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
         .glassPanel(cornerRadius: CornerRadius.control, interactive: true)
+        .pointingHandCursor()
         .accessibilityLabel(presentation.name)
         .accessibilityValue(availabilityLabel)
         .accessibilityIdentifier("welcome.recentWorkspaces.row.\(presentation.name)")

@@ -33,22 +33,39 @@ struct ProgrammaticEditPlan: Sendable {
     ) -> ProgrammaticEditPlan? {
         guard !edits.isEmpty, documentLength >= 0 else { return nil }
 
-        let ascendingEdits = edits.sorted { lhs, rhs in
+        let sortedEdits = edits.sorted { lhs, rhs in
             if lhs.range.location == rhs.range.location {
                 return lhs.range.length < rhs.range.length
             }
             return lhs.range.location < rhs.range.location
         }
-        guard ascendingEdits.allSatisfy({ edit in
+        guard sortedEdits.allSatisfy({ edit in
             edit.range.location >= 0
                 && edit.range.length >= 0
                 && NSMaxRange(edit.range) <= documentLength
         }) else { return nil }
-        for index in ascendingEdits.indices.dropFirst() {
-            let previous = ascendingEdits[ascendingEdits.index(before: index)]
-            let current = ascendingEdits[index]
+        for index in sortedEdits.indices.dropFirst() {
+            let previous = sortedEdits[sortedEdits.index(before: index)]
+            let current = sortedEdits[index]
             guard previous.range.location != current.range.location,
                   NSMaxRange(previous.range) <= current.range.location else { return nil }
+        }
+
+        var ascendingEdits: [TextEdit] = []
+        ascendingEdits.reserveCapacity(sortedEdits.count)
+        for edit in sortedEdits {
+            if let previous = ascendingEdits.last,
+               NSMaxRange(previous.range) == edit.range.location {
+                ascendingEdits[ascendingEdits.count - 1] = TextEdit(
+                    range: NSRange(
+                        location: previous.range.location,
+                        length: previous.range.length + edit.range.length
+                    ),
+                    replacement: previous.replacement + edit.replacement
+                )
+            } else {
+                ascendingEdits.append(edit)
+            }
         }
 
         var offsetDelta = 0
@@ -253,6 +270,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             )
 
             textView.highlightCurrentLine = snapshot.highlightCurrentLine
+            scrollView.backgroundColor = settings.appearance.editorBackground.colorRolePair.dynamic
             textView.backgroundColor = settings.appearance.editorBackground.colorRolePair.dynamic
             textView.textColor = settings.appearance.editorForeground.colorRolePair.dynamic
             textView.insertionPointColor = settings.appearance.editorForeground.colorRolePair.dynamic

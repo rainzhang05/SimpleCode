@@ -903,6 +903,26 @@ struct EditorVisibleRangeTests {
         #expect(plan.lineIndexStrategy == .rebuildOnce)
     }
 
+    @Test func adjacentDeletionsCoalesceIntoAReplayableUndoInsertion() throws {
+        let plan = try #require(ProgrammaticEditPlan.prepare(
+            edits: [
+                TextEdit(range: NSRange(location: 0, length: 1), replacement: ""),
+                TextEdit(range: NSRange(location: 1, length: 1), replacement: "")
+            ],
+            documentLength: 2,
+            undoSelection: NSRange(location: 0, length: 2),
+            redoSelection: NSRange(location: 0, length: 0),
+            replacedText: { range in String(repeating: "a", count: range.length) }
+        ))
+
+        #expect(plan.forwardEdits == [
+            TextEdit(range: NSRange(location: 0, length: 2), replacement: "")
+        ])
+        #expect(plan.undoPayload.edits == [
+            TextEdit(range: NSRange(location: 0, length: 0), replacement: "aa")
+        ])
+    }
+
     @MainActor
     @Test func customEditorCommandsParticipateInNativeUndoAndRedo() throws {
         let suiteName = "SimpleCode.EditorVisibleRangeTests.Undo.\(UUID().uuidString)"
@@ -968,6 +988,20 @@ struct EditorVisibleRangeTests {
         #expect(textView.string == "    x\n    y")
         #expect(session.lineStartIndex.lineStartUTF16Offset(forLine: 2) == 6)
         #expect(textView.selectedRange() == commandSelection)
+
+        undoManager.removeAllActions()
+        #expect(coordinator.applyEditorMutation(EditorCommandResult(
+            edits: [
+                TextEdit(range: NSRange(location: 0, length: 1), replacement: ""),
+                TextEdit(range: NSRange(location: 1, length: 1), replacement: "")
+            ],
+            resultingSelections: [NSRange(location: 0, length: 0)]
+        ), to: session))
+        #expect(textView.string == "  x\n    y")
+        undoManager.undo()
+        #expect(textView.string == "    x\n    y")
+        undoManager.redo()
+        #expect(textView.string == "  x\n    y")
     }
 
     @MainActor

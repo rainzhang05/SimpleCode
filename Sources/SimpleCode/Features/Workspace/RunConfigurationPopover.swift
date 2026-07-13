@@ -51,10 +51,12 @@ struct RunConfigurationPopover: View {
 
                 Toggle("Reveal terminal on Run", isOn: $revealTerminal)
                     .font(.system(size: 12))
+                    .pointingHandCursor()
                     .accessibilityIdentifier("run.popover.revealTerminal")
 
                 Toggle("Clear terminal before Run", isOn: $clearTerminal)
                     .font(.system(size: 12))
+                    .pointingHandCursor()
                     .accessibilityIdentifier("run.popover.clearTerminal")
 
                 HStack {

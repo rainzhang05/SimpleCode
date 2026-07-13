@@ -12,6 +12,7 @@ struct AppearanceSettingsView: View {
                     Text("Dark").tag(true)
                 }
                 .pickerStyle(.segmented)
+                .pointingHandCursor()
                 .accessibilityLabel("Color appearance to edit")
 
                 colorRow("Background", pair: \.editorBackground)
@@ -112,6 +113,7 @@ private struct ColorSettingRow: View {
                 }
             ), supportsOpacity: true)
             .labelsHidden()
+            .pointingHandCursor()
             .accessibilityLabel("\(title) color")
         }
     }

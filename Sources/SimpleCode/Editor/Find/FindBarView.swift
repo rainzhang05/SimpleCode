@@ -60,12 +60,16 @@ struct FindBarView: View {
             HStack(spacing: Spacing.medium) {
                 Toggle("Match Case", isOn: $controller.matchCase)
                     .toggleStyle(.checkbox)
+                    .pointingHandCursor()
                 Toggle("Whole Word", isOn: $controller.wholeWord)
                     .toggleStyle(.checkbox)
+                    .pointingHandCursor()
                 Toggle("Regex", isOn: $controller.useRegex)
                     .toggleStyle(.checkbox)
+                    .pointingHandCursor()
                 Toggle("Selection Only", isOn: $controller.selectionOnly)
                     .toggleStyle(.checkbox)
+                    .pointingHandCursor()
             }
             .font(.caption)
         }
