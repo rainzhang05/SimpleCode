@@ -170,6 +170,29 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         XCTAssertFalse(element("terminal.panel").waitForExistence(timeout: 2))
     }
 
+    func testTerminalPanelActionsAreCompactAndCentered() throws {
+        _ = try openFixtureWorkspace()
+
+        let toggle = app.buttons["workspace.terminalToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5))
+        toggle.click()
+
+        let panel = element("terminal.panel")
+        let clear = app.buttons["terminal.clearButton"]
+        let close = app.buttons["terminal.closeButton"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 8), debugSnapshot())
+        XCTAssertTrue(clear.waitForExistence(timeout: 5), debugSnapshot())
+        XCTAssertTrue(close.waitForExistence(timeout: 5), debugSnapshot())
+
+        for action in [clear, close] {
+            XCTAssertEqual(action.frame.width, 24, accuracy: 0.5)
+            XCTAssertEqual(action.frame.height, 24, accuracy: 0.5)
+            XCTAssertTrue(action.isHittable)
+            XCTAssertEqual(action.frame.midY, panel.frame.minY + 26, accuracy: 1)
+        }
+        XCTAssertEqual(clear.frame.midY, close.frame.midY, accuracy: 0.5)
+    }
+
     func testCloneSheetValidatesInvalidInputWithoutNetwork() throws {
         let parent = try makeTempDirectory(prefix: "SimpleCodeCloneDestination")
         openCloneSheet(extraArguments: ["-UITestCloneDestination", parent.path])

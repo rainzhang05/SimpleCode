@@ -20,7 +20,6 @@ protocol TerminalSessionDriving: AnyObject {
     func startProcess(executable: String, environment: [String], currentDirectory: String)
     @discardableResult func send(text: String) -> Bool
     @discardableResult func send(bytes: [UInt8]) -> Bool
-    func clearDisplay()
     @discardableResult func focus() -> Bool
     func terminate()
     func resize(cols: Int, rows: Int)
@@ -176,8 +175,8 @@ final class TerminalSessionController: TerminalCommandSending {
 
     func clearDisplay() {
         clearRequested = true
+        needsFocus = true
         fulfillClearRequestIfPossible()
-        focusTerminal()
     }
 
     func focusTerminal() {
@@ -251,8 +250,9 @@ final class TerminalSessionController: TerminalCommandSending {
 
     private func fulfillClearRequestIfPossible() {
         guard clearRequested, let driver else { return }
-        driver.clearDisplay()
+        guard driver.send(bytes: [0x15, 0x0C]) else { return }
         clearRequested = false
+        fulfillFocusRequestIfPossible()
     }
 
     private func failPendingCommands() {
@@ -264,7 +264,7 @@ final class TerminalSessionController: TerminalCommandSending {
     }
 
     private func fulfillFocusRequestIfPossible() {
-        guard needsFocus, let driver else { return }
+        guard needsFocus, !clearRequested, let driver else { return }
         if driver.focus() {
             needsFocus = false
         }

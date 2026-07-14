@@ -21,7 +21,6 @@ struct TerminalSessionControllerTests {
         private(set) var sentText: [String] = []
         private(set) var sentBytes: [[UInt8]] = []
         private(set) var terminateCount = 0
-        private(set) var clearDisplayCount = 0
         private(set) var focusCount = 0
         private(set) var resizedTo: [(cols: Int, rows: Int)] = []
         private(set) var events: [String] = []
@@ -40,13 +39,10 @@ struct TerminalSessionControllerTests {
         }
 
         func send(bytes: [UInt8]) -> Bool {
+            guard isProcessRunning else { return false }
             sentBytes.append(bytes)
+            events.append("bytes:\(bytes)")
             return sendSucceeds
-        }
-
-        func clearDisplay() {
-            clearDisplayCount += 1
-            events.append("clear")
         }
 
         func focus() -> Bool {
@@ -172,20 +168,41 @@ struct TerminalSessionControllerTests {
         #expect(driver.sentText == ["echo fails\n"])
     }
 
-    @Test func clearUsesTheEmulatorAndFocusesWithoutWritingToTheShell() throws {
+    @Test func clearSendsPromptResetBytesThenFocusesWithoutRestartingTheShell() throws {
         let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
         let driver = TerminalDriverSpy()
         controller.attach(driver)
         controller.setPanelVisible(true)
+        let launch = try #require(driver.launches.first)
 
         controller.clearDisplay()
 
-        #expect(driver.clearDisplayCount == 1)
-        #expect(driver.launches.count == 1)
+        #expect(driver.launches == [launch])
+        #expect(driver.terminateCount == 0)
+        #expect(driver.isProcessRunning)
+        #expect(controller.state == .running)
         #expect(driver.sentText.isEmpty)
-        #expect(driver.sentBytes.isEmpty)
+        #expect(driver.sentBytes == [[0x15, 0x0C]])
+        #expect(driver.events.suffix(2) == ["bytes:[21, 12]", "focus"])
         #expect(driver.focusCount == 1)
         #expect(!controller.consumeFocusRequest())
+    }
+
+    @Test func clearBeforeAttachmentWaitsToFocusUntilTheShellAcceptsResetBytes() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        controller.clearDisplay()
+        let driver = TerminalDriverSpy()
+
+        controller.attach(driver)
+
+        #expect(driver.sentBytes.isEmpty)
+        #expect(driver.focusCount == 0)
+
+        controller.setPanelVisible(true)
+
+        #expect(driver.sentBytes == [[0x15, 0x0C]])
+        #expect(driver.events.suffix(2) == ["bytes:[21, 12]", "focus"])
+        #expect(driver.focusCount == 1)
     }
 
     @Test func interruptSendsOneControlCByte() throws {
@@ -238,9 +255,12 @@ struct TerminalSessionControllerTests {
 
         controller.attach(driver)
 
-        let clearIndex = try #require(driver.events.firstIndex(of: "clear"))
+        let clearIndex = try #require(driver.events.firstIndex(of: "bytes:[21, 12]"))
+        let focusIndex = try #require(driver.events.firstIndex(of: "focus"))
         let sendIndex = try #require(driver.events.firstIndex(of: "send:echo clean\n"))
         #expect(clearIndex < sendIndex)
+        #expect(clearIndex < focusIndex)
+        #expect(focusIndex < sendIndex)
         #expect(driver.sentText == ["echo clean\n"])
     }
 

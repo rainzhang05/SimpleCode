@@ -165,13 +165,6 @@ private final class SwiftTermTerminalDriver: TerminalSessionDriving {
         return true
     }
 
-    func clearDisplay() {
-        guard let view else { return }
-        view.terminal.buffer.clear()
-        view.terminal.buffer.fillViewportRows()
-        view.needsDisplay = true
-    }
-
     func focus() -> Bool {
         guard let view, let window = view.window else { return false }
         return window.makeFirstResponder(view)

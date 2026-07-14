@@ -134,10 +134,13 @@ struct TerminalPanelView: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .semibold))
-                .frame(width: 28, height: 28)
+                .frame(width: 24, height: 24)
                 .contentShape(Circle())
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: Circle())
+        .frame(width: 24, height: 24)
+        .contentShape(Circle())
         .help(help)
         .pointingHandCursor()
         .accessibilityLabel(title)
