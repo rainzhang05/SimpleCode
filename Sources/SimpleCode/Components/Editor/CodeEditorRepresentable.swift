@@ -219,7 +219,6 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         private var lastAppliedViewportRange: NSRange?
         private var lastBaseFont: NSFont?
         private var lastBaseForeground: StoredColorPair?
-        private var lastBaseLineHeight: Double?
         private var lastAppliedAppearance: AppearanceSettings?
         private var isApplyingHighlighting = false
         private var isApplyingCommand = false
@@ -848,7 +847,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         private func applyBaseTextAttributesIfNeeded(to textView: CodeTextView, force: Bool) {
             guard let font = textView.font else { return }
             let foreground = ColorRole.editorForegroundNSColor
-            let paragraphStyle = editorParagraphStyle(for: font)
+            let paragraphStyle = NSParagraphStyle.default
             textView.typingAttributes = [
                 .font: font,
                 .foregroundColor: foreground,
@@ -859,12 +858,10 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             let needsBaseAttributes = force
                 || lastBaseFont != font
                 || foregroundChanged
-                || lastBaseLineHeight != settings.typography.editorLineHeight
             guard needsBaseAttributes else { return }
 
             lastBaseFont = font
             lastBaseForeground = settings.appearance.editorForeground
-            lastBaseLineHeight = settings.typography.editorLineHeight
 
             guard let textStorage = textView.textStorage, textStorage.length > 0 else { return }
             isApplyingHighlighting = true
@@ -896,20 +893,11 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             textStorage.addAttributes([
                 .font: font,
                 .foregroundColor: ColorRole.editorForegroundNSColor,
-                .paragraphStyle: editorParagraphStyle(for: font)
+                .paragraphStyle: NSParagraphStyle.default
             ], range: range)
             textStorage.endEditing()
             isApplyingHighlighting = false
             textView.needsDisplay = true
-        }
-
-        private func editorParagraphStyle(for font: NSFont) -> NSParagraphStyle {
-            let style = NSMutableParagraphStyle()
-            let naturalLineHeight = font.ascender - font.descender + font.leading
-            let lineHeight = ceil(naturalLineHeight * CGFloat(settings.typography.editorLineHeight))
-            style.minimumLineHeight = lineHeight
-            style.maximumLineHeight = lineHeight
-            return style
         }
 
         // MARK: CodeTextViewCommandDelegate

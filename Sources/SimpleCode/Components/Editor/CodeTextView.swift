@@ -113,14 +113,22 @@ final class CodeTextView: NSTextView {
         guard let layoutManager = textLayoutManager,
               let selectionRange = layoutManager.textSelections.first?.textRanges.first else { return }
 
-        var fillRect: NSRect?
-        layoutManager.enumerateTextLayoutFragments(from: selectionRange.location, options: [.ensuresLayout]) { fragment in
-            fillRect = fragment.layoutFragmentFrame
-            return false
+        var viewRect: NSRect?
+        if let fragment = layoutManager.textLayoutFragment(for: selectionRange.location) {
+            viewRect = EditorTextGeometry.visualLineFrame(in: fragment, textView: self)
+        } else if let contentManager = layoutManager.textContentManager,
+                  selectionRange.location.compare(contentManager.documentRange.endLocation) == .orderedSame {
+            layoutManager.enumerateTextLayoutFragments(
+                from: contentManager.documentRange.endLocation,
+                options: [.reverse, .ensuresLayout]
+            ) { fragment in
+                viewRect = EditorTextGeometry.trailingEmptyLineFrame(in: fragment, textView: self)
+                    ?? EditorTextGeometry.visualLineFrame(in: fragment, textView: self)
+                return false
+            }
         }
 
-        guard let layoutRect = fillRect else { return }
-        var viewRect = EditorTextGeometry.viewFrame(for: layoutRect, in: self)
+        guard var viewRect else { return }
         let visible = visibleRect
         viewRect.origin.x = visible.minX
         viewRect.size.width = visible.width

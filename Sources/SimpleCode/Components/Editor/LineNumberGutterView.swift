@@ -91,17 +91,22 @@ final class LineNumberGutterView: NSView {
         }
 
         let pointSize = max(10, (codeTextView.font?.pointSize ?? 13) - 1)
+        let normalFont = NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .regular)
+        let currentFont = NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .semibold)
         let normalAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .regular),
+            .font: normalFont,
             .foregroundColor: ColorRole.editorLineNumberNSColor
         ]
         let currentAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .semibold),
+            .font: currentFont,
             .foregroundColor: ColorRole.editorLineNumberEmphasizedNSColor
         ]
 
         layoutManager.enumerateTextLayoutFragments(from: startFragment.rangeInElement.location, options: [.ensuresLayout]) { fragment in
-            guard let frame = EditorTextGeometry.firstLineViewFrame(
+            guard let frame = EditorTextGeometry.visualLineFrame(
+                in: fragment,
+                textView: codeTextView
+            ), let baseline = EditorTextGeometry.visualLineBaseline(
                 in: fragment,
                 textView: codeTextView
             ) else { return true }
@@ -116,8 +121,9 @@ final class LineNumberGutterView: NSView {
             let lineNumber = lineStartIndex.lineNumber(atUTF16Offset: offset)
             draw(
                 lineNumber: lineNumber,
-                fragmentFrame: frame,
+                baseline: baseline,
                 visibleRect: visibleRect,
+                font: currentLineNumber == lineNumber ? currentFont : normalFont,
                 attributes: currentLineNumber == lineNumber ? currentAttributes : normalAttributes
             )
             return true
@@ -126,8 +132,9 @@ final class LineNumberGutterView: NSView {
 
     private func draw(
         lineNumber: Int,
-        fragmentFrame: CGRect,
+        baseline: CGFloat,
         visibleRect: NSRect,
+        font: NSFont,
         attributes: [NSAttributedString.Key: Any]
     ) {
         let numberString = "\(lineNumber)" as NSString
@@ -135,7 +142,7 @@ final class LineNumberGutterView: NSView {
         guard let codeTextView else { return }
         let textPoint = NSPoint(
             x: visibleRect.minX + width - size.width - 8,
-            y: fragmentFrame.midY - size.height / 2
+            y: baseline - font.ascender
         )
         let point = convert(textPoint, from: codeTextView)
         numberString.draw(at: NSPoint(x: max(4, point.x), y: point.y), withAttributes: attributes)

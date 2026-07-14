@@ -572,7 +572,7 @@ struct EditorVisibleRangeTests {
         #expect(fragment.textLineFragments.count > 1)
 
         let firstLineFrame = try #require(
-            EditorTextGeometry.firstLineViewFrame(in: fragment, textView: textView)
+            EditorTextGeometry.visualLineFrame(in: fragment, textView: textView)
         )
         let firstLineBounds = try #require(fragment.textLineFragments.first).typographicBounds
         let expectedLayoutFrame = firstLineBounds.offsetBy(
@@ -590,6 +590,130 @@ struct EditorVisibleRangeTests {
     }
 
     @MainActor
+    @Test func canonicalVisualLineGeometryUsesTypographicBoundsAndGlyphBaseline() throws {
+        let (textView, fragment) = try makeLaidOutTextView(
+            text: String(repeating: "wrapped words need several visual rows ", count: 8),
+            wordWrap: true,
+            width: 150
+        )
+        let firstLine = try #require(fragment.textLineFragments.first)
+        let visualFrame = try #require(
+            EditorTextGeometry.visualLineFrame(in: fragment, textView: textView)
+        )
+        let baseline = try #require(
+            EditorTextGeometry.visualLineBaseline(in: fragment, textView: textView)
+        )
+        let expectedFrame = EditorTextGeometry.viewFrame(
+            for: firstLine.typographicBounds.offsetBy(
+                dx: fragment.layoutFragmentFrame.minX,
+                dy: fragment.layoutFragmentFrame.minY
+            ),
+            in: textView
+        )
+
+        #expect(abs(visualFrame.minY - expectedFrame.minY) < 0.001)
+        #expect(abs(visualFrame.height - expectedFrame.height) < 0.001)
+        #expect(abs(baseline - (visualFrame.minY + firstLine.glyphOrigin.y)) < 0.001)
+    }
+
+    @MainActor
+    @Test func trailingEmptyLineHighlightPaintsOneNaturalHeightRow() throws {
+        let originalSnapshot = SettingsColorResolver.snapshot
+        var testAppearance = originalSnapshot.appearance
+        let white = StoredColor(red: 1, green: 1, blue: 1)
+        let marker = StoredColor(red: 0.14, green: 0.72, blue: 0.31)
+        testAppearance.editorBackground = StoredColorPair(light: white, dark: white)
+        testAppearance.editorCurrentLine = StoredColorPair(light: marker, dark: marker)
+        SettingsColorResolver.updateSnapshot(AppSettingsSnapshot(
+            appearance: testAppearance,
+            typography: originalSnapshot.typography,
+            editor: originalSnapshot.editor,
+            files: originalSnapshot.files
+        ))
+        defer { SettingsColorResolver.updateSnapshot(originalSnapshot) }
+
+        let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        let textView = CodeTextView()
+        textView.frame = NSRect(x: 0, y: 0, width: 240, height: 90)
+        textView.font = font
+        textView.string = "first line\n"
+        textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
+        textView.layoutSubtreeIfNeeded()
+        let layoutManager = try #require(textView.textLayoutManager)
+        let contentManager = try #require(layoutManager.textContentManager)
+        layoutManager.ensureLayout(for: contentManager.documentRange)
+
+        let bitmap = try #require(textView.bitmapImageRepForCachingDisplay(in: textView.bounds))
+        textView.cacheDisplay(in: textView.bounds, to: bitmap)
+
+        let sampleX = bitmap.pixelsWide - 10
+        let markerRows = (0..<bitmap.pixelsHigh).filter { y in
+            guard let color = bitmap.colorAt(x: sampleX, y: y)?.usingColorSpace(.sRGB) else {
+                return false
+            }
+            return abs(color.redComponent - marker.red) < 0.04
+                && abs(color.greenComponent - marker.green) < 0.04
+                && abs(color.blueComponent - marker.blue) < 0.04
+        }
+        let pixelsPerPoint = CGFloat(bitmap.pixelsHigh) / textView.bounds.height
+        let naturalLineHeight = ceil(font.ascender - font.descender + font.leading)
+
+        #expect(markerRows.count == Int(naturalLineHeight * pixelsPerPoint))
+    }
+
+    @MainActor
+    @Test func coordinatorUsesNaturalFontMetricsInsteadOfStoredLineHeightMultiplier() throws {
+        let suiteName = "SimpleCode.NaturalEditorMetrics.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "NaturalEditorMetrics-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        var typography = settings.typography
+        typography.editorLineHeight = 2.5
+        settings.typography = typography
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "natural-editor-metrics")
+        )
+        defer { workspace.tearDown() }
+        let session = EditorDocumentSession(displayName: "Metrics.swift")
+        session.textStorage.setAttributedString(NSAttributedString(string: "natural metrics"))
+        session.enablesSyntaxHighlighting = false
+
+        let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        let textView = CodeTextView()
+        textView.font = font
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 240, height: 90))
+        scrollView.documentView = textView
+        textView.frame = scrollView.bounds
+        let coordinator = CodeEditorRepresentable.Coordinator(
+            session: session,
+            settings: settings.snapshot,
+            workspace: workspace,
+            onTextChanged: {}
+        )
+        coordinator.textView = textView
+        coordinator.scrollView = scrollView
+        coordinator.attach(session: session, to: textView)
+        defer { coordinator.tearDown() }
+
+        let paragraphStyle = try #require(
+            session.textStorage.attribute(.paragraphStyle, at: 0, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+
+        #expect(paragraphStyle.minimumLineHeight == 0)
+        #expect(paragraphStyle.maximumLineHeight == 0)
+    }
+
+    @MainActor
     @Test func unwrappedParagraphKeepsGutterOnItsSingleVisualLine() throws {
         let (textView, fragment) = try makeLaidOutTextView(
             text: String(repeating: "one horizontal line ", count: 12),
@@ -599,7 +723,7 @@ struct EditorVisibleRangeTests {
         #expect(fragment.textLineFragments.count == 1)
 
         let firstLineFrame = try #require(
-            EditorTextGeometry.firstLineViewFrame(in: fragment, textView: textView)
+            EditorTextGeometry.visualLineFrame(in: fragment, textView: textView)
         )
         let firstLineBounds = try #require(fragment.textLineFragments.first).typographicBounds
         let expectedLayoutFrame = firstLineBounds.offsetBy(

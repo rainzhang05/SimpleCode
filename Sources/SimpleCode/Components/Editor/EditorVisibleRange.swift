@@ -19,12 +19,38 @@ enum EditorTextGeometry {
         textView.textContainerOrigin.x + (textView.textContainer?.lineFragmentPadding ?? 0)
     }
 
-    static func firstLineViewFrame(
+    static func visualLineFrame(
         in fragment: NSTextLayoutFragment,
         textView: NSTextView
     ) -> NSRect? {
         guard let firstLine = fragment.textLineFragments.first else { return nil }
-        let lineLayoutFrame = firstLine.typographicBounds.offsetBy(
+        return lineViewFrame(for: firstLine, in: fragment, textView: textView)
+    }
+
+    static func visualLineBaseline(
+        in fragment: NSTextLayoutFragment,
+        textView: NSTextView
+    ) -> CGFloat? {
+        guard let firstLine = fragment.textLineFragments.first,
+              let frame = visualLineFrame(in: fragment, textView: textView) else { return nil }
+        return frame.minY + firstLine.glyphOrigin.y
+    }
+
+    static func trailingEmptyLineFrame(
+        in fragment: NSTextLayoutFragment,
+        textView: NSTextView
+    ) -> NSRect? {
+        guard let lastLine = fragment.textLineFragments.last,
+              lastLine.characterRange.length == 0 else { return nil }
+        return lineViewFrame(for: lastLine, in: fragment, textView: textView)
+    }
+
+    private static func lineViewFrame(
+        for line: NSTextLineFragment,
+        in fragment: NSTextLayoutFragment,
+        textView: NSTextView
+    ) -> NSRect {
+        let lineLayoutFrame = line.typographicBounds.offsetBy(
             dx: fragment.layoutFragmentFrame.minX,
             dy: fragment.layoutFragmentFrame.minY
         )
