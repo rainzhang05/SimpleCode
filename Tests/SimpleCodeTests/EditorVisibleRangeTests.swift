@@ -4,6 +4,38 @@ import Testing
 @testable import SimpleCode
 
 struct EditorVisibleRangeTests {
+    @MainActor
+    private final class FlippedGlyphReferenceView: NSView {
+        let text: NSString
+        let origin: NSPoint
+        let attributes: [NSAttributedString.Key: Any]
+
+        init(
+            frame: NSRect,
+            text: NSString,
+            origin: NSPoint,
+            attributes: [NSAttributedString.Key: Any]
+        ) {
+            self.text = text
+            self.origin = origin
+            self.attributes = attributes
+            super.init(frame: frame)
+        }
+
+        @available(*, unavailable)
+        required init(coder: NSCoder) {
+            fatalError("FlippedGlyphReferenceView does not support NSCoder")
+        }
+
+        override var isFlipped: Bool { true }
+
+        override func draw(_ dirtyRect: NSRect) {
+            NSColor.white.setFill()
+            dirtyRect.fill()
+            text.draw(at: origin, withAttributes: attributes)
+        }
+    }
+
     private actor SuspendedEditorHighlighter: SyntaxHighlighter {
         private var didStartLoad = false
         private var startWaiters: [CheckedContinuation<Void, Never>] = []
@@ -642,6 +674,18 @@ struct EditorVisibleRangeTests {
         let layoutManager = try #require(textView.textLayoutManager)
         let contentManager = try #require(layoutManager.textContentManager)
         layoutManager.ensureLayout(for: contentManager.documentRange)
+        var trailingFrame: NSRect?
+        layoutManager.enumerateTextLayoutFragments(
+            from: contentManager.documentRange.endLocation,
+            options: [.reverse, .ensuresLayout]
+        ) { fragment in
+            trailingFrame = EditorTextGeometry.trailingEmptyLineFrame(
+                in: fragment,
+                textView: textView
+            )
+            return false
+        }
+        let expectedFrame = try #require(trailingFrame)
 
         let bitmap = try #require(textView.bitmapImageRepForCachingDisplay(in: textView.bounds))
         textView.cacheDisplay(in: textView.bounds, to: bitmap)
@@ -656,9 +700,69 @@ struct EditorVisibleRangeTests {
                 && abs(color.blueComponent - marker.blue) < 0.04
         }
         let pixelsPerPoint = CGFloat(bitmap.pixelsHigh) / textView.bounds.height
-        let naturalLineHeight = ceil(font.ascender - font.descender + font.leading)
+        let expectedRows = (0..<bitmap.pixelsHigh).filter { row in
+            let viewY = (CGFloat(row) + 0.5) / pixelsPerPoint
+            return viewY >= expectedFrame.minY && viewY < expectedFrame.maxY
+        }
+        let precedingViewY = expectedFrame.minY - 0.5 / pixelsPerPoint
+        let precedingRow = Int(floor(precedingViewY * pixelsPerPoint))
 
-        #expect(markerRows.count == Int(naturalLineHeight * pixelsPerPoint))
+        #expect(markerRows == expectedRows)
+        #expect(!markerRows.contains(precedingRow))
+    }
+
+    @MainActor
+    @Test func gutterMetricWidthUsesOnePointSmallerFontAtSmallEditorSizes() {
+        for editorPointSize in [CGFloat(9), CGFloat(10)] {
+            let textView = CodeTextView()
+            let editorFont = NSFont.monospacedSystemFont(ofSize: editorPointSize, weight: .regular)
+            let gutter = LineNumberGutterView(codeTextView: textView)
+            let lineCount = 999_999_999
+
+            gutter.updateMetrics(font: editorFont, lineCount: lineCount)
+
+            let expectedFont = NSFont.monospacedDigitSystemFont(
+                ofSize: editorPointSize - 1,
+                weight: .regular
+            )
+            let digitWidth = ("0" as NSString).size(withAttributes: [.font: expectedFont]).width
+            let expectedWidth = max(
+                LineNumberGutterView.minimumWidth,
+                ceil(digitWidth * CGFloat(String(lineCount).count) + 18)
+            )
+            #expect(gutter.width == expectedWidth)
+        }
+    }
+
+    @MainActor
+    @Test func renderedGutterDigitAlignsWithTextKitBaselineAcrossEditorSizes() throws {
+        let originalSnapshot = SettingsColorResolver.snapshot
+        var testAppearance = originalSnapshot.appearance
+        let white = StoredColor(red: 1, green: 1, blue: 1)
+        let marker = StoredColor(red: 0.91, green: 0.12, blue: 0.68)
+        testAppearance.editorBackground = StoredColorPair(light: white, dark: white)
+        testAppearance.editorCurrentLine = StoredColorPair(light: white, dark: white)
+        testAppearance.gutterBackground = StoredColorPair(light: white, dark: white)
+        testAppearance.lineNumber = StoredColorPair(light: marker, dark: marker)
+        testAppearance.activeLineNumber = StoredColorPair(light: marker, dark: marker)
+        SettingsColorResolver.updateSnapshot(AppSettingsSnapshot(
+            appearance: testAppearance,
+            typography: originalSnapshot.typography,
+            editor: originalSnapshot.editor,
+            files: originalSnapshot.files
+        ))
+        defer { SettingsColorResolver.updateSnapshot(originalSnapshot) }
+
+        for editorPointSize in [CGFloat(9), CGFloat(10), CGFloat(14)] {
+            let (actualRows, expectedRows, isFlipped) = try renderedGutterRows(
+                editorPointSize: editorPointSize,
+                marker: marker
+            )
+            #expect(isFlipped)
+            #expect(!actualRows.isEmpty)
+            #expect(!expectedRows.isEmpty)
+            #expect(actualRows == expectedRows)
+        }
     }
 
     @MainActor
@@ -769,6 +873,81 @@ struct EditorVisibleRangeTests {
             y: 0
         )))
         return (textView, fragment)
+    }
+
+    @MainActor
+    private func renderedGutterRows(
+        editorPointSize: CGFloat,
+        marker: StoredColor
+    ) throws -> (actual: [Int], expected: [Int], isFlipped: Bool) {
+        let textView = CodeTextView()
+        textView.frame = NSRect(x: 0, y: 0, width: 240, height: 90)
+        textView.font = NSFont.monospacedSystemFont(ofSize: editorPointSize, weight: .regular)
+        textView.string = "1"
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        let gutter = LineNumberGutterView(codeTextView: textView)
+        gutter.updateMetrics(font: textView.font, lineCount: 1)
+        textView.configureLineNumberGutter(visible: true, width: gutter.width)
+        textView.addSubview(gutter)
+        textView.layoutSubtreeIfNeeded()
+
+        let layoutManager = try #require(textView.textLayoutManager)
+        let contentManager = try #require(layoutManager.textContentManager)
+        layoutManager.ensureLayout(for: contentManager.documentRange)
+        let fragment = try #require(layoutManager.textLayoutFragment(for: NSPoint(
+            x: textView.textContainer?.lineFragmentPadding ?? 0,
+            y: 0
+        )))
+        let baseline = try #require(
+            EditorTextGeometry.visualLineBaseline(in: fragment, textView: textView)
+        )
+
+        let gutterFont = NSFont.monospacedDigitSystemFont(
+            ofSize: editorPointSize - 1,
+            weight: .semibold
+        )
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: gutterFont,
+            .foregroundColor: marker.nsColor
+        ]
+        let number = "1" as NSString
+        let numberSize = number.size(withAttributes: attributes)
+        let reference = FlippedGlyphReferenceView(
+            frame: gutter.bounds,
+            text: number,
+            origin: NSPoint(
+                x: gutter.width - numberSize.width - 8,
+                y: baseline - gutterFont.ascender
+            ),
+            attributes: attributes
+        )
+
+        let actualBitmap = try #require(gutter.bitmapImageRepForCachingDisplay(in: gutter.bounds))
+        gutter.cacheDisplay(in: gutter.bounds, to: actualBitmap)
+        let referenceBitmap = try #require(reference.bitmapImageRepForCachingDisplay(in: reference.bounds))
+        reference.cacheDisplay(in: reference.bounds, to: referenceBitmap)
+        let actualScale = CGFloat(actualBitmap.pixelsWide) / gutter.bounds.width
+        let referenceScale = CGFloat(referenceBitmap.pixelsWide) / reference.bounds.width
+
+        return (
+            markerRows(in: actualBitmap, maxX: Int(ceil(gutter.width * actualScale))),
+            markerRows(in: referenceBitmap, maxX: Int(ceil(gutter.width * referenceScale))),
+            gutter.isFlipped
+        )
+    }
+
+    private func markerRows(in bitmap: NSBitmapImageRep, maxX: Int) -> [Int] {
+        (0..<bitmap.pixelsHigh).filter { y in
+            (0..<min(maxX, bitmap.pixelsWide)).contains { x in
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else {
+                    return false
+                }
+                let distanceFromWhite = abs(1 - color.redComponent)
+                    + abs(1 - color.greenComponent)
+                    + abs(1 - color.blueComponent)
+                return color.alphaComponent > 0.02 && distanceFromWhite > 0.02
+            }
+        }
     }
 
     @MainActor

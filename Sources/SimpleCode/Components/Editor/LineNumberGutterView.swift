@@ -24,6 +24,7 @@ final class LineNumberGutterView: NSView {
     }
 
     override var isOpaque: Bool { false }
+    override var isFlipped: Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         nil
@@ -38,12 +39,12 @@ final class LineNumberGutterView: NSView {
     }
 
     /// Returns `true` when the reserved editor inset needs to be laid out again.
-    /// Matching the editor's point size and using a digit-aware width keeps the
-    /// gutter stable for small files while still accommodating five-plus digit line
-    /// numbers without overlapping code.
+    /// Tracking the editor one point smaller and using a digit-aware width keeps
+    /// the gutter stable for small files while still accommodating five-plus digit
+    /// line numbers without overlapping code.
     @discardableResult
     func updateMetrics(font: NSFont?, lineCount: Int) -> Bool {
-        let pointSize = max(10, (font?.pointSize ?? 13) - 1)
+        let pointSize = Self.lineNumberPointSize(editorFont: font)
         let digitFont = NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .regular)
         let digitWidth = ("0" as NSString).size(withAttributes: [.font: digitFont]).width
         let digitCount = max(2, String(max(1, lineCount)).count)
@@ -90,7 +91,7 @@ final class LineNumberGutterView: NSView {
             currentLineNumber = nil
         }
 
-        let pointSize = max(10, (codeTextView.font?.pointSize ?? 13) - 1)
+        let pointSize = Self.lineNumberPointSize(editorFont: codeTextView.font)
         let normalFont = NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .regular)
         let currentFont = NSFont.monospacedDigitSystemFont(ofSize: pointSize, weight: .semibold)
         let normalAttributes: [NSAttributedString.Key: Any] = [
@@ -146,5 +147,9 @@ final class LineNumberGutterView: NSView {
         )
         let point = convert(textPoint, from: codeTextView)
         numberString.draw(at: NSPoint(x: max(4, point.x), y: point.y), withAttributes: attributes)
+    }
+
+    private static func lineNumberPointSize(editorFont: NSFont?) -> CGFloat {
+        (editorFont?.pointSize ?? 13) - 1
     }
 }
