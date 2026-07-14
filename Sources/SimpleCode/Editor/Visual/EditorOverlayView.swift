@@ -3,6 +3,11 @@ import AppKit
 /// Draws editor visual guides and whitespace markers without mutating source text.
 @MainActor
 final class EditorOverlayView: NSView {
+    enum WhitespaceMarkerKind {
+        case space
+        case tab
+    }
+
     weak var textView: CodeTextView?
     var showLongLineGuide = true
     var guideColumn = 100
@@ -104,19 +109,22 @@ final class EditorOverlayView: NSView {
             if drawStart < drawEnd {
                 for location in drawStart..<drawEnd {
                     let codeUnit = text.character(at: location)
-                    let isSpace = codeUnit == 32
-                    let isTab = codeUnit == 9
-                    guard isSpace || isTab else { continue }
                     let isTrailing = location >= trailingStart
-                    guard showWhitespace || (showTrailingWhitespace && isTrailing) else { continue }
+                    guard let markerKind = Self.whitespaceMarkerKind(
+                        codeUnit: codeUnit,
+                        isTrailing: isTrailing,
+                        showWhitespace: showWhitespace,
+                        showTrailingWhitespace: showTrailingWhitespace
+                    ) else { continue }
                     guard let rect = rects(forCharacterRange: NSRange(location: location, length: 1), in: textView).first,
                           rect.intersects(dirtyRect) else { continue }
 
-                    if isSpace {
+                    switch markerKind {
+                    case .space:
                         let dotRect = NSRect(x: rect.midX - 1, y: rect.midY - 1, width: 2, height: 2)
                         color.setFill()
                         NSBezierPath(ovalIn: dotRect).fill()
-                    } else if showWhitespace {
+                    case .tab:
                         let path = NSBezierPath()
                         path.move(to: NSPoint(x: rect.minX + 2, y: rect.midY))
                         path.line(to: NSPoint(x: rect.maxX - 2, y: rect.midY))
@@ -130,6 +138,20 @@ final class EditorOverlayView: NSView {
             let nextLine = NSMaxRange(fullLineRange)
             if nextLine <= lineLocation { break }
             lineLocation = nextLine
+        }
+    }
+
+    static func whitespaceMarkerKind(
+        codeUnit: unichar,
+        isTrailing: Bool,
+        showWhitespace: Bool,
+        showTrailingWhitespace: Bool
+    ) -> WhitespaceMarkerKind? {
+        guard showWhitespace || (showTrailingWhitespace && isTrailing) else { return nil }
+        switch codeUnit {
+        case 32: return .space
+        case 9: return .tab
+        default: return nil
         }
     }
 

@@ -5,6 +5,25 @@ import Testing
 
 struct EditorVisibleRangeTests {
     @MainActor
+    @Test func trailingWhitespaceModeAdmitsOnlyTrailingTabs() {
+        let interiorTab = EditorOverlayView.whitespaceMarkerKind(
+            codeUnit: 9,
+            isTrailing: false,
+            showWhitespace: false,
+            showTrailingWhitespace: true
+        )
+        let trailingTab = EditorOverlayView.whitespaceMarkerKind(
+            codeUnit: 9,
+            isTrailing: true,
+            showWhitespace: false,
+            showTrailingWhitespace: true
+        )
+
+        #expect(interiorTab == nil)
+        #expect(trailingTab == .tab)
+    }
+
+    @MainActor
     private final class FlippedGlyphReferenceView: NSView {
         let text: NSString
         let origin: NSPoint
