@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import AppKit
 
 /// Global application preferences. Owned by `AppModel`, not `WorkspaceModel`.
 @MainActor
@@ -49,7 +50,7 @@ final class AppSettingsStore {
             editor: blob.editor,
             files: blob.files
         )
-        SettingsColorResolver.updateSnapshot(snapshot)
+        applyApplicationAppearance()
     }
 
     var editorFontSize: CGFloat {
@@ -82,13 +83,20 @@ final class AppSettingsStore {
         apply(.defaults)
     }
 
-    func resetSyntaxPalette() {
-        appearance.syntaxPalette = .defaults
+    private func settingsDidChange() {
+        applyApplicationAppearance()
+        persist()
     }
 
-    private func settingsDidChange() {
-        SettingsColorResolver.updateSnapshot(snapshot)
-        persist()
+    private func applyApplicationAppearance() {
+        switch appearance.mode {
+        case .system:
+            NSApp.appearance = nil
+        case .light:
+            NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark:
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
     }
 
     private func apply(_ snapshot: AppSettingsSnapshot) {
