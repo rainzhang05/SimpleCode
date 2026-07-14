@@ -785,7 +785,6 @@ final class WorkspaceModel {
 
     func toggleWhitespace() {
         appSettings.editor.showWhitespace.toggle()
-        appSettings.editor.showTrailingWhitespace = appSettings.editor.showWhitespace
     }
 
     func toggleLineNumbers() {

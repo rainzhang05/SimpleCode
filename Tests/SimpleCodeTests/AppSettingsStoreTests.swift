@@ -250,6 +250,30 @@ struct AppSettingsStoreTests {
     #expect(EditorTabWidthChoice.custom.width == EditorTabWidthChoice.defaultCustomWidth)
   }
 
+  @Test func toggleWhitespaceMenuCommandLeavesTrailingWhitespaceIndependent() throws {
+    let defaults = isolatedDefaults()
+    let root = FileManager.default.temporaryDirectory.appending(path: "WhitespaceMenu-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let settings = AppSettingsStore(defaults: defaults)
+    let workspace = WorkspaceModel(
+      id: UUID(),
+      rootURL: root,
+      appSettings: settings,
+      workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "whitespace-menu.\(UUID().uuidString)")
+    )
+    settings.editor.showWhitespace = false
+    settings.editor.showTrailingWhitespace = true
+
+    workspace.toggleWhitespace()
+    #expect(settings.editor.showWhitespace)
+    #expect(settings.editor.showTrailingWhitespace)
+
+    workspace.toggleWhitespace()
+    #expect(!settings.editor.showWhitespace)
+    #expect(settings.editor.showTrailingWhitespace)
+  }
+
   @Test func fileTreeRefreshDecisionOnlyRespondsToExclusionChanges() {
     let original = AppSettingsSnapshot.defaults
 
