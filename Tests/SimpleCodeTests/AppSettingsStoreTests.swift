@@ -327,6 +327,40 @@ struct AppSettingsStoreTests {
     #expect(defaults.data(forKey: AppSettingsStore.storageKey) == originalData)
   }
 
+  @Test func aFutureSchemaWithUnknownAppearanceModeIsNeverOverwritten() throws {
+    let defaults = isolatedDefaults()
+    let object = try settingsJSONObject { object in
+      object["schemaVersion"] = AppSettingsBlob.currentSchemaVersion + 1
+      var appearance = object["appearance"] as! [String: Any]
+      appearance["mode"] = "highContrast"
+      object["appearance"] = appearance
+    }
+    try persistJSONObject(object, into: defaults)
+    let originalData = try #require(defaults.data(forKey: AppSettingsStore.storageKey))
+
+    let store = AppSettingsStore(defaults: defaults)
+    store.editor.tabWidth = 2
+
+    #expect(defaults.data(forKey: AppSettingsStore.storageKey) == originalData)
+  }
+
+  @Test func persistedAppearanceModeIsAppliedDuringInitialization() throws {
+    let previousAppearance = NSApp.appearance
+    defer { NSApp.appearance = previousAppearance }
+    let defaults = isolatedDefaults()
+    let object = try settingsJSONObject { object in
+      var appearance = object["appearance"] as! [String: Any]
+      appearance["mode"] = "dark"
+      object["appearance"] = appearance
+    }
+    try persistJSONObject(object, into: defaults)
+    NSApp.appearance = nil
+
+    _ = AppSettingsStore(defaults: defaults)
+
+    #expect(NSApp.appearance?.name == .darkAqua)
+  }
+
   @Test func schemaVersionFourPersistsOnlyAppearanceModeAndFunctionalTypography() throws {
     let encoded = try JSONEncoder().encode(AppSettingsBlob.defaults)
     let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])

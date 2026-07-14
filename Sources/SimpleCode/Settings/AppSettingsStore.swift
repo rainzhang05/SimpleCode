@@ -170,13 +170,17 @@ final class AppSettingsStore {
             )
         }
         let decoder = JSONDecoder()
+        let storedSchemaVersion = try? decoder.decode(PersistedSchemaVersion.self, from: data)
+        let isFutureSchema = storedSchemaVersion.map {
+            $0.schemaVersion > AppSettingsBlob.currentSchemaVersion
+        } ?? false
 
         guard let mergedData = mergedSettingsData(from: data),
               let blob = try? decoder.decode(AppSettingsBlob.self, from: mergedData) else {
             return LoadedSettings(
                 blob: AppSettingsBlob.defaults,
                 hasPersistedBlob: true,
-                permitsPersistence: true
+                permitsPersistence: !isFutureSchema
             )
         }
         return LoadedSettings(
@@ -236,5 +240,9 @@ final class AppSettingsStore {
     private static func isJSONBool(_ value: Any) -> Bool {
         guard let number = value as? NSNumber else { return false }
         return CFGetTypeID(number) == CFBooleanGetTypeID()
+    }
+
+    private struct PersistedSchemaVersion: Decodable {
+        let schemaVersion: Int
     }
 }
