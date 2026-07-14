@@ -438,23 +438,35 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let toolbarButton = element("workspace.runConfigButton")
+        let toolbar = app.toolbars.firstMatch
         let filesHeader = app.staticTexts["Files"]
         let editorTab = element("editor.tab.Main.swift")
 
-        XCTAssertTrue(toolbarButton.waitForExistence(timeout: 5), debugSnapshot(), file: file, line: line)
+        XCTAssertTrue(toolbar.waitForExistence(timeout: 5), debugSnapshot(), file: file, line: line)
         XCTAssertTrue(filesHeader.waitForExistence(timeout: 5), debugSnapshot(), file: file, line: line)
         XCTAssertTrue(editorTab.waitForExistence(timeout: 5), debugSnapshot(), file: file, line: line)
+        let frames = [
+            ("native toolbar", toolbar.frame),
+            ("Files header", filesHeader.frame),
+            ("editor tab", editorTab.frame)
+        ]
+        for (name, frame) in frames {
+            XCTAssertFalse(frame.isNull, "Expected a valid frame for \(name).", file: file, line: line)
+            XCTAssertFalse(frame.isInfinite, "Expected a finite frame for \(name).", file: file, line: line)
+            XCTAssertGreaterThan(frame.width, 0, "Expected positive width for \(name).", file: file, line: line)
+            XCTAssertGreaterThan(frame.height, 0, "Expected positive height for \(name).", file: file, line: line)
+        }
+        let toolbarBottom = toolbar.frame.maxY
         XCTAssertGreaterThanOrEqual(
             filesHeader.frame.minY,
-            toolbarButton.frame.maxY,
+            toolbarBottom,
             "Files header overlaps the native toolbar.\n\(debugSnapshot())",
             file: file,
             line: line
         )
         XCTAssertGreaterThanOrEqual(
             editorTab.frame.minY,
-            toolbarButton.frame.maxY,
+            toolbarBottom,
             "Editor tab overlaps the native toolbar.\n\(debugSnapshot())",
             file: file,
             line: line

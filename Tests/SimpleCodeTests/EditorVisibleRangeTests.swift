@@ -646,17 +646,30 @@ struct EditorVisibleRangeTests {
         let baseline = try #require(
             EditorTextGeometry.visualLineBaseline(in: fragment, textView: textView)
         )
-        let expectedFrame = EditorTextGeometry.viewFrame(
-            for: firstLine.typographicBounds.offsetBy(
-                dx: fragment.layoutFragmentFrame.minX,
-                dy: fragment.layoutFragmentFrame.minY
-            ),
-            in: textView
+        let rawFrame = firstLine.typographicBounds.offsetBy(
+            dx: fragment.layoutFragmentFrame.minX,
+            dy: fragment.layoutFragmentFrame.minY
         )
+        let origin = textView.textContainerOrigin
+        let expectedFrame = NSRect(
+            x: origin.x + rawFrame.minX,
+            y: textView.isFlipped
+                ? origin.y + rawFrame.minY
+                : textView.bounds.height - origin.y - rawFrame.maxY,
+            width: rawFrame.width,
+            height: rawFrame.height
+        )
+        let rawBaselineFromTop = origin.y
+            + fragment.layoutFragmentFrame.minY
+            + firstLine.typographicBounds.minY
+            + firstLine.glyphOrigin.y
+        let expectedBaseline = textView.isFlipped
+            ? rawBaselineFromTop
+            : textView.bounds.height - rawBaselineFromTop
 
         #expect(abs(visualFrame.minY - expectedFrame.minY) < 0.001)
         #expect(abs(visualFrame.height - expectedFrame.height) < 0.001)
-        #expect(abs(baseline - (visualFrame.minY + firstLine.glyphOrigin.y)) < 0.001)
+        #expect(abs(baseline - expectedBaseline) < 0.001)
     }
 
     @MainActor
@@ -677,18 +690,32 @@ struct EditorVisibleRangeTests {
         let layoutManager = try #require(textView.textLayoutManager)
         let contentManager = try #require(layoutManager.textContentManager)
         layoutManager.ensureLayout(for: contentManager.documentRange)
-        var trailingFrame: NSRect?
+        var capturedExpectedFrame: NSRect?
+        var capturedRawEmptyLineHeight: CGFloat?
         layoutManager.enumerateTextLayoutFragments(
             from: contentManager.documentRange.endLocation,
             options: [.reverse, .ensuresLayout]
         ) { fragment in
-            trailingFrame = EditorTextGeometry.trailingEmptyLineFrame(
-                in: fragment,
-                textView: textView
+            guard let emptyLine = fragment.textLineFragments.last,
+                  emptyLine.characterRange.length == 0 else { return true }
+            let rawFrame = emptyLine.typographicBounds.offsetBy(
+                dx: fragment.layoutFragmentFrame.minX,
+                dy: fragment.layoutFragmentFrame.minY
             )
+            let origin = textView.textContainerOrigin
+            capturedExpectedFrame = NSRect(
+                x: origin.x + rawFrame.minX,
+                y: textView.isFlipped
+                    ? origin.y + rawFrame.minY
+                    : textView.bounds.height - origin.y - rawFrame.maxY,
+                width: rawFrame.width,
+                height: rawFrame.height
+            )
+            capturedRawEmptyLineHeight = emptyLine.typographicBounds.height
             return false
         }
-        let expectedFrame = try #require(trailingFrame)
+        let expectedFrame = try #require(capturedExpectedFrame)
+        let rawEmptyLineHeight = try #require(capturedRawEmptyLineHeight)
 
         let bitmap = try #require(textView.bitmapImageRepForCachingDisplay(in: textView.bounds))
         textView.cacheDisplay(in: textView.bounds, to: bitmap)
@@ -711,6 +738,8 @@ struct EditorVisibleRangeTests {
         let precedingRow = Int(floor(precedingViewY * pixelsPerPoint))
 
         #expect(markerRows == expectedRows)
+        #expect(abs(expectedFrame.height - rawEmptyLineHeight) < 0.001)
+        #expect(abs(CGFloat(markerRows.count) / pixelsPerPoint - rawEmptyLineHeight) <= 1 / pixelsPerPoint)
         #expect(!markerRows.contains(precedingRow))
     }
 
@@ -930,9 +959,17 @@ struct EditorVisibleRangeTests {
             x: textView.textContainer?.lineFragmentPadding ?? 0,
             y: 0
         )))
-        let baseline = try #require(
-            EditorTextGeometry.visualLineBaseline(in: fragment, textView: textView)
-        )
+        let firstLine = try #require(fragment.textLineFragments.first)
+        let rawBaselineFromTop = textView.textContainerOrigin.y
+            + fragment.layoutFragmentFrame.minY
+            + firstLine.typographicBounds.minY
+            + firstLine.glyphOrigin.y
+        let textViewBaseline = textView.isFlipped
+            ? rawBaselineFromTop
+            : textView.bounds.height - rawBaselineFromTop
+        let baseline = gutter.isFlipped == textView.isFlipped
+            ? textViewBaseline
+            : gutter.bounds.height - textViewBaseline
 
         let gutterFont = NSFont.monospacedDigitSystemFont(
             ofSize: editorPointSize - 1,
