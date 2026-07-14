@@ -25,6 +25,7 @@ struct TerminalSessionControllerTests {
         private(set) var resizedTo: [(cols: Int, rows: Int)] = []
         private(set) var events: [String] = []
         var sendSucceeds = true
+        var byteSendSucceeds = true
 
         func startProcess(executable: String, environment: [String], currentDirectory: String) {
             launches.append(Launch(executable: executable, environment: environment, currentDirectory: currentDirectory))
@@ -41,8 +42,8 @@ struct TerminalSessionControllerTests {
         func send(bytes: [UInt8]) -> Bool {
             guard isProcessRunning else { return false }
             sentBytes.append(bytes)
-            events.append("bytes:\(bytes)")
-            return sendSucceeds
+            events.append(byteSendSucceeds ? "bytes:\(bytes)" : "bytes-rejected:\(bytes)")
+            return byteSendSucceeds
         }
 
         func focus() -> Bool {
@@ -203,6 +204,57 @@ struct TerminalSessionControllerTests {
         #expect(driver.sentBytes == [[0x15, 0x0C]])
         #expect(driver.events.suffix(2) == ["bytes:[21, 12]", "focus"])
         #expect(driver.focusCount == 1)
+    }
+
+    @Test func rejectedClearBlocksCommandUntilResetDeliveryRecovers() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        let driver = TerminalDriverSpy()
+        var deliveries: [(String, TerminalCommandSubmissionResult)] = []
+        controller.onQueuedCommandDelivery = { deliveries.append(($0, $1)) }
+        controller.attach(driver)
+        controller.setPanelVisible(true)
+        driver.byteSendSucceeds = false
+
+        controller.clearDisplay()
+        let result = controller.sendCommand("echo guarded")
+        controller.startIfNeeded()
+
+        #expect(result == .queued)
+        #expect(driver.sentText.isEmpty)
+        #expect(deliveries.isEmpty)
+
+        driver.byteSendSucceeds = true
+        controller.startIfNeeded()
+
+        let resetIndex = try #require(driver.events.firstIndex(of: "bytes:[21, 12]"))
+        let focusIndex = try #require(driver.events.firstIndex(of: "focus"))
+        let sendIndex = try #require(driver.events.firstIndex(of: "send:echo guarded\n"))
+        #expect(resetIndex < focusIndex)
+        #expect(focusIndex < sendIndex)
+        #expect(driver.sentText == ["echo guarded\n"])
+        #expect(deliveries.count == 1)
+        #expect(deliveries.first?.0 == "echo guarded")
+        #expect(deliveries.first?.1 == .submitted)
+    }
+
+    @Test func rejectedClearKeepsFocusPendingUntilResetDeliverySucceeds() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+        controller.setPanelVisible(true)
+        driver.byteSendSucceeds = false
+
+        controller.clearDisplay()
+
+        #expect(!controller.consumeFocusRequest())
+        #expect(driver.focusCount == 0)
+
+        driver.byteSendSucceeds = true
+        controller.startIfNeeded()
+
+        #expect(driver.events.suffix(2) == ["bytes:[21, 12]", "focus"])
+        #expect(driver.focusCount == 1)
+        #expect(!controller.consumeFocusRequest())
     }
 
     @Test func interruptSendsOneControlCByte() throws {

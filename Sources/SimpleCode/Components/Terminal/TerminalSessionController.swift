@@ -120,6 +120,11 @@ final class TerminalSessionController: TerminalCommandSending {
             pendingCommands.append(command)
             return .queued
         }
+        fulfillClearRequestIfPossible()
+        guard !clearRequested else {
+            pendingCommands.append(command)
+            return .queued
+        }
         guard driver.send(text: payload) else { return .failed }
         AppLog.terminal.debug("Run command submitted")
         return .submitted
@@ -185,7 +190,7 @@ final class TerminalSessionController: TerminalCommandSending {
     }
 
     func consumeFocusRequest() -> Bool {
-        guard needsFocus else { return false }
+        guard needsFocus, !clearRequested else { return false }
         needsFocus = false
         return true
     }
@@ -227,6 +232,7 @@ final class TerminalSessionController: TerminalCommandSending {
 
     private func flushPendingCommandsIfNeeded() {
         guard !pendingCommands.isEmpty else { return }
+        guard !clearRequested else { return }
         guard state == .running, driver?.isProcessRunning == true else {
             failPendingCommands()
             return
