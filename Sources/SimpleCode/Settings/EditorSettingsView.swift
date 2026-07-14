@@ -2,9 +2,52 @@ import SwiftUI
 
 struct EditorSettingsView: View {
     @Bindable var settings: AppSettingsStore
+    @State private var customTabWidth: Int
+    @State private var selectedTabWidth: EditorTabWidthChoice
+
+    init(settings: AppSettingsStore) {
+        self.settings = settings
+        let width = settings.editor.tabWidth
+        let selection = EditorTabWidthChoice.selection(for: width)
+        _selectedTabWidth = State(initialValue: selection)
+        _customTabWidth = State(initialValue: selection == .custom
+            ? width
+            : EditorTabWidthChoice.defaultCustomWidth)
+    }
 
     var body: some View {
         Form {
+            Section("Font") {
+                Picker("Font Family", selection: $settings.typography.editorFontFamily) {
+                    ForEach(FontCatalog.monospacedFamilies, id: \.self) { family in
+                        Text(FontCatalog.displayName(for: family)).tag(family)
+                    }
+                }
+                .pointingHandCursor()
+                .accessibilityIdentifier("settings.editor.fontFamily")
+
+                Stepper(
+                    "Font Size: \(Int(settings.typography.editorFontSize))",
+                    value: $settings.typography.editorFontSize,
+                    in: Double(Typography.minimumEditorFontSize)...Double(Typography.maximumEditorFontSize)
+                )
+                .pointingHandCursor()
+                .accessibilityIdentifier("settings.editor.fontSize")
+
+                Toggle("Font Ligatures", isOn: $settings.typography.editorFontLigatures)
+                    .pointingHandCursor()
+                    .accessibilityIdentifier("settings.editor.fontLigatures")
+
+                Text("func hello() { return 42 }")
+                    .font(Font(nsFont: Typography.editorFont(
+                        family: settings.typography.editorFontFamily,
+                        size: CGFloat(settings.typography.editorFontSize),
+                        ligatures: settings.typography.editorFontLigatures
+                    )))
+                    .padding(.vertical, 4)
+                    .accessibilityLabel("Editor font preview")
+            }
+
             Section("Indentation") {
                 Picker("Tab Width", selection: tabWidthSelection) {
                     ForEach(EditorTabWidthChoice.options, id: \.self) { choice in
@@ -12,12 +55,16 @@ struct EditorSettingsView: View {
                     }
                 }
                 .pointingHandCursor()
-                Stepper(
-                    "Custom Width: \(settings.editor.tabWidth)",
-                    value: $settings.editor.tabWidth,
-                    in: 1...16
-                )
-                .pointingHandCursor()
+                .accessibilityIdentifier("settings.editor.tabWidth")
+                if selectedTabWidth == .custom {
+                    Stepper(
+                        "Custom Width: \(customTabWidth)",
+                        value: customTabWidthBinding,
+                        in: 1...16
+                    )
+                    .pointingHandCursor()
+                    .accessibilityIdentifier("settings.editor.customTabWidth")
+                }
                 Toggle("Insert Spaces", isOn: $settings.editor.insertSpaces)
                     .pointingHandCursor()
                 Toggle("Auto Indent", isOn: $settings.editor.autoIndent)
@@ -42,16 +89,22 @@ struct EditorSettingsView: View {
                     .pointingHandCursor()
                 Toggle("Show Whitespace", isOn: $settings.editor.showWhitespace)
                     .pointingHandCursor()
+                    .accessibilityIdentifier("settings.editor.showWhitespace")
                 Toggle("Show Trailing Whitespace", isOn: $settings.editor.showTrailingWhitespace)
                     .pointingHandCursor()
+                    .accessibilityIdentifier("settings.editor.showTrailingWhitespace")
                 Toggle("Long Line Guide", isOn: $settings.editor.showLongLineGuide)
                     .pointingHandCursor()
-                Stepper(
-                    "Guide Column: \(settings.editor.longLineGuideColumn)",
-                    value: $settings.editor.longLineGuideColumn,
-                    in: 40...200
-                )
-                .pointingHandCursor()
+                    .accessibilityIdentifier("settings.editor.longLineGuide")
+                if settings.editor.showLongLineGuide {
+                    Stepper(
+                        "Guide Column: \(settings.editor.longLineGuideColumn)",
+                        value: $settings.editor.longLineGuideColumn,
+                        in: 40...200
+                    )
+                    .pointingHandCursor()
+                    .accessibilityIdentifier("settings.editor.guideColumn")
+                }
             }
 
             Section("Save") {
@@ -64,6 +117,11 @@ struct EditorSettingsView: View {
             Section {
                 Button("Restore Editor Defaults") {
                     settings.restoreDefaults(for: .editor)
+                    settings.typography.editorFontFamily = TypographySettings.defaults.editorFontFamily
+                    settings.typography.editorFontSize = TypographySettings.defaults.editorFontSize
+                    settings.typography.editorFontLigatures = TypographySettings.defaults.editorFontLigatures
+                    customTabWidth = EditorTabWidthChoice.defaultCustomWidth
+                    selectedTabWidth = EditorTabWidthChoice.selection(for: settings.editor.tabWidth)
                 }
                 .pointingHandCursor()
             }
@@ -75,9 +133,28 @@ struct EditorSettingsView: View {
 
     private var tabWidthSelection: Binding<EditorTabWidthChoice> {
         Binding(
-            get: { EditorTabWidthChoice.selection(for: settings.editor.tabWidth) },
+            get: { selectedTabWidth },
             set: { choice in
-                settings.editor.tabWidth = choice.width ?? EditorTabWidthChoice.defaultCustomWidth
+                if selectedTabWidth == .custom {
+                    customTabWidth = settings.editor.tabWidth
+                }
+                selectedTabWidth = choice
+                switch choice {
+                case let .preset(width):
+                    settings.editor.tabWidth = width
+                case .custom:
+                    settings.editor.tabWidth = customTabWidth
+                }
+            }
+        )
+    }
+
+    private var customTabWidthBinding: Binding<Int> {
+        Binding(
+            get: { customTabWidth },
+            set: {
+                customTabWidth = $0
+                settings.editor.tabWidth = $0
             }
         )
     }
@@ -95,8 +172,10 @@ enum EditorTabWidthChoice: Hashable {
     }
 
     var width: Int? {
-        guard case let .preset(width) = self else { return nil }
-        return width
+        switch self {
+        case let .preset(width): width
+        case .custom: Self.defaultCustomWidth
+        }
     }
 
     var label: String {
@@ -106,5 +185,11 @@ enum EditorTabWidthChoice: Hashable {
         case .custom:
             "Custom"
         }
+    }
+}
+
+private extension Font {
+    init(nsFont: NSFont) {
+        self.init(nsFont as CTFont)
     }
 }

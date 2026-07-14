@@ -247,6 +247,7 @@ struct AppSettingsStoreTests {
     #expect(Set(EditorTabWidthChoice.options).count == EditorTabWidthChoice.options.count)
     #expect(EditorTabWidthChoice.selection(for: 2) == .preset(2))
     #expect(EditorTabWidthChoice.selection(for: 3) == .custom)
+    #expect(EditorTabWidthChoice.custom.width == EditorTabWidthChoice.defaultCustomWidth)
   }
 
   @Test func fileTreeRefreshDecisionOnlyRespondsToExclusionChanges() {

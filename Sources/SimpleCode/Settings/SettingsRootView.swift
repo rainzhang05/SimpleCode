@@ -7,10 +7,10 @@ struct SettingsRootView: View {
         TabView {
             AppearanceSettingsView(settings: settings)
                 .tabItem { Label("Appearance", systemImage: "paintpalette") }
-            TypographySettingsView(settings: settings)
-                .tabItem { Label("Typography", systemImage: "textformat") }
             EditorSettingsView(settings: settings)
                 .tabItem { Label("Editor", systemImage: "chevron.left.forwardslash.chevron.right") }
+            TerminalSettingsView(settings: settings)
+                .tabItem { Label("Terminal", systemImage: "terminal") }
             FilesSettingsView(settings: settings)
                 .tabItem { Label("Files", systemImage: "folder") }
         }
