@@ -51,8 +51,17 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         XCTAssertTrue(element("settings.root").waitForExistence(timeout: 8), debugSnapshot())
         clickElement(app.buttons["Appearance"])
         clickElement(app.radioButtons["Dark"])
-        assertScreenshotUsesDarkAppearance(element("settings.root").screenshot())
+        assertDarkMaterial(element("settings.root").screenshot(), area: "Settings")
         app.typeKey("w", modifierFlags: .command)
+
+        assertDarkMaterial(element("workspace.root").screenshot(), area: "workspace chrome")
+        assertDarkMaterial(element("editor.textView").screenshot(), area: "editor")
+
+        let terminalToggle = app.buttons["workspace.terminalToggle"]
+        clickElement(terminalToggle)
+        let terminalPanel = element("terminal.panel")
+        XCTAssertTrue(terminalPanel.waitForExistence(timeout: 8), debugSnapshot())
+        assertDarkMaterial(terminalPanel.screenshot(), area: "terminal")
 
         assertWorkspaceChromeBeginsBelowToolbar()
 
@@ -179,7 +188,7 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         let dark = app.radioButtons["Dark"]
         XCTAssertTrue(dark.waitForExistence(timeout: 5), debugSnapshot())
         clickElement(dark)
-        assertScreenshotUsesDarkAppearance(element("settings.root").screenshot())
+        assertDarkMaterial(element("settings.root").screenshot(), area: "Settings")
     }
 
     func testFindReplaceOneOccurrence() throws {
@@ -356,27 +365,56 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         )
     }
 
-    private func assertScreenshotUsesDarkAppearance(
+    private func assertDarkMaterial(
         _ screenshot: XCUIScreenshot,
+        area: String,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         guard let tiff = screenshot.image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff) else {
-            XCTFail("Could not inspect dark settings rendering.", file: file, line: line)
+              let bitmap = NSBitmapImageRep(data: tiff),
+              bitmap.pixelsWide > 32,
+              bitmap.pixelsHigh > 32 else {
+            XCTFail("Could not inspect dark rendering for \(area).", file: file, line: line)
             return
         }
 
         var darkSamples = 0
         var samples = 0
+        var totalLuminance: CGFloat = 0
         for y in stride(from: 8, to: bitmap.pixelsHigh, by: 12) {
             for x in stride(from: 8, to: bitmap.pixelsWide, by: 12) {
                 guard let color = rgb(bitmap.colorAt(x: x, y: y)) else { continue }
+                let luminance = 0.2126 * color.red + 0.7152 * color.green + 0.0722 * color.blue
                 samples += 1
-                if color.red + color.green + color.blue < 1.5 { darkSamples += 1 }
+                totalLuminance += luminance
+                if luminance < 0.5 { darkSamples += 1 }
             }
         }
-        XCTAssertGreaterThan(darkSamples, samples / 2, "Expected a predominantly dark settings render.", file: file, line: line)
+
+        let darkFraction = samples == 0 ? 0 : CGFloat(darkSamples) / CGFloat(samples)
+        let meanLuminance = samples == 0 ? 1 : totalLuminance / CGFloat(samples)
+        if samples < 100 || darkFraction <= 0.65 || meanLuminance >= 0.42 {
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = "Dark rendering - \(area)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        XCTAssertGreaterThanOrEqual(samples, 100, "Expected enough pixels to inspect \(area).", file: file, line: line)
+        XCTAssertGreaterThan(
+            darkFraction,
+            0.65,
+            "Expected \(area) to be predominantly dark; dark fraction was \(darkFraction).",
+            file: file,
+            line: line
+        )
+        XCTAssertLessThan(
+            meanLuminance,
+            0.42,
+            "Expected low average luminance for \(area); mean was \(meanLuminance).",
+            file: file,
+            line: line
+        )
     }
 
     private func clickSwitch(_ element: XCUIElement) {
