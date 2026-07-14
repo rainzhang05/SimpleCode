@@ -117,10 +117,7 @@ struct AppModelTests {
         #expect(workspace.terminalHeight == 560)
     }
 
-    @Test func workspacePanelLayoutConsumesTheActualTopInsetWithoutNegativeGeometry() {
-        #expect(WorkspacePanelLayout.contentHeight(containerHeight: 700, topInset: 52) == 648)
-        #expect(WorkspacePanelLayout.contentHeight(containerHeight: 700, topInset: -10) == 700)
-        #expect(WorkspacePanelLayout.contentHeight(containerHeight: 40, topInset: 80) == 0)
+    @Test func workspacePanelLayoutFitsTerminalToSwiftUIAvailableHeight() {
         #expect(WorkspacePanelLayout.fittedTerminalHeight(configuredHeight: 220, availableHeight: 180) == 180)
         #expect(WorkspacePanelLayout.fittedTerminalHeight(configuredHeight: 220, availableHeight: -1) == 0)
     }

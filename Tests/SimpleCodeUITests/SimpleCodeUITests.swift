@@ -43,6 +43,27 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         XCTAssertTrue(app.buttons["workspace.terminalToggle"].exists)
     }
 
+    func testWorkspaceChromeBeginsBelowToolbarAtDefaultAndResizedWindowSizes() throws {
+        let fixture = try openFixtureWorkspace()
+        openMainFile(in: fixture)
+
+        assertWorkspaceChromeBeginsBelowToolbar()
+
+        let window = app.windows.firstMatch
+        let originalFrame = window.frame
+        app.menuBars.menuBarItems["Window"].click()
+        let zoom = app.menuItems["Zoom"]
+        XCTAssertTrue(zoom.waitForExistence(timeout: 5), debugSnapshot())
+        zoom.click()
+
+        let resized = XCTNSPredicateExpectation(
+            predicate: NSPredicate { _, _ in window.frame != originalFrame },
+            object: nil
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [resized], timeout: 5), .completed, debugSnapshot())
+        assertWorkspaceChromeBeginsBelowToolbar()
+    }
+
     func testOpenRootFileEditAndSaveUpdatesDirtyState() throws {
         let fixture = try openFixtureWorkspace()
         openMainFile(in: fixture)
@@ -256,6 +277,33 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         assertLineNumberGutterContainsLabels(
             bitmap,
             fileName: fileName,
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertWorkspaceChromeBeginsBelowToolbar(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let toolbarButton = element("workspace.runConfigButton")
+        let filesHeader = app.staticTexts["Files"]
+        let editorTab = element("editor.tab.Main.swift")
+
+        XCTAssertTrue(toolbarButton.waitForExistence(timeout: 5), debugSnapshot(), file: file, line: line)
+        XCTAssertTrue(filesHeader.waitForExistence(timeout: 5), debugSnapshot(), file: file, line: line)
+        XCTAssertTrue(editorTab.waitForExistence(timeout: 5), debugSnapshot(), file: file, line: line)
+        XCTAssertGreaterThanOrEqual(
+            filesHeader.frame.minY,
+            toolbarButton.frame.maxY,
+            "Files header overlaps the native toolbar.\n\(debugSnapshot())",
+            file: file,
+            line: line
+        )
+        XCTAssertGreaterThanOrEqual(
+            editorTab.frame.minY,
+            toolbarButton.frame.maxY,
+            "Editor tab overlaps the native toolbar.\n\(debugSnapshot())",
             file: file,
             line: line
         )

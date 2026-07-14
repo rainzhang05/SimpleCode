@@ -47,12 +47,6 @@ enum WorkspacePanelLayout {
         return max(0, terminalHeight) + max(0, panelInset)
     }
 
-    static func contentHeight(containerHeight: CGFloat, topInset: CGFloat) -> CGFloat {
-        let height = max(0, containerHeight)
-        let inset = min(max(0, topInset), height)
-        return height - inset
-    }
-
     static func fittedTerminalHeight(configuredHeight: CGFloat, availableHeight: CGFloat) -> CGFloat {
         min(clampedTerminalHeight(configuredHeight), max(0, availableHeight))
     }

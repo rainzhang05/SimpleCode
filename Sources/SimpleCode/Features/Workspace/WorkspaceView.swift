@@ -118,25 +118,16 @@ struct WorkspaceView: View {
 
     private var workspaceSurface: some View {
         GeometryReader { proxy in
-            let topInset = min(max(0, proxy.safeAreaInsets.top), max(0, proxy.size.height))
-            let contentHeight = WorkspacePanelLayout.contentHeight(
-                containerHeight: proxy.size.height,
-                topInset: topInset
-            )
+            let contentHeight = max(0, proxy.size.height)
 
             ZStack {
                 ColorRole.editorBackground
 
                 workspaceLayers(contentHeight: contentHeight)
                     .frame(width: max(0, proxy.size.width), height: contentHeight)
-                    .position(
-                        x: max(0, proxy.size.width) / 2,
-                        y: topInset + contentHeight / 2
-                    )
             }
             .frame(width: max(0, proxy.size.width), height: max(0, proxy.size.height))
         }
-        .ignoresSafeArea(.container, edges: .top)
         .clipped()
     }
 
