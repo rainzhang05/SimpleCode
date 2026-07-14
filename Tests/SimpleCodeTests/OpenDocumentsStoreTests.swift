@@ -293,7 +293,7 @@ struct OpenDocumentsStoreTests {
             effectiveRange: nil
         ) as? NSColor)
         #expect(tokenColor != ColorRole.editorForegroundNSColor)
-        let expectedPair = SettingsColorResolver.appearance.syntaxPalette.keyword.colorRolePair
+        let expectedPair = SyntaxPaletteDefaults.keyword
         try expect(tokenColor, resolvesLike: expectedPair)
     }
 

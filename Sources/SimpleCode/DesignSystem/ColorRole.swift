@@ -16,110 +16,42 @@ struct ColorRolePair {
     }
 }
 
-/// Resolves editor/terminal colors from the active `AppSettingsStore`.
-enum SettingsColorResolver {
-    private final class SnapshotStorage: @unchecked Sendable {
-        private let lock = NSLock()
-        private var value = AppSettingsSnapshot.defaults
-
-        func read() -> AppSettingsSnapshot {
-            lock.lock()
-            defer { lock.unlock() }
-            return value
-        }
-
-        func write(_ snapshot: AppSettingsSnapshot) {
-            lock.lock()
-            value = snapshot
-            lock.unlock()
-        }
-    }
-
-    private static let storage = SnapshotStorage()
-
-    @MainActor
-    static func bind(_ settings: AppSettingsStore) {
-        updateSnapshot(settings.snapshot)
-    }
-
-    static func updateSnapshot(_ snapshot: AppSettingsSnapshot) {
-        storage.write(snapshot)
-    }
-
-    static var snapshot: AppSettingsSnapshot { storage.read() }
-
-    static var appearance: AppearanceSettings { snapshot.appearance }
-
-    static func pair(_ keyPath: KeyPath<AppearanceSettings, StoredColorPair>) -> ColorRolePair {
-        appearance[keyPath: keyPath].colorRolePair
-    }
-
-    static func syntaxColor(for category: SyntaxCategory, isDark: Bool) -> NSColor {
-        let palette = appearance.syntaxPalette
-        let stored = palette.pair(for: category)
-        return isDark ? stored.dark.nsColor : stored.light.nsColor
-    }
-}
-
 enum ColorRole {
     // MARK: Editor surface (stable, opaque — never glass)
 
-    static var editorBackgroundPair: ColorRolePair {
-        SettingsColorResolver.pair(\.editorBackground)
-    }
+    static let editorBackgroundPair = ColorRoleDefaults.editorBackground
     static var editorBackgroundNSColor: NSColor { editorBackgroundPair.dynamic }
     static var editorBackground: Color { Color(nsColor: editorBackgroundNSColor) }
 
-    static var editorForegroundPair: ColorRolePair {
-        SettingsColorResolver.pair(\.editorForeground)
-    }
+    static let editorForegroundPair = ColorRoleDefaults.editorForeground
     static var editorForegroundNSColor: NSColor { editorForegroundPair.dynamic }
     static var editorForeground: Color { Color(nsColor: editorForegroundNSColor) }
 
-    static var editorLineNumberPair: ColorRolePair {
-        SettingsColorResolver.pair(\.lineNumber)
-    }
+    static let editorLineNumberPair = ColorRoleDefaults.lineNumber
     static var editorLineNumberNSColor: NSColor { editorLineNumberPair.dynamic }
 
-    static var editorLineNumberEmphasizedPair: ColorRolePair {
-        SettingsColorResolver.pair(\.activeLineNumber)
-    }
+    static let editorLineNumberEmphasizedPair = ColorRoleDefaults.activeLineNumber
     static var editorLineNumberEmphasizedNSColor: NSColor { editorLineNumberEmphasizedPair.dynamic }
 
-    static var editorCurrentLinePair: ColorRolePair {
-        SettingsColorResolver.pair(\.editorCurrentLine)
-    }
+    static let editorCurrentLinePair = ColorRoleDefaults.editorCurrentLine
     static var editorCurrentLineNSColor: NSColor { editorCurrentLinePair.dynamic }
 
-    static var editorSelectionPair: ColorRolePair {
-        SettingsColorResolver.pair(\.editorSelection)
-    }
+    static let editorSelectionPair = ColorRoleDefaults.editorSelection
     static var editorSelectionNSColor: NSColor { editorSelectionPair.dynamic }
 
-    static var gutterBackgroundPair: ColorRolePair {
-        SettingsColorResolver.pair(\.gutterBackground)
-    }
+    static let gutterBackgroundPair = ColorRoleDefaults.gutterBackground
     static var gutterBackgroundNSColor: NSColor { gutterBackgroundPair.dynamic }
 
-    static var longLineGuidePair: ColorRolePair {
-        SettingsColorResolver.pair(\.longLineGuide)
-    }
+    static let longLineGuidePair = ColorRoleDefaults.longLineGuide
     static var longLineGuideNSColor: NSColor { longLineGuidePair.dynamic }
 
-    static var whitespaceMarkerPair: ColorRolePair {
-        SettingsColorResolver.pair(\.whitespaceMarker)
-    }
+    static let whitespaceMarkerPair = ColorRoleDefaults.whitespaceMarker
     static var whitespaceMarkerNSColor: NSColor { whitespaceMarkerPair.dynamic }
 
     // MARK: Terminal surface
 
-    static var terminalBackgroundPair: ColorRolePair {
-        SettingsColorResolver.pair(\.terminalBackground)
-    }
-
-    static var terminalForegroundPair: ColorRolePair {
-        SettingsColorResolver.pair(\.terminalForeground)
-    }
+    static let terminalBackgroundPair = ColorRoleDefaults.terminalBackground
+    static let terminalForegroundPair = ColorRoleDefaults.terminalForeground
 
     // MARK: Chrome
 

@@ -27,7 +27,6 @@ final class AppModel {
         let defaults = AppTestingSupport.makeUserDefaults(launchConfiguration: launchConfiguration)
         self.recentWorkspaces = recentWorkspaces ?? RecentWorkspaceStore(defaults: defaults)
         self.appSettings = editorSettings ?? AppSettingsStore(defaults: defaults)
-        SettingsColorResolver.bind(self.appSettings)
         self.workspaceStateStore = workspaceStateStore ?? WorkspaceStateStore(defaults: defaults)
         self.gitClone = GitCloneController(
             recentWorkspaces: self.recentWorkspaces,

@@ -50,7 +50,7 @@ enum HighlightTheme {
 
     static func color(for category: SyntaxCategory, appearance: EditorAppearance) -> NSColor {
         let isDark = appearance == .dark
-        return SettingsColorResolver.syntaxColor(for: category, isDark: isDark)
+        return SyntaxPaletteDefaults.pair(for: category).resolved(isDark: isDark)
     }
 }
 
