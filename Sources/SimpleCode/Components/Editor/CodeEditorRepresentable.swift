@@ -218,7 +218,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         private var initialRemainderTask: Task<Void, Never>?
         private var lastAppliedViewportRange: NSRange?
         private var lastBaseFont: NSFont?
-        private var lastBaseForeground: StoredColorPair?
+        private var lastBaseAppearance: AppearanceSettings?
         private var lastAppliedAppearance: AppearanceSettings?
         private var isApplyingHighlighting = false
         private var isApplyingCommand = false
@@ -243,10 +243,6 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         func applyEditorSettings(to textView: CodeTextView, scrollView: NSScrollView) {
             let previousAppearance = lastAppliedAppearance
             let appearanceChanged = previousAppearance != settings.appearance
-            let syntaxColorsChanged = previousAppearance.map {
-                $0.editorForeground != settings.appearance.editorForeground
-                    || $0.syntaxPalette != settings.appearance.syntaxPalette
-            } ?? false
             let snapshot = EditorAppliedSettings(
                 highlightCurrentLine: settings.editor.highlightCurrentLine,
                 showLongLineGuide: settings.editor.showLongLineGuide,
@@ -269,12 +265,12 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             )
 
             textView.highlightCurrentLine = snapshot.highlightCurrentLine
-            scrollView.backgroundColor = settings.appearance.editorBackground.colorRolePair.dynamic
-            textView.backgroundColor = settings.appearance.editorBackground.colorRolePair.dynamic
-            textView.textColor = settings.appearance.editorForeground.colorRolePair.dynamic
-            textView.insertionPointColor = settings.appearance.editorForeground.colorRolePair.dynamic
+            scrollView.backgroundColor = ColorRole.editorBackgroundNSColor
+            textView.backgroundColor = ColorRole.editorBackgroundNSColor
+            textView.textColor = ColorRole.editorForegroundNSColor
+            textView.insertionPointColor = ColorRole.editorForegroundNSColor
             textView.selectedTextAttributes = [
-                .backgroundColor: settings.appearance.editorSelection.colorRolePair.dynamic
+                .backgroundColor: ColorRole.editorSelectionNSColor
             ]
 
             if lastWordWrapEnabled != snapshot.wordWrap {
@@ -282,8 +278,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 lastWordWrapEnabled = snapshot.wordWrap
             }
 
-            applyBaseTextAttributesIfNeeded(to: textView, force: false)
-            if syntaxColorsChanged {
+            applyBaseTextAttributesIfNeeded(to: textView, force: appearanceChanged)
+            if appearanceChanged {
                 session.refreshSyntaxAttributes()
             }
 
@@ -854,14 +850,14 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 .paragraphStyle: paragraphStyle
             ]
 
-            let foregroundChanged = lastBaseForeground != settings.appearance.editorForeground
+            let appearanceChanged = lastBaseAppearance != settings.appearance
             let needsBaseAttributes = force
                 || lastBaseFont != font
-                || foregroundChanged
+                || appearanceChanged
             guard needsBaseAttributes else { return }
 
             lastBaseFont = font
-            lastBaseForeground = settings.appearance.editorForeground
+            lastBaseAppearance = settings.appearance
 
             guard let textStorage = textView.textStorage, textStorage.length > 0 else { return }
             isApplyingHighlighting = true

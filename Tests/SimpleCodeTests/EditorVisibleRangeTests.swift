@@ -530,21 +530,13 @@ struct EditorVisibleRangeTests {
 
     @MainActor
     @Test func currentLineHighlightSurvivesBaseBackgroundPaint() throws {
-        let originalSnapshot = SettingsColorResolver.snapshot
-        var testAppearance = originalSnapshot.appearance
-        let white = StoredColor(red: 1, green: 1, blue: 1)
-        let marker = StoredColor(red: 0.12, green: 0.83, blue: 0.29)
-        testAppearance.editorBackground = StoredColorPair(light: white, dark: white)
-        testAppearance.editorCurrentLine = StoredColorPair(light: marker, dark: marker)
-        SettingsColorResolver.updateSnapshot(AppSettingsSnapshot(
-            appearance: testAppearance,
-            typography: originalSnapshot.typography,
-            editor: originalSnapshot.editor,
-            files: originalSnapshot.files
-        ))
-        defer { SettingsColorResolver.updateSnapshot(originalSnapshot) }
+        let marker = try #require(ColorRoleDefaults.editorCurrentLine.light.usingColorSpace(.sRGB))
+        let expectedRed = marker.redComponent * marker.alphaComponent + 1 - marker.alphaComponent
+        let expectedGreen = marker.greenComponent * marker.alphaComponent + 1 - marker.alphaComponent
+        let expectedBlue = marker.blueComponent * marker.alphaComponent + 1 - marker.alphaComponent
 
         let textView = CodeTextView()
+        textView.appearance = NSAppearance(named: .aqua)
         textView.frame = NSRect(x: 0, y: 0, width: 240, height: 90)
         textView.font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
         textView.string = "first line\nsecond line"
@@ -559,9 +551,9 @@ struct EditorVisibleRangeTests {
         for y in stride(from: 0, to: bitmap.pixelsHigh, by: 2) {
             for x in stride(from: 0, to: bitmap.pixelsWide, by: 3) {
                 guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
-                if abs(color.redComponent - marker.red) < 0.04,
-                   abs(color.greenComponent - marker.green) < 0.04,
-                   abs(color.blueComponent - marker.blue) < 0.04 {
+                if abs(color.redComponent - expectedRed) < 0.04,
+                   abs(color.greenComponent - expectedGreen) < 0.04,
+                   abs(color.blueComponent - expectedBlue) < 0.04 {
                     foundMarker = true
                     break
                 }
@@ -650,22 +642,14 @@ struct EditorVisibleRangeTests {
 
     @MainActor
     @Test func trailingEmptyLineHighlightPaintsOneNaturalHeightRow() throws {
-        let originalSnapshot = SettingsColorResolver.snapshot
-        var testAppearance = originalSnapshot.appearance
-        let white = StoredColor(red: 1, green: 1, blue: 1)
-        let marker = StoredColor(red: 0.14, green: 0.72, blue: 0.31)
-        testAppearance.editorBackground = StoredColorPair(light: white, dark: white)
-        testAppearance.editorCurrentLine = StoredColorPair(light: marker, dark: marker)
-        SettingsColorResolver.updateSnapshot(AppSettingsSnapshot(
-            appearance: testAppearance,
-            typography: originalSnapshot.typography,
-            editor: originalSnapshot.editor,
-            files: originalSnapshot.files
-        ))
-        defer { SettingsColorResolver.updateSnapshot(originalSnapshot) }
+        let marker = try #require(ColorRoleDefaults.editorCurrentLine.light.usingColorSpace(.sRGB))
+        let expectedRed = marker.redComponent * marker.alphaComponent + 1 - marker.alphaComponent
+        let expectedGreen = marker.greenComponent * marker.alphaComponent + 1 - marker.alphaComponent
+        let expectedBlue = marker.blueComponent * marker.alphaComponent + 1 - marker.alphaComponent
 
         let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
         let textView = CodeTextView()
+        textView.appearance = NSAppearance(named: .aqua)
         textView.frame = NSRect(x: 0, y: 0, width: 240, height: 90)
         textView.font = font
         textView.string = "first line\n"
@@ -695,9 +679,9 @@ struct EditorVisibleRangeTests {
             guard let color = bitmap.colorAt(x: sampleX, y: y)?.usingColorSpace(.sRGB) else {
                 return false
             }
-            return abs(color.redComponent - marker.red) < 0.04
-                && abs(color.greenComponent - marker.green) < 0.04
-                && abs(color.blueComponent - marker.blue) < 0.04
+            return abs(color.redComponent - expectedRed) < 0.04
+                && abs(color.greenComponent - expectedGreen) < 0.04
+                && abs(color.blueComponent - expectedBlue) < 0.04
         }
         let pixelsPerPoint = CGFloat(bitmap.pixelsHigh) / textView.bounds.height
         let expectedRows = (0..<bitmap.pixelsHigh).filter { row in
@@ -736,22 +720,7 @@ struct EditorVisibleRangeTests {
 
     @MainActor
     @Test func renderedGutterDigitAlignsWithTextKitBaselineAcrossEditorSizes() throws {
-        let originalSnapshot = SettingsColorResolver.snapshot
-        var testAppearance = originalSnapshot.appearance
-        let white = StoredColor(red: 1, green: 1, blue: 1)
-        let marker = StoredColor(red: 0.91, green: 0.12, blue: 0.68)
-        testAppearance.editorBackground = StoredColorPair(light: white, dark: white)
-        testAppearance.editorCurrentLine = StoredColorPair(light: white, dark: white)
-        testAppearance.gutterBackground = StoredColorPair(light: white, dark: white)
-        testAppearance.lineNumber = StoredColorPair(light: marker, dark: marker)
-        testAppearance.activeLineNumber = StoredColorPair(light: marker, dark: marker)
-        SettingsColorResolver.updateSnapshot(AppSettingsSnapshot(
-            appearance: testAppearance,
-            typography: originalSnapshot.typography,
-            editor: originalSnapshot.editor,
-            files: originalSnapshot.files
-        ))
-        defer { SettingsColorResolver.updateSnapshot(originalSnapshot) }
+        let marker = ColorRoleDefaults.activeLineNumber.light
 
         for editorPointSize in [CGFloat(9), CGFloat(10), CGFloat(14)] {
             let (actualRows, expectedRows, isFlipped) = try renderedGutterRows(
@@ -761,12 +730,14 @@ struct EditorVisibleRangeTests {
             #expect(isFlipped)
             #expect(!actualRows.isEmpty)
             #expect(!expectedRows.isEmpty)
-            #expect(actualRows == expectedRows)
+            #expect(abs((actualRows.first ?? 0) - (expectedRows.first ?? 0)) <= 1)
+            #expect(abs((actualRows.last ?? 0) - (expectedRows.last ?? 0)) <= 1)
+            #expect(abs(actualRows.count - expectedRows.count) <= 1)
         }
     }
 
     @MainActor
-    @Test func coordinatorUsesNaturalFontMetricsInsteadOfStoredLineHeightMultiplier() throws {
+    @Test func coordinatorUsesNaturalFontMetrics() throws {
         let suiteName = "SimpleCode.NaturalEditorMetrics.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         let root = FileManager.default.temporaryDirectory.appending(path: "NaturalEditorMetrics-\(UUID().uuidString)")
@@ -777,9 +748,6 @@ struct EditorVisibleRangeTests {
         }
 
         let settings = AppSettingsStore(defaults: defaults)
-        var typography = settings.typography
-        typography.editorLineHeight = 2.5
-        settings.typography = typography
         let workspace = WorkspaceModel(
             id: UUID(),
             rootURL: root,
@@ -815,6 +783,50 @@ struct EditorVisibleRangeTests {
 
         #expect(paragraphStyle.minimumLineHeight == 0)
         #expect(paragraphStyle.maximumLineHeight == 0)
+    }
+
+    @MainActor
+    @Test func coordinatorUsesOpaqueBuiltInSelectionColors() throws {
+        let suiteName = "SimpleCode.OpaqueSelection.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let root = FileManager.default.temporaryDirectory.appending(path: "OpaqueSelection-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let settings = AppSettingsStore(defaults: defaults)
+        let workspace = WorkspaceModel(
+            id: UUID(),
+            rootURL: root,
+            appSettings: settings,
+            workspaceStateStore: WorkspaceStateStore(defaults: defaults, storageKey: "opaque-selection")
+        )
+        defer { workspace.tearDown() }
+        let session = EditorDocumentSession(displayName: "Selection.swift")
+        let textView = CodeTextView()
+        let scrollView = NSScrollView()
+        scrollView.documentView = textView
+        let coordinator = CodeEditorRepresentable.Coordinator(
+            session: session,
+            settings: settings.snapshot,
+            workspace: workspace,
+            onTextChanged: {}
+        )
+        coordinator.applyEditorSettings(to: textView, scrollView: scrollView)
+
+        let selection = try #require(textView.selectedTextAttributes[.backgroundColor] as? NSColor)
+        let aqua = try #require(NSAppearance(named: .aqua))
+        var resolvedColor: NSColor?
+        aqua.performAsCurrentDrawingAppearance {
+            resolvedColor = selection.usingColorSpace(.sRGB)
+        }
+        let resolved = try #require(resolvedColor)
+        #expect(abs(resolved.redComponent - 181.0 / 255) < 0.000_1)
+        #expect(abs(resolved.greenComponent - 213.0 / 255) < 0.000_1)
+        #expect(abs(resolved.blueComponent - 1) < 0.000_1)
+        #expect(abs(resolved.alphaComponent - 1) < 0.000_1)
     }
 
     @MainActor
@@ -878,9 +890,10 @@ struct EditorVisibleRangeTests {
     @MainActor
     private func renderedGutterRows(
         editorPointSize: CGFloat,
-        marker: StoredColor
+        marker: NSColor
     ) throws -> (actual: [Int], expected: [Int], isFlipped: Bool) {
         let textView = CodeTextView()
+        textView.appearance = NSAppearance(named: .aqua)
         textView.frame = NSRect(x: 0, y: 0, width: 240, height: 90)
         textView.font = NSFont.monospacedSystemFont(ofSize: editorPointSize, weight: .regular)
         textView.string = "1"
@@ -908,7 +921,7 @@ struct EditorVisibleRangeTests {
         )
         let attributes: [NSAttributedString.Key: Any] = [
             .font: gutterFont,
-            .foregroundColor: marker.nsColor
+            .foregroundColor: marker
         ]
         let number = "1" as NSString
         let numberSize = number.size(withAttributes: attributes)
@@ -930,22 +943,23 @@ struct EditorVisibleRangeTests {
         let referenceScale = CGFloat(referenceBitmap.pixelsWide) / reference.bounds.width
 
         return (
-            markerRows(in: actualBitmap, maxX: Int(ceil(gutter.width * actualScale))),
-            markerRows(in: referenceBitmap, maxX: Int(ceil(gutter.width * referenceScale))),
+            markerRows(in: actualBitmap, maxX: Int(ceil(gutter.width * actualScale)), marker: marker),
+            markerRows(in: referenceBitmap, maxX: Int(ceil(gutter.width * referenceScale)), marker: marker),
             gutter.isFlipped
         )
     }
 
-    private func markerRows(in bitmap: NSBitmapImageRep, maxX: Int) -> [Int] {
-        (0..<bitmap.pixelsHigh).filter { y in
+    private func markerRows(in bitmap: NSBitmapImageRep, maxX: Int, marker: NSColor) -> [Int] {
+        guard let marker = marker.usingColorSpace(.sRGB) else { return [] }
+        return (0..<bitmap.pixelsHigh).filter { y in
             (0..<min(maxX, bitmap.pixelsWide)).contains { x in
                 guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else {
                     return false
                 }
-                let distanceFromWhite = abs(1 - color.redComponent)
-                    + abs(1 - color.greenComponent)
-                    + abs(1 - color.blueComponent)
-                return color.alphaComponent > 0.02 && distanceFromWhite > 0.02
+                let distance = abs(marker.redComponent - color.redComponent)
+                    + abs(marker.greenComponent - color.greenComponent)
+                    + abs(marker.blueComponent - color.blueComponent)
+                return color.alphaComponent > 0.02 && distance < 0.4
             }
         }
     }

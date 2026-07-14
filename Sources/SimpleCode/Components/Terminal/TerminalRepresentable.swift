@@ -48,10 +48,10 @@ struct TerminalRepresentable: NSViewRepresentable {
     private func applyAppearance(to view: LocalProcessTerminalView, coordinator: Coordinator) {
         let appearance = coordinator.settings.appearance
         let appearanceChanged = coordinator.appliedAppearance != appearance
-        view.nativeBackgroundColor = appearance.terminalBackground.colorRolePair.dynamic
-        view.nativeForegroundColor = appearance.terminalForeground.colorRolePair.dynamic
-        view.caretColor = appearance.terminalForeground.colorRolePair.dynamic
-        view.selectedTextBackgroundColor = appearance.editorSelection.colorRolePair.dynamic
+        view.nativeBackgroundColor = ColorRole.terminalBackgroundPair.dynamic
+        view.nativeForegroundColor = ColorRole.terminalForegroundPair.dynamic
+        view.caretColor = ColorRole.terminalForegroundPair.dynamic
+        view.selectedTextBackgroundColor = ColorRole.editorSelectionPair.dynamic
         coordinator.applySupportedSettings(to: view)
         if appearanceChanged {
             coordinator.appliedAppearance = appearance
