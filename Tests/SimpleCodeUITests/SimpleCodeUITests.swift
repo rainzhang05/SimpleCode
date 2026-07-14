@@ -55,6 +55,9 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         app.typeKey("w", modifierFlags: .command)
 
         assertDarkMaterial(element("workspace.root").screenshot(), area: "workspace chrome")
+        let fileTreeSidebar = element("fileTree.sidebar")
+        XCTAssertTrue(fileTreeSidebar.waitForExistence(timeout: 8), debugSnapshot())
+        assertDarkMaterial(fileTreeSidebar.screenshot(), area: "file tree sidebar")
         assertDarkMaterial(element("editor.textView").screenshot(), area: "editor")
 
         let terminalToggle = app.buttons["workspace.terminalToggle"]
