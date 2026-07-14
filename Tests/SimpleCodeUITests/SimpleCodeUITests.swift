@@ -47,6 +47,13 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         let fixture = try openFixtureWorkspace()
         openMainFile(in: fixture)
 
+        app.typeKey(",", modifierFlags: .command)
+        XCTAssertTrue(element("settings.root").waitForExistence(timeout: 8), debugSnapshot())
+        clickElement(app.buttons["Appearance"])
+        clickElement(app.radioButtons["Dark"])
+        assertScreenshotUsesDarkAppearance(element("settings.root").screenshot())
+        app.typeKey("w", modifierFlags: .command)
+
         assertWorkspaceChromeBeginsBelowToolbar()
 
         let window = app.windows.firstMatch
@@ -108,7 +115,7 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         assertEditorScreenshotContainsPaintedGlyphs(fileName: "Notes.txt")
     }
 
-    func testSettingsSectionsAndOneHarmlessPreference() throws {
+    func testSettingsUsesFourFocusedTabsAndConditionalEditorControls() throws {
         launchApp()
         waitForWelcome()
 
@@ -116,19 +123,63 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         XCTAssertTrue(element("settings.root").waitForExistence(timeout: 8), debugSnapshot())
         XCTAssertTrue(app.scrollViews.firstMatch.waitForExistence(timeout: 5))
 
-        for section in ["Appearance", "Typography", "Editor", "Files"] {
+        for section in ["Appearance", "Editor", "Terminal", "Files"] {
             let tab = app.buttons[section]
             XCTAssertTrue(tab.waitForExistence(timeout: 5), debugSnapshot())
             clickElement(tab)
             XCTAssertTrue(app.windows[section].waitForExistence(timeout: 5), debugSnapshot())
         }
+        XCTAssertFalse(app.buttons["Typography"].exists)
+
+        clickElement(app.buttons["Editor"])
+        XCTAssertTrue(element("settings.editor.fontFamily").exists)
+        XCTAssertTrue(element("settings.editor.fontSize").exists)
+        XCTAssertTrue(element("settings.editor.fontLigatures").exists)
+        XCTAssertFalse(element("settings.editor.customTabWidth").exists)
+        XCTAssertTrue(element("settings.editor.guideColumn").exists)
+
+        let tabWidth = element("settings.editor.tabWidth")
+        scrollToElement(tabWidth)
+        clickElement(tabWidth)
+        clickElement(app.menuItems["Custom"])
+        let customTabWidth = element("settings.editor.customTabWidth")
+        XCTAssertTrue(customTabWidth.waitForExistence(timeout: 5))
+        XCTAssertEqual(customTabWidth.value as? Int, 3)
+        customTabWidth.descendants(matching: .incrementArrow).firstMatch.click()
+        XCTAssertEqual(customTabWidth.value as? Int, 4)
+        XCTAssertTrue(customTabWidth.exists)
+
+        clickElement(tabWidth)
+        clickElement(app.menuItems["2 spaces"])
+        XCTAssertFalse(customTabWidth.exists)
+        clickElement(tabWidth)
+        clickElement(app.menuItems["Custom"])
+        XCTAssertTrue(customTabWidth.waitForExistence(timeout: 5))
+        XCTAssertEqual(customTabWidth.value as? Int, 4)
+
+        let whitespace = element("settings.editor.showWhitespace")
+        let trailingWhitespace = element("settings.editor.showTrailingWhitespace")
+        XCTAssertEqual(whitespace.value as? Int, 0)
+        XCTAssertEqual(trailingWhitespace.value as? Int, 0)
+        clickSwitch(whitespace)
+        XCTAssertEqual(whitespace.value as? Int, 1)
+        XCTAssertEqual(trailingWhitespace.value as? Int, 0)
+
+        clickSwitch(element("settings.editor.longLineGuide"))
+        XCTAssertFalse(element("settings.editor.guideColumn").exists)
+        clickSwitch(element("settings.editor.longLineGuide"))
+        XCTAssertTrue(element("settings.editor.guideColumn").waitForExistence(timeout: 5))
+
+        clickElement(app.buttons["Terminal"])
+        XCTAssertTrue(element("settings.terminal.fontFamily").exists)
+        XCTAssertTrue(element("settings.terminal.fontSize").exists)
 
         clickElement(app.buttons["Appearance"])
         XCTAssertTrue(app.windows["Appearance"].waitForExistence(timeout: 5), debugSnapshot())
         let dark = app.radioButtons["Dark"]
         XCTAssertTrue(dark.waitForExistence(timeout: 5), debugSnapshot())
         clickElement(dark)
-        XCTAssertTrue(dark.exists)
+        assertScreenshotUsesDarkAppearance(element("settings.root").screenshot())
     }
 
     func testFindReplaceOneOccurrence() throws {
@@ -303,6 +354,43 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
             file: file,
             line: line
         )
+    }
+
+    private func assertScreenshotUsesDarkAppearance(
+        _ screenshot: XCUIScreenshot,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        guard let tiff = screenshot.image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff) else {
+            XCTFail("Could not inspect dark settings rendering.", file: file, line: line)
+            return
+        }
+
+        var darkSamples = 0
+        var samples = 0
+        for y in stride(from: 8, to: bitmap.pixelsHigh, by: 12) {
+            for x in stride(from: 8, to: bitmap.pixelsWide, by: 12) {
+                guard let color = rgb(bitmap.colorAt(x: x, y: y)) else { continue }
+                samples += 1
+                if color.red + color.green + color.blue < 1.5 { darkSamples += 1 }
+            }
+        }
+        XCTAssertGreaterThan(darkSamples, samples / 2, "Expected a predominantly dark settings render.", file: file, line: line)
+    }
+
+    private func clickSwitch(_ element: XCUIElement) {
+        XCTAssertTrue(element.waitForExistence(timeout: 5), debugSnapshot())
+        scrollToElement(element)
+        element.click()
+    }
+
+    private func scrollToElement(_ element: XCUIElement) {
+        let scrollView = app.scrollViews.firstMatch
+        for _ in 0..<6 where !element.isHittable {
+            scrollView.swipeUp()
+        }
+        XCTAssertTrue(element.isHittable, debugSnapshot())
     }
 
     private func assertWorkspaceChromeBeginsBelowToolbar(
