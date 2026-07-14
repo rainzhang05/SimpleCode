@@ -22,16 +22,6 @@ struct TypographySettingsView: View {
                 .pointingHandCursor()
                 .accessibilityIdentifier("settings.typography.editorFontSize")
 
-                Slider(
-                    value: $settings.typography.editorLineHeight,
-                    in: 1.0...2.5,
-                    step: 0.05
-                ) {
-                    Text("Line Height")
-                }
-                .pointingHandCursor()
-                .accessibilityLabel("Editor line height")
-
                 Toggle("Font Ligatures", isOn: $settings.typography.editorFontLigatures)
                     .pointingHandCursor()
 
