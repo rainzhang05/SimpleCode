@@ -11,10 +11,6 @@ enum EditorTextSupport {
         return ns.lineRange(for: NSRange(location: clamped, length: 0))
     }
 
-    static func lineNumber(at location: Int, in text: String) -> Int {
-        LineCounting.lineNumber(atUTF16Offset: location, in: text)
-    }
-
     static func lineStart(at location: Int, in text: String) -> Int {
         lineRange(at: location, in: text).location
     }
