@@ -98,7 +98,7 @@ final class FindReplaceController {
 
     func replaceCurrentMatch(in text: String, selection: NSRange) -> (text: String, selection: NSRange)? {
         guard let result = replaceCurrentEdit(in: text, selection: selection) else { return nil }
-        return (EditorTextSupport.applyEdits([result.edit], to: text), result.selection)
+        return (documentText, result.selection)
     }
 
     func replaceCurrentEdit(in text: String, selection: NSRange) -> (edit: TextEdit, selection: NSRange)? {
@@ -127,8 +127,8 @@ final class FindReplaceController {
     }
 
     func replaceAll(in text: String) -> String? {
-        guard let result = replaceAllEdits(in: text) else { return nil }
-        return EditorTextSupport.applyEdits(result.edits, to: text)
+        guard replaceAllEdits(in: text) != nil else { return nil }
+        return documentText
     }
 
     func replaceAllEdits(in text: String) -> (edits: [TextEdit], selection: NSRange)? {
