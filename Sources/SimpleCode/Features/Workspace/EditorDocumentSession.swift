@@ -113,7 +113,7 @@ final class EditorDocumentSession: Identifiable {
             }
             return
         }
-        let dirty = length != 0 && textStorage.string != savedText
+        let dirty = length != 0 && !textStorage.mutableString.isEqual(to: savedText)
         if isDirty != dirty {
             isDirty = dirty
         }
