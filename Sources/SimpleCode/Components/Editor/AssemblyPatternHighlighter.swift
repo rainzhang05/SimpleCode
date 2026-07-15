@@ -152,7 +152,10 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
         cachedRevision = revision
         cachedTokens = updated
 
-        let coveredRanges = Self.mergedRanges([priorityUTF16Range, newAffectedRange], documentLength: fullText.utf16.count)
+        let coveredRanges = Self.mergedRanges(
+            [priorityUTF16Range, newAffectedRange],
+            documentLength: (fullText as NSString).length
+        )
         return (
             HighlightBatch(
                 revision: revision,

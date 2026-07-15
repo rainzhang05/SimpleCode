@@ -238,7 +238,10 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         cachedRevision = revision
         cachedTokens = updated
 
-        let coveredRanges = Self.mergedRanges([priorityUTF16Range, newAffectedRange], documentLength: fullText.utf16.count)
+        let coveredRanges = Self.mergedRanges(
+            [priorityUTF16Range, newAffectedRange],
+            documentLength: (fullText as NSString).length
+        )
         let tokens = tokens(in: coveredRanges, from: updated)
         return (
             HighlightBatch(revision: revision, coveredRanges: coveredRanges, tokens: tokens),
