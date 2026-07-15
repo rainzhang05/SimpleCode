@@ -180,7 +180,6 @@
 		E1347B48F609BD0C76D5F5E0 /* GlassSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29354B33E06EC3F0E26F4C54 /* GlassSurface.swift */; };
 		E230AEF38214127E29016E97 /* RecentWorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 443B74C2C6D6D41A862EE71B /* RecentWorkspaceStore.swift */; };
 		E342C99E90F296D1608067EE /* TerminalLifecycleStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 292D2475C9744618A72924D1 /* TerminalLifecycleStateTests.swift */; };
-		E3BF2A4AE6900A6026E8468F /* LanguageEditingProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A381A4700163A9D28F95B43 /* LanguageEditingProfile.swift */; };
 		E3FDEAD873E6EDBE24D44033 /* OpenDocumentsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 397563566922A2CAF7B2CF52 /* OpenDocumentsStore.swift */; };
 		E5200065A0CB4C131DF77B7E /* prepare-commit-msg.sample in Resources */ = {isa = PBXBuildFile; fileRef = 28FEC33C5B08FCAD507FBB53 /* prepare-commit-msg.sample */; };
 		E6AA5DF6001ADB80D85BF0FF /* FileContentWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D0E1E0ADF3AE0E6B9F63BF /* FileContentWriter.swift */; };
@@ -254,7 +253,6 @@
 		29354B33E06EC3F0E26F4C54 /* GlassSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassSurface.swift; sourceTree = "<group>"; };
 		2970D32049940CB71BAD4F25 /* LargeFileOpenSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LargeFileOpenSheet.swift; sourceTree = "<group>"; };
 		297658540806510342FF20C2 /* HighlightProviderFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightProviderFactory.swift; sourceTree = "<group>"; };
-		2A381A4700163A9D28F95B43 /* LanguageEditingProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageEditingProfile.swift; sourceTree = "<group>"; };
 		2A8844B30F88209F9664C3FE /* GitCloneInvocation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitCloneInvocation.swift; sourceTree = "<group>"; };
 		2B2459AB17F802CECC94C013 /* RunConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunConfiguration.swift; sourceTree = "<group>"; };
 		2DFC7BEE0D9CFFA66551C590 /* SaveTransformService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveTransformService.swift; sourceTree = "<group>"; };
@@ -799,7 +797,6 @@
 				297658540806510342FF20C2 /* HighlightProviderFactory.swift */,
 				FE5E486CFB7B6D62202B634B /* LanguageDefinition.swift */,
 				2FC4EA52A09E7E4CB6946D10 /* LanguageDetector.swift */,
-				2A381A4700163A9D28F95B43 /* LanguageEditingProfile.swift */,
 				9F880C986EE917CF264C32B6 /* LanguageID.swift */,
 				C8CDA64A0AD5898C6ED6D61B /* LanguageRegistry.swift */,
 			);
@@ -1129,7 +1126,6 @@
 				02F95703C6872D0EBAA2524C /* IndentationEngine.swift in Sources */,
 				C43BCDFD230D244E715FA7EF /* LanguageDefinition.swift in Sources */,
 				97FDD36ADF0CE9F1D089773F /* LanguageDetector.swift in Sources */,
-				E3BF2A4AE6900A6026E8468F /* LanguageEditingProfile.swift in Sources */,
 				72390CB8B2CD396F9C94A55B /* LanguageID.swift in Sources */,
 				541F9AA459F6678B48E3B4C5 /* LanguageRegistry.swift in Sources */,
 				77181751A9B55F871BA2C02B /* LargeFileOpenSheet.swift in Sources */,

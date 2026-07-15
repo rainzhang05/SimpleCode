@@ -213,10 +213,6 @@ enum LanguageRegistry {
         return definition
     }
 
-    static func editingProfile(for id: LanguageID) -> LanguageEditingProfile {
-        LanguageEditingProfile.profile(for: id)
-    }
-
     static func languageID(forExtension extension: String) -> LanguageID? {
         extensionMap[`extension`.lowercased()]
     }
