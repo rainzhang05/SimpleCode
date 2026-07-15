@@ -118,6 +118,7 @@
 		8B22EC7D9A49912B69FFCDD6 /* SaveTransformService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DFC7BEE0D9CFFA66551C590 /* SaveTransformService.swift */; };
 		8C6A703B6EDB3B38CA106B79 /* DocumentWatcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 204806F9E9117866F4FFBE90 /* DocumentWatcherTests.swift */; };
 		8DD146B5DC725419BB811C7C /* EditorVisibleRangeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3006013EB93CE3A9D96E97E0 /* EditorVisibleRangeTests.swift */; };
+		8DE12922B80AE4737F514191 /* TerminalSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7416AE35CF4C4B4C61C9FEBF /* TerminalSettingsView.swift */; };
 		8F4A06949253C21499665C0A /* TreeSitterJSON in Frameworks */ = {isa = PBXBuildFile; productRef = 07EDAEF165375C041CD0D755 /* TreeSitterJSON */; };
 		90D59425875DE474C5A5B023 /* GitCloneServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0563CCC8C43E3EE761B895 /* GitCloneServiceTests.swift */; };
 		91675028AA1F1CA03A89BF2F /* pre-merge-commit.sample in Resources */ = {isa = PBXBuildFile; fileRef = 05703869FBBABE15D52A73D4 /* pre-merge-commit.sample */; };
@@ -155,7 +156,6 @@
 		B79CEA41058CCEBE77791A1A /* ColorRoleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8D1609A10F9EFBFEFD5B45C /* ColorRoleTests.swift */; };
 		B85DE8B7007690235595A7F3 /* SettingsSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8541155A02D9329C73E1F8EF /* SettingsSchema.swift */; };
 		B94BE6814C7E07F03D3BAF7F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ECB62C2B0879400D3854D99A /* Assets.xcassets */; };
-		BA51488687A5775CBC6BED1E /* TerminalSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D761C0F83ADAA4983171F747 /* TerminalSettingsView.swift */; };
 		BA782F0D8644D15C7515F4CD /* SwiftTreeSitter in Frameworks */ = {isa = PBXBuildFile; productRef = DA96939C76C4E31B50D53A61 /* SwiftTreeSitter */; };
 		BEE51C3C434A0638D7578DFF /* pre-receive.sample in Resources */ = {isa = PBXBuildFile; fileRef = 1BB45C5704F01015F4E8153E /* pre-receive.sample */; };
 		BF2B9176DE3D48A1960623B2 /* LaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82E41BEEB775DA14EA49FE7F /* LaunchTests.swift */; };
@@ -315,6 +315,7 @@
 		72E4AEFE1C93A33D219CE319 /* AppSettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsStoreTests.swift; sourceTree = "<group>"; };
 		73B967E786C45BFF2334AAC5 /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		73C08559719BD81703816D45 /* description */ = {isa = PBXFileReference; path = description; sourceTree = "<group>"; };
+		7416AE35CF4C4B4C61C9FEBF /* TerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSettingsView.swift; sourceTree = "<group>"; };
 		7483D5FCEC5287584395AFE9 /* NewFolderSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewFolderSheet.swift; sourceTree = "<group>"; };
 		77108F88C3239A7C60ACA228 /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
 		79D29143E9B9F05B41310E51 /* ColorRoleDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorRoleDefaults.swift; sourceTree = "<group>"; };
@@ -383,7 +384,6 @@
 		D1F57EEDA37EED731A5CA61D /* LineEndingMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineEndingMode.swift; sourceTree = "<group>"; };
 		D26F4A523C0DA019F7DCBD68 /* WorkspaceFileTreeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceFileTreeService.swift; sourceTree = "<group>"; };
 		D6852D7BD9222BE9433F8759 /* FileTreeAndOperationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTreeAndOperationsTests.swift; sourceTree = "<group>"; };
-		D761C0F83ADAA4983171F747 /* TerminalSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSettingsView.swift; sourceTree = "<group>"; };
 		D864491492D6EB5F3A837C66 /* TextEncodingMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextEncodingMode.swift; sourceTree = "<group>"; };
 		D879A99BBDC5A3D43FB5B08D /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
 		D8E807D35EA4EBBD34B145E0 /* PairInsertionEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairInsertionEngineTests.swift; sourceTree = "<group>"; };
@@ -797,7 +797,7 @@
 				16DFB10F8B72A9A769F0EF49 /* SettingsMigration.swift */,
 				CA7C94017C6CC853379B88FC /* SettingsRootView.swift */,
 				8541155A02D9329C73E1F8EF /* SettingsSchema.swift */,
-				D761C0F83ADAA4983171F747 /* TerminalSettingsView.swift */,
+				7416AE35CF4C4B4C61C9FEBF /* TerminalSettingsView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -1159,11 +1159,11 @@
 				85C860A556C5384C8D606E60 /* TerminalPanelView.swift in Sources */,
 				948033235578D9BA280DCA0C /* TerminalRepresentable.swift in Sources */,
 				A409F34243BE64365502FCC0 /* TerminalSessionController.swift in Sources */,
+				8DE12922B80AE4737F514191 /* TerminalSettingsView.swift in Sources */,
 				1ED997DF5EB1C24B0EEDE0A8 /* TextEncodingDetector.swift in Sources */,
 				880A7EFE269FBEFA1978683E /* TextEncodingMode.swift in Sources */,
 				99E77F187F89335D618D3908 /* TreeSitterHighlighter.swift in Sources */,
 				5438135C8567CB5B08CC87C5 /* Typography.swift in Sources */,
-				BA51488687A5775CBC6BED1E /* TerminalSettingsView.swift in Sources */,
 				52DA6EE2473196914E646AE6 /* UnsavedDocumentsSheet.swift in Sources */,
 				7E9612DD7317233C998928AB /* WelcomeView.swift in Sources */,
 				B3018AB8D2BE362420E5D3A5 /* WindowAccessibilityConfigurator.swift in Sources */,
