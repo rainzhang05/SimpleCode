@@ -53,19 +53,6 @@ final class AppSettingsStore {
         applyApplicationAppearance()
     }
 
-    var editorFontSize: CGFloat {
-        get { CGFloat(typography.editorFontSize) }
-        set { typography.editorFontSize = Double(newValue) }
-    }
-
-    func increaseFontSize() {
-        editorFontSize = min(editorFontSize + 1, Typography.maximumEditorFontSize)
-    }
-
-    func decreaseFontSize() {
-        editorFontSize = max(editorFontSize - 1, Typography.minimumEditorFontSize)
-    }
-
     func restoreDefaults(for section: SettingsSection) {
         switch section {
         case .appearance:
