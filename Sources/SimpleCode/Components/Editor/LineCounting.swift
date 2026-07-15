@@ -8,15 +8,10 @@ enum LineCounting {
     static func lineNumber(atUTF16Offset utf16Offset: Int, in text: String) -> Int {
         guard utf16Offset > 0 else { return 1 }
         var line = 1
-        var offset = 0
-        for codeUnit in text.utf16 {
-            if offset == utf16Offset {
-                break
-            }
+        for codeUnit in text.utf16.prefix(utf16Offset) {
             if codeUnit == 10 { // "\n"
                 line += 1
             }
-            offset += 1
         }
         return line
     }
@@ -29,13 +24,13 @@ enum LineCounting {
         var offset = 0
         for codeUnit in text.utf16 {
             if currentLine == line {
-                return offset
+                break
             }
             if codeUnit == 10 {
                 currentLine += 1
             }
             offset += 1
         }
-        return currentLine == line ? offset : offset
+        return offset
     }
 }
