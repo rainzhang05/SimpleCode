@@ -78,7 +78,7 @@ struct ProgrammaticEditPlan: Sendable {
         }
 
         let editStart = ascendingEdits[0].range.location
-        let oldEditEnd = ascendingEdits.map { NSMaxRange($0.range) }.max() ?? editStart
+        let oldEditEnd = NSMaxRange(ascendingEdits[ascendingEdits.count - 1].range)
         let forwardEdits = ascendingEdits.reversed()
 
         return ProgrammaticEditPlan(
