@@ -45,6 +45,9 @@ final class EditorDocumentSession: Identifiable {
     /// Baseline text from the last load/save. Edits that leave the buffer equal
     /// to this baseline are treated as clean.
     @ObservationIgnored private var savedText: String = ""
+    /// UTF-16 length of `savedText`, kept in sync so `markDirty()` can reject
+    /// unequal buffers without bridging the full `NSTextStorage` to a String.
+    @ObservationIgnored private var savedUTF16Length = 0
     /// Changes whenever the highlighting configuration changes. The AppKit editor
     /// uses this to invalidate work from the previously selected language without
     /// treating a language override as a different document.
@@ -101,7 +104,16 @@ final class EditorDocumentSession: Identifiable {
     }
 
     func markDirty() {
-        let dirty = textStorage.string != savedText
+        let length = textStorage.length
+        // Typing almost always changes length; that alone proves dirty without
+        // materializing textStorage.string (O(document) bridge + compare).
+        if length != savedUTF16Length {
+            if !isDirty {
+                isDirty = true
+            }
+            return
+        }
+        let dirty = length != 0 && textStorage.string != savedText
         if isDirty != dirty {
             isDirty = dirty
         }
@@ -109,6 +121,7 @@ final class EditorDocumentSession: Identifiable {
 
     func markClean(snapshot: (Date?, Int64, Data?)? = nil) {
         savedText = textStorage.string
+        savedUTF16Length = textStorage.length
         isDirty = false
         hasExternalModification = false
         externalChangeState = .none
@@ -153,6 +166,7 @@ final class EditorDocumentSession: Identifiable {
         lineStartIndex.rebuild(from: content.text)
         clearSyntaxContext()
         savedText = content.text
+        savedUTF16Length = textStorage.length
         isDirty = false
         externalChangeState = .none
         revision = 0
@@ -275,6 +289,7 @@ final class EditorDocumentSession: Identifiable {
         highlighter = HighlightProviderFactory.makeHighlighter(for: .swift)
         clearSyntaxContext()
         savedText = text
+        savedUTF16Length = textStorage.length
         isDirty = false
     }
 
@@ -324,6 +339,7 @@ final class EditorDocumentSession: Identifiable {
         pendingSelectionRange = selectionRange
         clearSyntaxContext()
         savedText = text
+        savedUTF16Length = textStorage.length
     }
 
     private func rebuildSyntaxContext() {
