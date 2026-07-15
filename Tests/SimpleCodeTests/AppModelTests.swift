@@ -164,7 +164,9 @@ struct AppModelTests {
     }
 
     @Test func nativeResizeHandleReportsWindowRelativeDragDistance() throws {
+        defer { NSCursor.arrow.set() }
         let view = ResizeTrackingView()
+        view.frame = NSRect(x: 0, y: 0, width: 14, height: 100)
         var horizontalDeltas: [CGFloat] = []
         view.axis = .horizontal
         view.onDrag = { horizontalDeltas.append($0) }
@@ -188,6 +190,11 @@ struct AppModelTests {
         NSCursor.arrow.set()
         actionCursorRegion.cursorUpdate(with: try mouseEvent(.mouseMoved, location: NSPoint(x: 4, y: 4)))
         #expect(NSCursor.current == .pointingHand)
+
+        view.mouseDown(with: try mouseEvent(.leftMouseDown, location: NSPoint(x: 7, y: 50)))
+        view.mouseDragged(with: try mouseEvent(.leftMouseDragged, location: NSPoint(x: 40, y: 50)))
+        view.mouseUp(with: try mouseEvent(.leftMouseUp, location: NSPoint(x: 40, y: 50)))
+        #expect(NSCursor.current == .arrow)
     }
 
     @Test func workspaceBootstrapIsIdempotentAndTeardownIsSafeToRepeat() async throws {

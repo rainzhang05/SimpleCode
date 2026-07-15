@@ -193,6 +193,10 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         let terminalHandle = element("terminal.resizeHandle")
         XCTAssertTrue(terminalHandle.waitForExistence(timeout: 8), debugSnapshot())
         XCTAssertEqual(terminalHandle.value as? String, "220 points")
+        let clearButton = app.buttons["terminal.clearButton"]
+        XCTAssertTrue(clearButton.waitForExistence(timeout: 5), debugSnapshot())
+        XCTAssertEqual(terminalHandle.frame.width, 64, accuracy: 2, debugSnapshot())
+        XCTAssertLessThan(terminalHandle.frame.maxX, clearButton.frame.minX, debugSnapshot())
     }
 
     func testSettingsUsesFourFocusedTabsAndConditionalEditorControls() throws {

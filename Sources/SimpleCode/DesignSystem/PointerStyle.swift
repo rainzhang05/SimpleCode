@@ -74,9 +74,10 @@ extension View {
     /// Embedded AppKit surfaces can otherwise win cursor arbitration from nearby
     /// SwiftUI buttons. This transparent region gives the button one native owner.
     func nativePointingHandCursor() -> some View {
-        overlay {
-            NativeCursorRegion(cursor: .pointingHand)
-        }
+        pointerStyle(.link)
+            .overlay {
+                NativeCursorRegion(cursor: .pointingHand)
+            }
     }
 }
 
@@ -193,7 +194,6 @@ final class ResizeTrackingView: NSView {
         guard let previousDragLocation else { return }
         let location = event.locationInWindow
         self.previousDragLocation = location
-        axis.cursor.set()
         switch axis {
         case .horizontal:
             onDrag?(location.x - previousDragLocation.x)
@@ -205,6 +205,14 @@ final class ResizeTrackingView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard previousDragLocation != nil else { return }
         previousDragLocation = nil
+        let location = window == nil
+            ? event.locationInWindow
+            : convert(event.locationInWindow, from: nil)
+        if bounds.contains(location) {
+            axis.cursor.set()
+        } else {
+            NSCursor.arrow.set()
+        }
         needsDisplay = true
         onEnd?()
     }

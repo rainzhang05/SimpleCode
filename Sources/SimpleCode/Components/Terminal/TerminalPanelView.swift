@@ -56,7 +56,7 @@ struct TerminalPanelView: View {
         } onDecrement: {
             panelHeight -= 16
         }
-            .frame(height: 14)
+            .frame(width: 64, height: 14)
             .contentShape(Rectangle())
     }
 

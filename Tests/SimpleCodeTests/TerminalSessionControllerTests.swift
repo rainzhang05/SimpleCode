@@ -1,9 +1,27 @@
 import AppKit
 import Foundation
+import Observation
 import SwiftTerm
 import SwiftUI
 import Testing
 @testable import SimpleCode
+
+private final class TerminalObservationCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
+    }
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+}
 
 @Suite(.serialized)
 @MainActor
@@ -165,6 +183,36 @@ struct TerminalSessionControllerTests {
         controller.setPanelVisible(false)
         controller.setPanelVisible(true)
         #expect(driver.focusCount == 2)
+    }
+
+    @Test func repeatedVisibleUpdatesDoNotResizeAnUnchangedTerminal() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+
+        controller.setPanelVisible(true)
+        let observationChanges = TerminalObservationCounter()
+        withObservationTracking {
+            _ = controller.isPanelVisible
+            _ = controller.state
+        } onChange: {
+            observationChanges.increment()
+        }
+        for _ in 0..<20 {
+            controller.setPanelVisible(true)
+        }
+
+        #expect(driver.resizedTo.count == 1)
+        #expect(observationChanges.value == 0)
+        controller.recordTerminalSize(cols: 120, rows: 40)
+        controller.setPanelVisible(true)
+        #expect(driver.resizedTo.count == 1)
+
+        controller.setPanelVisible(false)
+        controller.setPanelVisible(true)
+        #expect(driver.resizedTo.count == 2)
+        #expect(driver.resizedTo.last?.cols == 120)
+        #expect(driver.resizedTo.last?.rows == 40)
     }
 
     @Test func driverSubmissionFailureIsReportedWithoutQueuingADuplicate() throws {

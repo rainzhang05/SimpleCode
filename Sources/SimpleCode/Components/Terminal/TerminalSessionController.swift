@@ -46,6 +46,7 @@ final class TerminalSessionController: TerminalCommandSending {
 
     private weak var driver: (any TerminalSessionDriving)?
     private var attachmentID: UUID?
+    private var deliveredTerminalSize: DeliveredTerminalSize?
     private var startRequested = false
     private var isRestarting = false
     private var clearRequested = false
@@ -68,6 +69,7 @@ final class TerminalSessionController: TerminalCommandSending {
         let id = UUID()
         self.driver = driver
         attachmentID = id
+        deliveredTerminalSize = nil
         fulfillClearRequestIfPossible()
         launchIfRequested()
         fulfillFocusRequestIfPossible()
@@ -215,6 +217,10 @@ final class TerminalSessionController: TerminalCommandSending {
     }
 
     func setPanelVisible(_ visible: Bool) {
+        guard visible != isPanelVisible else {
+            resizeDriverIfNeeded()
+            return
+        }
         let wasVisible = isPanelVisible
         isPanelVisible = visible
         if visible {
@@ -224,15 +230,39 @@ final class TerminalSessionController: TerminalCommandSending {
             }
             launchIfRequested()
             fulfillFocusRequestIfPossible()
+        } else {
+            deliveredTerminalSize = nil
         }
-        guard visible, let driver, lastKnownCols > 0, lastKnownRows > 0 else { return }
-        driver.resize(cols: lastKnownCols, rows: lastKnownRows)
+        resizeDriverIfNeeded()
     }
 
     func recordTerminalSize(cols: Int, rows: Int) {
         guard isPanelVisible, cols > 0, rows > 0 else { return }
         lastKnownCols = cols
         lastKnownRows = rows
+        if let attachmentID {
+            deliveredTerminalSize = DeliveredTerminalSize(
+                attachmentID: attachmentID,
+                cols: cols,
+                rows: rows
+            )
+        }
+    }
+
+    private func resizeDriverIfNeeded() {
+        guard isPanelVisible,
+              let attachmentID,
+              let driver,
+              lastKnownCols > 0,
+              lastKnownRows > 0 else { return }
+        let target = DeliveredTerminalSize(
+            attachmentID: attachmentID,
+            cols: lastKnownCols,
+            rows: lastKnownRows
+        )
+        guard deliveredTerminalSize != target else { return }
+        deliveredTerminalSize = target
+        driver.resize(cols: target.cols, rows: target.rows)
     }
 
     private func flushPendingCommandsIfNeeded() {
@@ -289,6 +319,7 @@ final class TerminalSessionController: TerminalCommandSending {
         // for, so preserve `startRequested` and let the replacement host relaunch.
         driver = nil
         attachmentID = nil
+        deliveredTerminalSize = nil
         if terminatingRunningProcess, currentDriver.isProcessRunning {
             currentDriver.terminate()
         }
@@ -306,5 +337,11 @@ final class TerminalSessionController: TerminalCommandSending {
         failPendingCommands()
         state = .terminated(exitCode: nil)
         onShellTerminated?()
+    }
+
+    private struct DeliveredTerminalSize: Equatable {
+        let attachmentID: UUID
+        let cols: Int
+        let rows: Int
     }
 }
