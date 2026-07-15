@@ -51,8 +51,10 @@ actor WorkspaceFileTreeService {
             )
 
             var children: [FileTreeChild] = []
+            children.reserveCapacity(items.count)
+            let keysSet = Set(keys)
             for item in items {
-                let values = try? item.resourceValues(forKeys: Set(keys))
+                let values = try? item.resourceValues(forKeys: keysSet)
                 let isDirectory = values?.isDirectory ?? false
                 let isSymlink = values?.isSymbolicLink ?? false
                 let name = item.lastPathComponent
