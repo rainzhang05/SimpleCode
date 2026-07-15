@@ -32,11 +32,12 @@ enum HighlightBatchApplicator {
     @MainActor
     static func apply(_ batch: HighlightBatch, to textStorage: NSTextStorage) {
         var tokenColors: [SyntaxCategory: NSColor] = [:]
+        let baseForeground = ColorRole.editorForegroundNSColor
         textStorage.beginEditing()
         for range in batch.coveredRanges where isValid(range, in: textStorage) {
             textStorage.addAttribute(
                 .foregroundColor,
-                value: ColorRole.editorForegroundNSColor,
+                value: baseForeground,
                 range: range
             )
         }
