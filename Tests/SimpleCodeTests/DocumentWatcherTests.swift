@@ -33,6 +33,7 @@ struct DocumentWatcherTests {
         let store = OpenDocumentsStore()
         await store.open(url: file)
         let session = store.activeSession!
+        session.textStorage.mutableString.setString("v1-edited")
         session.markDirty()
 
         try await Task.sleep(for: .milliseconds(200))

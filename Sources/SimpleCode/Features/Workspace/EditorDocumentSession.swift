@@ -42,6 +42,9 @@ final class EditorDocumentSession: Identifiable {
     var pendingSelectionRange: NSRange?
     @ObservationIgnored var scrollOffset: CGPoint = .zero
     @ObservationIgnored private(set) var lastVisibleUTF16Range: NSRange?
+    /// Baseline text from the last load/save. Edits that leave the buffer equal
+    /// to this baseline are treated as clean.
+    @ObservationIgnored private var savedText: String = ""
     /// Changes whenever the highlighting configuration changes. The AppKit editor
     /// uses this to invalidate work from the previously selected language without
     /// treating a language override as a different document.
@@ -98,10 +101,14 @@ final class EditorDocumentSession: Identifiable {
     }
 
     func markDirty() {
-        isDirty = true
+        let dirty = textStorage.string != savedText
+        if isDirty != dirty {
+            isDirty = dirty
+        }
     }
 
     func markClean(snapshot: (Date?, Int64, Data?)? = nil) {
+        savedText = textStorage.string
         isDirty = false
         hasExternalModification = false
         externalChangeState = .none
@@ -145,6 +152,7 @@ final class EditorDocumentSession: Identifiable {
         undoManager.removeAllActions()
         lineStartIndex.rebuild(from: content.text)
         clearSyntaxContext()
+        savedText = content.text
         isDirty = false
         externalChangeState = .none
         revision = 0
@@ -266,6 +274,8 @@ final class EditorDocumentSession: Identifiable {
         enablesSyntaxHighlighting = true
         highlighter = HighlightProviderFactory.makeHighlighter(for: .swift)
         clearSyntaxContext()
+        savedText = text
+        isDirty = false
     }
 
     func mergeSyntaxTokens(_ tokens: [SyntaxToken], replacingCoveredRanges coveredRanges: [NSRange]) {
@@ -313,6 +323,7 @@ final class EditorDocumentSession: Identifiable {
         selectionRange = NSRange(location: clampedLocation, length: min(selectionRange.length, maxLength))
         pendingSelectionRange = selectionRange
         clearSyntaxContext()
+        savedText = text
     }
 
     private func rebuildSyntaxContext() {

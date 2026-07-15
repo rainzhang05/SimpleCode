@@ -223,10 +223,17 @@ struct OpenDocumentsStoreTests {
 
     @Test func dirtyStateTransitions() async throws {
         let session = EditorDocumentSession(displayName: "T.swift")
-        session.textStorage.setAttributedString(NSAttributedString(string: "x"))
+        session.textStorage.setAttributedString(NSAttributedString(string: "hello"))
+        session.markClean()
         #expect(!session.isDirty)
+
+        session.textStorage.setAttributedString(NSAttributedString(string: "hello "))
         session.markDirty()
         #expect(session.isDirty)
+
+        session.textStorage.setAttributedString(NSAttributedString(string: "hello"))
+        session.markDirty()
+        #expect(!session.isDirty)
     }
 
     @Test func reopenRecentlyClosed() async throws {

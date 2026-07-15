@@ -65,6 +65,7 @@ struct SaveAsTests {
 
         await store.open(url: source)
         let session = store.activeSession!
+        session.textStorage.mutableString.setString("a-edited")
         session.markDirty()
 
         do {
