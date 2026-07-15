@@ -79,10 +79,12 @@ struct ProgrammaticEditPlan: Sendable {
 
         let editStart = ascendingEdits[0].range.location
         let oldEditEnd = NSMaxRange(ascendingEdits[ascendingEdits.count - 1].range)
-        let forwardEdits = ascendingEdits.reversed()
+        let lineIndexStrategy: ProgrammaticLineIndexStrategy =
+            ascendingEdits.count == 1 ? .incremental : .rebuildOnce
+        ascendingEdits.reverse()
 
         return ProgrammaticEditPlan(
-            forwardEdits: Array(forwardEdits),
+            forwardEdits: ascendingEdits,
             undoPayload: ProgrammaticUndoPayload(
                 edits: inverseEdits,
                 selection: undoSelection,
@@ -93,7 +95,7 @@ struct ProgrammaticEditPlan: Sendable {
                 oldEndUTF16: oldEditEnd,
                 newEndUTF16: oldEditEnd + offsetDelta
             ),
-            lineIndexStrategy: ascendingEdits.count == 1 ? .incremental : .rebuildOnce
+            lineIndexStrategy: lineIndexStrategy
         )
     }
 }
