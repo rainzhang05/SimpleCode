@@ -1,9 +1,41 @@
 import AppKit
 import Foundation
+import Observation
 import Testing
 @testable import SimpleCode
 
+private final class ObservationChangeCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
+    }
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+}
+
 struct EditorVisibleRangeTests {
+    @MainActor
+    @Test func findOverlayVisitsOnlyMatchesIntersectingTheDirtyViewport() {
+        let matches = (0..<10_000).map { NSRange(location: $0 * 10, length: 3) }
+        let visible = NSRange(location: 45_670, length: 25)
+
+        let result = Array(EditorOverlayView.sortedMatches(matches, intersecting: visible))
+
+        #expect(result == [
+            NSRange(location: 45_670, length: 3),
+            NSRange(location: 45_680, length: 3),
+            NSRange(location: 45_690, length: 3),
+        ])
+    }
+
     @MainActor
     @Test func trailingWhitespaceModeAdmitsOnlyTrailingTabs() {
         let interiorTab = EditorOverlayView.whitespaceMarkerKind(
@@ -110,9 +142,14 @@ struct EditorVisibleRangeTests {
     private actor RecordingEditorHighlighter: SyntaxHighlighter {
         private var loadTexts: [String] = []
         private var editTexts: [String] = []
+        private var viewportRequests = 0
 
         func snapshot() -> (loadTexts: [String], editTexts: [String]) {
             (loadTexts, editTexts)
+        }
+
+        func viewportRequestCount() -> Int {
+            viewportRequests
         }
 
         func load(text: String, revision: Int) -> HighlightBatch {
@@ -142,7 +179,8 @@ struct EditorVisibleRangeTests {
             revision: Int,
             visibleUTF16Range: NSRange
         ) -> (priority: HighlightBatch, remainder: HighlightBatch?) {
-            (
+            viewportRequests += 1
+            return (
                 HighlightBatch(revision: revision, coveredRanges: [visibleUTF16Range], tokens: []),
                 nil
             )
@@ -498,6 +536,17 @@ struct EditorVisibleRangeTests {
         coordinator.textView = textView
         coordinator.scrollView = scrollView
         coordinator.attach(session: session, to: textView)
+
+        coordinator.liveScrollWillStart(Notification(
+            name: NSScrollView.willStartLiveScrollNotification,
+            object: scrollView
+        ))
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(await highlighter.pageCount() == 0)
+        coordinator.liveScrollDidEnd(Notification(
+            name: NSScrollView.didEndLiveScrollNotification,
+            object: scrollView
+        ))
 
         for _ in 0..<100 where session.deferredInitialHighlightCursor != nil {
             try await Task.sleep(for: .milliseconds(5))
@@ -1143,7 +1192,7 @@ struct EditorVisibleRangeTests {
     }
 
     @MainActor
-    @Test func coordinatorPersistsScrollOffsetAndVisibleRangeWhenBoundsChange() throws {
+    @Test func coordinatorCoalescesLiveScrollStateAndSkipsCoveredSyntax() async throws {
         let suiteName = "SimpleCode.EditorScrollState.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         let root = FileManager.default.temporaryDirectory.appending(path: "EditorScrollState-\(UUID().uuidString)")
@@ -1166,7 +1215,13 @@ struct EditorVisibleRangeTests {
         session.textStorage.setAttributedString(NSAttributedString(
             string: String(repeating: "let visible = true\n", count: 500)
         ))
-        session.enablesSyntaxHighlighting = false
+        let highlighter = RecordingEditorHighlighter()
+        session.highlighter = highlighter
+        session.applyInitialHighlighting(HighlightBatch(
+            revision: session.revision,
+            coveredRanges: [NSRange(location: 0, length: session.textStorage.length)],
+            tokens: []
+        ))
         let textView = CodeTextView(frame: NSRect(x: 0, y: 0, width: 320, height: 8_000))
         textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 320, height: 180))
@@ -1181,13 +1236,49 @@ struct EditorVisibleRangeTests {
         coordinator.scrollView = scrollView
         coordinator.attach(session: session, to: textView)
 
-        scrollView.contentView.scroll(to: CGPoint(x: 0, y: 900))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-        coordinator.boundsDidChange()
+        let storedOffset = session.scrollOffset
+        let storedRange = session.lastVisibleUTF16Range
+        coordinator.liveScrollWillStart(Notification(
+            name: NSScrollView.willStartLiveScrollNotification,
+            object: scrollView
+        ))
+        for y in stride(from: 300, through: 900, by: 300) {
+            scrollView.contentView.scroll(to: CGPoint(x: 0, y: y))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            coordinator.boundsDidChange()
+        }
+
+        #expect(session.scrollOffset == storedOffset)
+        #expect(session.lastVisibleUTF16Range == storedRange)
+        coordinator.liveScrollDidEnd(Notification(
+            name: NSScrollView.didEndLiveScrollNotification,
+            object: scrollView
+        ))
 
         #expect(session.scrollOffset.y == 900)
         #expect(session.lastVisibleUTF16Range?.length ?? 0 > 0)
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(await highlighter.viewportRequestCount() == 0)
         coordinator.tearDown()
+    }
+
+    @MainActor
+    @Test func transientViewportStateDoesNotInvalidateObservation() {
+        let session = EditorDocumentSession(displayName: "Scrolling.swift")
+        session.textStorage.setAttributedString(NSAttributedString(string: String(repeating: "line\n", count: 100)))
+        let observationChanges = ObservationChangeCounter()
+
+        withObservationTracking {
+            _ = session.scrollOffset
+            _ = session.lastVisibleUTF16Range
+        } onChange: {
+            observationChanges.increment()
+        }
+
+        session.scrollOffset = CGPoint(x: 0, y: 200)
+        session.recordVisibleUTF16Range(NSRange(location: 20, length: 40))
+
+        #expect(observationChanges.value == 0)
     }
 
     @MainActor

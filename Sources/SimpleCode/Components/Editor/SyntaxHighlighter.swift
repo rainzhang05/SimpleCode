@@ -34,6 +34,7 @@ struct InitialHighlightPage: Sendable {
 
 enum InitialHighlightPaging {
     static let pageSizeUTF16 = 65_536
+    static let backgroundPageSizeUTF16 = 16_384
 
     static func priorityRange(in text: String, aroundUTF16Offset offset: Int) -> NSRange {
         let string = text as NSString

@@ -163,6 +163,18 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             name: NSView.boundsDidChangeNotification,
             object: scrollView.contentView
         )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.liveScrollWillStart(_:)),
+            name: NSScrollView.willStartLiveScrollNotification,
+            object: scrollView
+        )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.liveScrollDidEnd(_:)),
+            name: NSScrollView.didEndLiveScrollNotification,
+            object: scrollView
+        )
         scrollView.contentView.postsBoundsChangedNotifications = true
 
         return scrollView
@@ -217,6 +229,9 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         private var smartHomePressColumn: Int?
         private var lastAppliedSettings = EditorAppliedSettings()
         private var lastWordWrapEnabled: Bool?
+        private var isLiveScrolling = false
+        private var pendingScrollOffset: CGPoint?
+        private var lastHorizontalScrollOffset: CGFloat = 0
 
         private var editorFont: NSFont {
             Typography.editorFont(
@@ -334,6 +349,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             viewportHighlightTask = nil
             initialRemainderTask = nil
             lastAppliedViewportRange = nil
+            isLiveScrolling = false
+            pendingScrollOffset = nil
             attachmentGeneration &+= 1
 
             if let previous = self.textView, attachedSessionID != nil, attachedSessionID != session.id {
@@ -372,6 +389,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             if let scrollView {
                 scrollView.contentView.scroll(to: session.scrollOffset)
                 scrollView.reflectScrolledClipView(scrollView.contentView)
+                lastHorizontalScrollOffset = scrollView.contentView.bounds.minX
             }
             recordCurrentVisibleRange()
             if session.enablesSyntaxHighlighting, let highlighter = session.highlighter, !session.hasAppliedSyntaxHighlighting {
@@ -448,6 +466,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             attachedSyntaxConfigurationRevision = nil
             lastParsedRevision = nil
             lastAppliedViewportRange = nil
+            isLiveScrolling = false
+            pendingScrollOffset = nil
             overlay = nil
             gutter = nil
             textView = nil
@@ -456,10 +476,40 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
         @objc func boundsDidChange() {
             guard !isTornDown else { return }
-            session.scrollOffset = scrollView?.contentView.bounds.origin ?? session.scrollOffset
+            let origin = scrollView?.contentView.bounds.origin ?? session.scrollOffset
+            pendingScrollOffset = origin
+            if abs(origin.x - lastHorizontalScrollOffset) > 0.5 {
+                lastHorizontalScrollOffset = origin.x
+                gutter?.invalidateVisibleRegion()
+            }
+            guard !isLiveScrolling else { return }
+            flushViewportState()
+        }
+
+        @objc func liveScrollWillStart(_ notification: Notification) {
+            guard !isTornDown else { return }
+            isLiveScrolling = true
+            pendingScrollOffset = scrollView?.contentView.bounds.origin ?? session.scrollOffset
+            viewportHighlightTask?.cancel()
+            viewportHighlightTask = nil
+            initialRemainderTask?.cancel()
+            initialRemainderTask = nil
+        }
+
+        @objc func liveScrollDidEnd(_ notification: Notification) {
+            guard !isTornDown else { return }
+            pendingScrollOffset = scrollView?.contentView.bounds.origin ?? pendingScrollOffset
+            isLiveScrolling = false
+            flushViewportState()
+            scheduleInitialRemainderIfNeeded()
+        }
+
+        private func flushViewportState() {
+            session.scrollOffset = pendingScrollOffset
+                ?? scrollView?.contentView.bounds.origin
+                ?? session.scrollOffset
+            pendingScrollOffset = nil
             recordCurrentVisibleRange()
-            gutter?.invalidate()
-            overlay?.needsDisplay = true
             scheduleViewportHighlight()
         }
 
@@ -570,7 +620,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         private func scheduleViewportHighlight() {
-            guard !isTornDown else { return }
+            guard !isTornDown, !isLiveScrolling else { return }
             viewportHighlightTask?.cancel()
             let sessionID = session.id
             let generation = attachmentGeneration
@@ -618,7 +668,9 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
         private func scheduleInitialRemainderIfNeeded() {
             initialRemainderTask?.cancel()
-            guard !isTornDown, session.deferredInitialHighlightCursor != nil else {
+            guard !isTornDown,
+                  !isLiveScrolling,
+                  session.deferredInitialHighlightCursor != nil else {
                 initialRemainderTask = nil
                 return
             }
@@ -627,7 +679,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             let storage = session.textStorage
             initialRemainderTask = Task { [weak self] in
                 do {
-                    try await Task.sleep(for: .milliseconds(8))
+                    try await Task.sleep(for: .milliseconds(16))
                 } catch {
                     return
                 }
@@ -639,7 +691,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                     ) else { return }
                     let page = await request.highlighter.continueInitial(
                         request.cursor,
-                        pageSizeUTF16: InitialHighlightPaging.pageSizeUTF16
+                        pageSizeUTF16: InitialHighlightPaging.backgroundPageSizeUTF16
                     )
                     guard !Task.isCancelled,
                           let self,
@@ -667,7 +719,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                         return
                     }
                     do {
-                        try await Task.sleep(for: .milliseconds(8))
+                        try await Task.sleep(for: .milliseconds(16))
                     } catch {
                         return
                     }
@@ -768,7 +820,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 sessionID: expectedSessionID,
                 attachmentGeneration: expectedAttachmentGeneration,
                 textStorage: expectedTextStorage
-            ), session.enablesSyntaxHighlighting,
+            ), !isLiveScrolling,
+               session.enablesSyntaxHighlighting,
                let highlighter = session.highlighter,
                let cursor = session.deferredInitialHighlightCursor,
                cursor.revision == session.revision else { return nil }
@@ -784,10 +837,12 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 sessionID: expectedSessionID,
                 attachmentGeneration: expectedAttachmentGeneration,
                 textStorage: expectedTextStorage
-            ), session.enablesSyntaxHighlighting,
+            ), !isLiveScrolling,
+               session.enablesSyntaxHighlighting,
                let highlighter = session.highlighter,
                let textView,
                session.deferredInitialHighlightCursor == nil,
+               !session.hasCompleteSyntaxCoverage,
                lastParsedRevision == session.revision else { return nil }
             let visibleRange = currentVisibleUTF16Range(fallbackAround: 0)
             session.recordVisibleUTF16Range(visibleRange)
@@ -820,8 +875,6 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             isApplyingHighlighting = true
             HighlightBatchApplicator.apply(batch, to: textStorage)
             isApplyingHighlighting = false
-            overlay?.needsDisplay = true
-            textView?.needsDisplay = true
             return true
         }
 

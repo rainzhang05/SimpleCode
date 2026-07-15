@@ -38,6 +38,24 @@ final class LineNumberGutterView: NSView {
         needsDisplay = true
     }
 
+    /// Vertical scrolling naturally redraws only newly exposed strips. A horizontal
+    /// scroll must repaint the narrow pinned gutter at its new document position,
+    /// without invalidating the full editor-sized subview.
+    func invalidateVisibleRegion() {
+        guard let codeTextView else { return }
+        let visibleRect = codeTextView.visibleRect
+        let gutterRect = convert(
+            NSRect(
+                x: visibleRect.minX,
+                y: visibleRect.minY,
+                width: width,
+                height: visibleRect.height
+            ),
+            from: codeTextView
+        )
+        setNeedsDisplay(gutterRect)
+    }
+
     /// Returns `true` when the reserved editor inset needs to be laid out again.
     /// Tracking the editor one point smaller and using a digit-aware width keeps
     /// the gutter stable for small files while still accommodating five-plus digit
@@ -61,6 +79,8 @@ final class LineNumberGutterView: NSView {
               let contentManager = layoutManager.textContentManager else { return }
 
         let visibleRect = codeTextView.visibleRect
+        let dirtyTextRect = codeTextView.convert(dirtyRect, from: self).intersection(visibleRect)
+        guard !dirtyTextRect.isEmpty else { return }
         let gutterRect = convert(
             NSRect(
                 x: visibleRect.minX,
@@ -82,7 +102,7 @@ final class LineNumberGutterView: NSView {
         let topPoint = EditorTextGeometry.layoutPoint(
             forViewPoint: CGPoint(
                 x: EditorTextGeometry.textLookupX(in: codeTextView),
-                y: max(origin.y, visibleRect.minY)
+                y: max(origin.y, dirtyTextRect.minY)
             ),
             in: codeTextView
         )
@@ -116,7 +136,7 @@ final class LineNumberGutterView: NSView {
                 in: fragment,
                 textView: codeTextView
             ) else { return true }
-            guard frame.minY < visibleRect.maxY else { return false }
+            guard frame.minY < dirtyTextRect.maxY else { return false }
 
             let offset = contentManager.offset(
                 from: contentManager.documentRange.location,

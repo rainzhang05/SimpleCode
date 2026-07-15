@@ -57,9 +57,9 @@ final class EditorOverlayView: NSView {
     }
 
     private func drawFindMatches(in textView: NSTextView, dirtyRect: NSRect) {
-        let visibleRange = visibleCharacterRange(in: textView)
-        for range in findMatches
-        where range.length > 0 && NSIntersectionRange(range, visibleRange).length > 0 {
+        let textDirtyRect = textView.convert(dirtyRect, from: self)
+        let visibleRange = characterRange(in: textView, intersecting: textDirtyRect)
+        for range in Self.sortedMatches(findMatches, intersecting: visibleRange) {
             let isActive = activeFindMatch == range
             let color = isActive
                 ? NSColor.systemOrange.withAlphaComponent(0.34)
@@ -95,7 +95,8 @@ final class EditorOverlayView: NSView {
     private func drawWhitespaceMarkers(in textView: NSTextView, dirtyRect: NSRect) {
         let color = ColorRole.whitespaceMarkerNSColor
         let text = textView.string as NSString
-        let visibleRange = visibleCharacterRange(in: textView)
+        let textDirtyRect = textView.convert(dirtyRect, from: self)
+        let visibleRange = characterRange(in: textView, intersecting: textDirtyRect)
         let visibleEnd = NSMaxRange(visibleRange)
 
         var lineLocation = visibleRange.location
@@ -155,15 +156,45 @@ final class EditorOverlayView: NSView {
         }
     }
 
-    private func visibleCharacterRange(in textView: NSTextView) -> NSRange {
+    static func sortedMatches(_ matches: [NSRange], intersecting visibleRange: NSRange) -> ArraySlice<NSRange> {
+        guard !matches.isEmpty, visibleRange.length > 0 else { return matches[0..<0] }
+        var lower = 0
+        var upper = matches.count
+        while lower < upper {
+            let midpoint = lower + (upper - lower) / 2
+            if NSMaxRange(matches[midpoint]) <= visibleRange.location {
+                lower = midpoint + 1
+            } else {
+                upper = midpoint
+            }
+        }
+
+        upper = lower
+        let visibleEnd = NSMaxRange(visibleRange)
+        while upper < matches.count, matches[upper].location < visibleEnd {
+            upper += 1
+        }
+        return matches[lower..<upper]
+    }
+
+    private func characterRange(in textView: NSTextView, intersecting requestedRect: NSRect) -> NSRange {
         let fallback = NSRange(location: 0, length: (textView.string as NSString).length)
         guard let layoutManager = textView.textLayoutManager,
               let contentManager = layoutManager.textContentManager,
               fallback.length > 0 else { return fallback }
 
-        let visibleRect = textView.visibleRect
-        let topPoint = CGPoint(x: 1, y: max(0, visibleRect.minY))
-        let bottomPoint = CGPoint(x: 1, y: max(0, visibleRect.maxY - 1))
+        let requestedRect = requestedRect.intersection(textView.visibleRect)
+        guard !requestedRect.isEmpty else { return NSRange(location: 0, length: 0) }
+        let origin = textView.textContainerOrigin
+        let lookupX = EditorTextGeometry.textLookupX(in: textView)
+        let topPoint = EditorTextGeometry.layoutPoint(
+            forViewPoint: CGPoint(x: lookupX, y: max(origin.y, requestedRect.minY)),
+            in: textView
+        )
+        let bottomPoint = EditorTextGeometry.layoutPoint(
+            forViewPoint: CGPoint(x: lookupX, y: max(origin.y, requestedRect.maxY - 1)),
+            in: textView
+        )
         guard let topFragment = layoutManager.textLayoutFragment(for: topPoint),
               let bottomFragment = layoutManager.textLayoutFragment(for: bottomPoint) else {
             return fallback

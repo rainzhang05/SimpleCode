@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Observation
 
 enum DocumentLoadState: Equatable {
     case idle
@@ -39,8 +40,8 @@ final class EditorDocumentSession: Identifiable {
     private(set) var externalChangeState: ExternalChangeState = .none
     var selectionRange = NSRange(location: 0, length: 0)
     var pendingSelectionRange: NSRange?
-    var scrollOffset: CGPoint = .zero
-    private(set) var lastVisibleUTF16Range: NSRange?
+    @ObservationIgnored var scrollOffset: CGPoint = .zero
+    @ObservationIgnored private(set) var lastVisibleUTF16Range: NSRange?
     /// Changes whenever the highlighting configuration changes. The AppKit editor
     /// uses this to invalidate work from the previously selected language without
     /// treating a language override as a different document.
@@ -56,6 +57,7 @@ final class EditorDocumentSession: Identifiable {
     }
     private var semanticTokens: [SyntaxToken] = []
     private(set) var deferredInitialHighlightCursor: InitialHighlightCursor?
+    @ObservationIgnored private(set) var hasCompleteSyntaxCoverage = false
     private(set) var syntaxContext: SyntaxContext = .empty
     private(set) var didApplySyntaxHighlighting = false
 
@@ -156,6 +158,9 @@ final class EditorDocumentSession: Identifiable {
 
     func deferInitialHighlighting(_ cursor: InitialHighlightCursor?) {
         deferredInitialHighlightCursor = cursor
+        if cursor != nil {
+            hasCompleteSyntaxCoverage = false
+        }
     }
 
     func advanceDeferredInitialHighlighting(
@@ -164,6 +169,9 @@ final class EditorDocumentSession: Identifiable {
     ) {
         guard deferredInitialHighlightCursor == cursor else { return }
         deferredInitialHighlightCursor = next
+        if next == nil {
+            hasCompleteSyntaxCoverage = true
+        }
     }
 
     func refreshSyntaxAttributes() {
@@ -256,6 +264,7 @@ final class EditorDocumentSession: Identifiable {
         if coveredRanges.contains(where: { $0.location == 0 && $0.length >= textStorage.length }) {
             semanticTokens = tokens
             deferredInitialHighlightCursor = nil
+            hasCompleteSyntaxCoverage = true
         } else if deferredInitialHighlightCursor != nil {
             // Deferred initial pages are disjoint by construction. Appending keeps
             // hundreds of large-file pages linear instead of repeatedly filtering
@@ -277,6 +286,7 @@ final class EditorDocumentSession: Identifiable {
     func clearSyntaxContext() {
         semanticTokens = []
         deferredInitialHighlightCursor = nil
+        hasCompleteSyntaxCoverage = false
         syntaxContext = .empty
         didApplySyntaxHighlighting = false
     }
