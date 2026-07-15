@@ -208,7 +208,7 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
             ),
             in: fullText
         )
-        let offsetDelta = fullText.utf16.count - cachedText.utf16.count
+        let offsetDelta = edit.newEndUTF16 - edit.oldEndUTF16
         let replacementTokens = highlight(fullText, restrictedTo: newAffectedRange)
 
         var updated: [SyntaxToken] = []

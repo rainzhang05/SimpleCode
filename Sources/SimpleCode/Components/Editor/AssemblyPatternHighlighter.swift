@@ -121,7 +121,7 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
             around: NSRange(location: edit.startUTF16, length: max(0, edit.newEndUTF16 - edit.startUTF16)),
             in: fullText
         )
-        let offsetDelta = fullText.utf16.count - cachedText.utf16.count
+        let offsetDelta = edit.newEndUTF16 - edit.oldEndUTF16
         let replacementTokens = highlight(fullText, restrictedTo: newAffectedRange)
 
         var updated: [SyntaxToken] = []
