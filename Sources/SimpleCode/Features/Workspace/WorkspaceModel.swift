@@ -286,12 +286,6 @@ final class WorkspaceModel {
         }
     }
 
-    func renameSelectedItem(to newName: String) async {
-        guard let nodeID = fileTree.selectedNodeID else { return }
-        let url = nodeID.url
-        await rename(item: url, to: newName)
-    }
-
     func beginRenameSelectedItem() -> (URL, String)? {
         guard let nodeID = fileTree.selectedNodeID else { return nil }
         return (nodeID.url, nodeID.url.lastPathComponent)
