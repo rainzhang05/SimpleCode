@@ -215,10 +215,15 @@ final class TerminalSessionController: TerminalCommandSending {
     }
 
     func setPanelVisible(_ visible: Bool) {
+        let wasVisible = isPanelVisible
         isPanelVisible = visible
         if visible {
             startRequested = true
+            if !wasVisible {
+                needsFocus = true
+            }
             launchIfRequested()
+            fulfillFocusRequestIfPossible()
         }
         guard visible, let driver, lastKnownCols > 0, lastKnownRows > 0 else { return }
         driver.resize(cols: lastKnownCols, rows: lastKnownRows)

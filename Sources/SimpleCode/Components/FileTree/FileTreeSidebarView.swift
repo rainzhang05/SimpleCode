@@ -51,9 +51,7 @@ struct FileTreeSidebarView: View {
             }
         }
         .frame(maxHeight: .infinity)
-        .glassPanel(cornerRadius: CornerRadius.panel)
-        .shadow(color: .black.opacity(0.16), radius: 22, y: 10)
-        .clipShape(RoundedRectangle(cornerRadius: CornerRadius.panel, style: .continuous))
+        .background(ColorRole.editorBackground)
         .overlay(alignment: .trailing) {
             resizeHandle
         }
@@ -73,8 +71,26 @@ struct FileTreeSidebarView: View {
     }
 
     private var resizeHandle: some View {
-        Rectangle()
-            .fill(.clear)
+        NativeResizeHandle(
+            axis: .horizontal,
+            accessibilityLabel: "Resize Files Sidebar",
+            accessibilityIdentifier: "fileTree.resizeHandle",
+            accessibilityValue: "\(Int(workspace.sidebarWidth)) points"
+        ) { translation in
+            let startWidth = resizeStartWidth ?? workspace.sidebarWidth
+            if resizeStartWidth == nil { resizeStartWidth = startWidth }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                workspace.sidebarWidth = startWidth + translation
+            }
+        } onEnd: {
+            resizeStartWidth = nil
+        } onIncrement: {
+            workspace.sidebarWidth += 16
+        } onDecrement: {
+            workspace.sidebarWidth -= 16
+        }
             .frame(width: 14)
             .contentShape(Rectangle())
             .overlay {
@@ -83,32 +99,6 @@ struct FileTreeSidebarView: View {
                     .frame(width: 2, height: 32)
             }
             .onHover { isResizeHandleHovered = $0 }
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let startWidth = resizeStartWidth ?? workspace.sidebarWidth
-                        if resizeStartWidth == nil { resizeStartWidth = startWidth }
-                        workspace.sidebarWidth = startWidth + value.translation.width
-                    }
-                    .onEnded { _ in
-                        resizeStartWidth = nil
-                    }
-            )
-            .pointingHandCursor()
-            .accessibilityElement()
-            .accessibilityLabel("Resize Files Sidebar")
-            .accessibilityValue("\(Int(workspace.sidebarWidth)) points")
-            .accessibilityIdentifier("fileTree.resizeHandle")
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment:
-                    workspace.sidebarWidth += 16
-                case .decrement:
-                    workspace.sidebarWidth -= 16
-                @unknown default:
-                    break
-                }
-            }
     }
 
     private func handleRootDrop(providers: [NSItemProvider]) -> Bool {
@@ -200,8 +190,7 @@ private struct FileTreeRowView: View {
         .contentShape(RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
         .background(rowBackground, in: RoundedRectangle(cornerRadius: CornerRadius.control, style: .continuous))
         .onHover { isHovered = $0 }
-        .onTapGesture { activateRow() }
-        .pointingHandCursor()
+        .onTapGesture(count: 1, perform: activateRow)
         .contextMenu { contextMenu }
         .onDrag { NSItemProvider(object: node.url as NSURL) }
         .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
@@ -217,17 +206,11 @@ private struct FileTreeRowView: View {
     @ViewBuilder
     private var disclosure: some View {
         if node.isDirectory {
-            Button {
-                Task { await toggleExpansion() }
-            } label: {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .frame(width: 14, height: 14)
-            }
-            .buttonStyle(.plain)
-            .pointingHandCursor()
-            .foregroundStyle(isSelected ? .white.opacity(0.9) : .secondary)
-            .accessibilityIdentifier("fileTree.disclosure.\(relativePath)")
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 14, height: 14)
+                .foregroundStyle(isSelected ? .white.opacity(0.9) : .secondary)
+                .accessibilityIdentifier("fileTree.disclosure.\(relativePath)")
         } else {
             Image(systemName: "chevron.right")
                 .font(.system(size: 10, weight: .semibold))

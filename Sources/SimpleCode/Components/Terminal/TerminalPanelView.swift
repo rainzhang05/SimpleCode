@@ -43,8 +43,26 @@ struct TerminalPanelView: View {
     }
 
     private var resizeHandle: some View {
-        Rectangle()
-            .fill(.clear)
+        NativeResizeHandle(
+            axis: .vertical,
+            accessibilityLabel: "Resize Terminal",
+            accessibilityIdentifier: "terminal.resizeHandle",
+            accessibilityValue: "\(Int(panelHeight)) points"
+        ) { translation in
+            let startHeight = resizeStartHeight ?? panelHeight
+            if resizeStartHeight == nil { resizeStartHeight = startHeight }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                panelHeight = startHeight + translation
+            }
+        } onEnd: {
+            resizeStartHeight = nil
+        } onIncrement: {
+            panelHeight += 16
+        } onDecrement: {
+            panelHeight -= 16
+        }
             .frame(height: 14)
             .contentShape(Rectangle())
             .overlay {
@@ -53,32 +71,6 @@ struct TerminalPanelView: View {
                     .frame(width: 32, height: 2)
             }
             .onHover { isResizeHandleHovered = $0 }
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let startHeight = resizeStartHeight ?? panelHeight
-                        if resizeStartHeight == nil { resizeStartHeight = startHeight }
-                        panelHeight = startHeight - value.translation.height
-                    }
-                    .onEnded { _ in
-                        resizeStartHeight = nil
-                    }
-            )
-            .pointingHandCursor()
-            .accessibilityElement()
-            .accessibilityLabel("Resize Terminal")
-            .accessibilityValue("\(Int(panelHeight)) points")
-            .accessibilityIdentifier("terminal.resizeHandle")
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment:
-                    panelHeight += 16
-                case .decrement:
-                    panelHeight -= 16
-                @unknown default:
-                    break
-                }
-            }
     }
 
     private var header: some View {

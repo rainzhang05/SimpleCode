@@ -154,6 +154,19 @@ struct TerminalSessionControllerTests {
         #expect(driver.sentText == ["printf 'hello'\n"])
     }
 
+    @Test func showingTerminalFocusesItImmediatelyAndEveryTimeItReopens() throws {
+        let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
+        let driver = TerminalDriverSpy()
+        controller.attach(driver)
+
+        controller.setPanelVisible(true)
+        #expect(driver.focusCount == 1)
+
+        controller.setPanelVisible(false)
+        controller.setPanelVisible(true)
+        #expect(driver.focusCount == 2)
+    }
+
     @Test func driverSubmissionFailureIsReportedWithoutQueuingADuplicate() throws {
         let controller = TerminalSessionController(workingDirectory: try makeTemporaryDirectory())
         let driver = TerminalDriverSpy()
@@ -185,7 +198,7 @@ struct TerminalSessionControllerTests {
         #expect(driver.sentText.isEmpty)
         #expect(driver.sentBytes == [[0x15, 0x0C]])
         #expect(driver.events.suffix(2) == ["bytes:[21, 12]", "focus"])
-        #expect(driver.focusCount == 1)
+        #expect(driver.focusCount == 2)
         #expect(!controller.consumeFocusRequest())
     }
 
@@ -227,7 +240,7 @@ struct TerminalSessionControllerTests {
         controller.startIfNeeded()
 
         let resetIndex = try #require(driver.events.firstIndex(of: "bytes:[21, 12]"))
-        let focusIndex = try #require(driver.events.firstIndex(of: "focus"))
+        let focusIndex = try #require(driver.events[resetIndex...].firstIndex(of: "focus"))
         let sendIndex = try #require(driver.events.firstIndex(of: "send:echo guarded\n"))
         #expect(resetIndex < focusIndex)
         #expect(focusIndex < sendIndex)
@@ -247,13 +260,13 @@ struct TerminalSessionControllerTests {
         controller.clearDisplay()
 
         #expect(!controller.consumeFocusRequest())
-        #expect(driver.focusCount == 0)
+        #expect(driver.focusCount == 1)
 
         driver.byteSendSucceeds = true
         controller.startIfNeeded()
 
         #expect(driver.events.suffix(2) == ["bytes:[21, 12]", "focus"])
-        #expect(driver.focusCount == 1)
+        #expect(driver.focusCount == 2)
         #expect(!controller.consumeFocusRequest())
     }
 

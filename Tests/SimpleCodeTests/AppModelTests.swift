@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import SimpleCode
@@ -162,6 +163,23 @@ struct AppModelTests {
         #expect(WorkspacePanelLayout.motionDuration == 0.20)
     }
 
+    @Test func nativeResizeHandleReportsWindowRelativeDragDistance() throws {
+        let view = ResizeTrackingView()
+        var horizontalDelta: CGFloat?
+        view.axis = .horizontal
+        view.onDrag = { horizontalDelta = $0 }
+        view.mouseDown(with: try mouseEvent(.leftMouseDown, location: NSPoint(x: 20, y: 30)))
+        view.mouseDragged(with: try mouseEvent(.leftMouseDragged, location: NSPoint(x: 61, y: 74)))
+        #expect(horizontalDelta == 41)
+
+        var verticalDelta: CGFloat?
+        view.axis = .vertical
+        view.onDrag = { verticalDelta = $0 }
+        view.mouseDown(with: try mouseEvent(.leftMouseDown, location: NSPoint(x: 40, y: 50)))
+        view.mouseDragged(with: try mouseEvent(.leftMouseDragged, location: NSPoint(x: 28, y: 87)))
+        #expect(verticalDelta == 37)
+    }
+
     @Test func workspaceBootstrapIsIdempotentAndTeardownIsSafeToRepeat() async throws {
         let suiteName = "com.simplecode.tests.bootstrap.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -181,6 +199,20 @@ struct AppModelTests {
         workspace.tearDown()
         workspace.tearDown()
         #expect(workspace.isTornDown)
+    }
+
+    private func mouseEvent(_ type: NSEvent.EventType, location: NSPoint) throws -> NSEvent {
+        try #require(NSEvent.mouseEvent(
+            with: type,
+            location: location,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        ))
     }
 
     @Test func workspaceTeardownReleasesOpenDocumentsBeforeTermination() throws {
