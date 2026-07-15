@@ -1442,7 +1442,6 @@ struct EditorVisibleRangeTests {
         ))
 
         #expect(requestedSubstrings == [editRange])
-        #expect(plan.undoPayload.retainedUTF16Length == 1)
         #expect(plan.undoPayload.edits == [
             TextEdit(
                 range: NSRange(location: editRange.location, length: "expanded".utf16.count),

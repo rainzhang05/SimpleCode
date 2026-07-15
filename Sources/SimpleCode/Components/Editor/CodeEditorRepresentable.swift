@@ -5,12 +5,6 @@ struct ProgrammaticUndoPayload: Equatable, Sendable {
     let edits: [TextEdit]
     let selection: NSRange
     let inverseSelection: NSRange
-
-    var retainedUTF16Length: Int {
-        edits.reduce(into: 0) { length, edit in
-            length += edit.replacement.utf16.count
-        }
-    }
 }
 
 enum ProgrammaticLineIndexStrategy: Equatable, Sendable {
