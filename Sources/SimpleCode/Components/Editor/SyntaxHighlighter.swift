@@ -95,12 +95,14 @@ enum InitialHighlightPaging {
               first.location == pageRange.location,
               pageRange.length > 0,
               NSMaxRange(pageRange) <= NSMaxRange(first) else { return nil }
-        var remaining = Array(cursor.remainingRanges.dropFirst())
+        var remaining = cursor.remainingRanges
         if NSMaxRange(pageRange) < NSMaxRange(first) {
-            remaining.insert(
-                NSRange(location: NSMaxRange(pageRange), length: NSMaxRange(first) - NSMaxRange(pageRange)),
-                at: 0
+            remaining[0] = NSRange(
+                location: NSMaxRange(pageRange),
+                length: NSMaxRange(first) - NSMaxRange(pageRange)
             )
+        } else {
+            remaining.removeFirst()
         }
         guard !remaining.isEmpty else { return nil }
         return InitialHighlightCursor(
