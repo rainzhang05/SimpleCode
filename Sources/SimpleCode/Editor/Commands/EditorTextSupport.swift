@@ -125,8 +125,9 @@ enum EditorTextSupport {
     }
 
     static func lineEnding(in text: String) -> String {
-        if text.contains("\r\n") { return "\r\n" }
-        if text.contains("\r") { return "\r" }
+        if let first = text.first(where: { $0 == "\n" || $0 == "\r" || $0 == "\r\n" }) {
+            return String(first)
+        }
         return "\n"
     }
 
