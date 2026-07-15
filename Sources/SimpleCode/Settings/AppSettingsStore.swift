@@ -89,6 +89,8 @@ final class AppSettingsStore {
     }
 
     private func applyApplicationAppearance() {
+        // Test hosts can bootstrap settings before NSApp exists.
+        guard NSApp != nil else { return }
         switch appearance.mode {
         case .system:
             NSApp.appearance = nil
