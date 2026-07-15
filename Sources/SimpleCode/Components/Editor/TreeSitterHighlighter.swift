@@ -186,12 +186,13 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
             )
         }
 
+        let documentUTF16Count = (lastParsedText as NSString).length
         return batches(
             tree: tree,
             changedUTF16Ranges: [],
             revision: revision,
-            priorityUTF16Ranges: mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count),
-            documentUTF16Count: fullText.utf16.count,
+            priorityUTF16Ranges: mergedRanges([visibleUTF16Range], documentLength: documentUTF16Count),
+            documentUTF16Count: documentUTF16Count,
             includePendingRetry: true
         )
     }

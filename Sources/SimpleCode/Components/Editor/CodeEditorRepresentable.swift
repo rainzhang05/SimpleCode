@@ -855,9 +855,10 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             guard lastAppliedViewportRange.map({ !NSEqualRanges($0, visibleRange) }) ?? true else {
                 return nil
             }
+            let isTreeSitter = LanguageRegistry.definition(for: session.language).highlighterKind == .treeSitter
             return ViewportHighlightRequest(
                 highlighter: highlighter,
-                sourceText: textView.string,
+                sourceText: isTreeSitter ? "" : expectedTextStorage.string,
                 revision: session.revision,
                 visibleRange: visibleRange
             )
