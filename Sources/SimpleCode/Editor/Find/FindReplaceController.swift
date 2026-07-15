@@ -213,9 +213,13 @@ final class FindReplaceController {
 
     private func regexMatches(in text: String, range: NSRange) -> [FindMatch] {
         guard let regex = regexForCurrentSearch() else { return [] }
-        return regex.matches(in: text, range: range)
-            .filter { $0.range.length > 0 }
-            .map { FindMatch(range: $0.range) }
+        let matches = regex.matches(in: text, range: range)
+        var found: [FindMatch] = []
+        found.reserveCapacity(matches.count)
+        for match in matches where match.range.length > 0 {
+            found.append(FindMatch(range: match.range))
+        }
+        return found
     }
 
     private func isWholeWord(_ range: NSRange, in text: NSString) -> Bool {
