@@ -76,9 +76,7 @@ actor FileContentLoader: FileContentLoading {
             throw FileLoadError.unsupportedEncoding
         }
 
-        guard let text = TextEncodingDetector.decode(data, encoding: detected.encoding, hadBOM: detected.hadBOM) else {
-            throw FileLoadError.unsupportedEncoding
-        }
+        let text = detected.text
 
         let effectivePolicy = effectiveOpenPolicy(base: policy, choice: choice)
         return LoadedFileContent(
