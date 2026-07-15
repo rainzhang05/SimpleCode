@@ -128,25 +128,25 @@ struct LineStartIndex: Equatable, Sendable {
 
     static func scanLineStarts(in text: String) -> [Int] {
         var starts = [0]
-        let utf16 = text.utf16
-        var index = utf16.startIndex
-        while index < utf16.endIndex {
-            let codeUnit = utf16[index]
-            if codeUnit == 10 {
-                let next = utf16.index(after: index)
-                starts.append(utf16.distance(from: utf16.startIndex, to: next))
-            } else if codeUnit == 13 {
-                let next = utf16.index(after: index)
-                if next < utf16.endIndex, utf16[next] == 10 {
-                    let afterPair = utf16.index(after: next)
-                    starts.append(utf16.distance(from: utf16.startIndex, to: afterPair))
-                    index = afterPair
+        var offset = 0
+        var previousWasCR = false
+        
+        for codeUnit in text.utf16 {
+            offset += 1
+            if previousWasCR {
+                previousWasCR = false
+                if codeUnit == 10 {
+                    starts[starts.count - 1] = offset
                     continue
-                } else {
-                    starts.append(utf16.distance(from: utf16.startIndex, to: next))
                 }
             }
-            index = utf16.index(after: index)
+            
+            if codeUnit == 10 {
+                starts.append(offset)
+            } else if codeUnit == 13 {
+                starts.append(offset)
+                previousWasCR = true
+            }
         }
         return starts
     }
