@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 /// Monospaced font helpers shared by the editor and terminal surfaces.
 enum Typography {
@@ -25,17 +24,9 @@ enum Typography {
         return .monospacedSystemFont(ofSize: size, weight: .regular)
     }
 
-    static func editorFont(size: CGFloat) -> NSFont {
-        editorFont(family: systemMonospacedFamilyName, size: size, ligatures: false)
-    }
-
     static func terminalFont(family: String, size: CGFloat) -> NSFont {
         let resolvedFamily = FontCatalog.resolvedMonospacedFamily(family)
         return NSFont(name: resolvedFamily, size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
-    }
-
-    static func uiMonospaced(size: CGFloat = 12) -> Font {
-        .system(size: size, design: .monospaced)
     }
 }
 
