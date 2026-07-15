@@ -66,7 +66,7 @@ struct ProgrammaticEditPlan: Sendable {
         var inverseEdits: [TextEdit] = []
         inverseEdits.reserveCapacity(ascendingEdits.count)
         for edit in ascendingEdits {
-            let replacementLength = edit.replacement.utf16.count
+            let replacementLength = (edit.replacement as NSString).length
             inverseEdits.append(TextEdit(
                 range: NSRange(
                     location: edit.range.location + offsetDelta,
@@ -1041,7 +1041,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             isApplyingCommand = true
             textStorage.beginEditing()
             for edit in plan.forwardEdits {
-                let replacementLength = edit.replacement.utf16.count
+                let replacementLength = (edit.replacement as NSString).length
                 let delta = replacementLength - edit.range.length
                 textView.replaceCharacters(in: edit.range, with: edit.replacement)
                 if plan.lineIndexStrategy == .incremental {
