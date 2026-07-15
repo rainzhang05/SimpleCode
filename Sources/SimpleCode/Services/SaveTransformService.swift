@@ -57,6 +57,16 @@ enum SaveTransformService {
         if language == .markdown, line.hasSuffix("  ") {
             return line
         }
-        return line.replacingOccurrences(of: #"[ \t]+$"#, with: "", options: .regularExpression)
+        var end = line.endIndex
+        while end > line.startIndex {
+            let prev = line.index(before: end)
+            let ch = line[prev]
+            if ch == " " || ch == "\t" {
+                end = prev
+            } else {
+                break
+            }
+        }
+        return end == line.endIndex ? line : String(line[..<end])
     }
 }
