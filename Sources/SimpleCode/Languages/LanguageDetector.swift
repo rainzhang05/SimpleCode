@@ -57,7 +57,7 @@ enum LanguageDetector {
         let interpreter = trimmed.dropFirst(2).lowercased()
         for definition in LanguageRegistry.all {
             guard !definition.shebangPatterns.isEmpty else { continue }
-            if definition.shebangPatterns.contains(where: { interpreter.contains($0.lowercased()) }) {
+            if definition.shebangPatterns.contains(where: { interpreter.contains($0) }) {
                 return definition.id
             }
         }
