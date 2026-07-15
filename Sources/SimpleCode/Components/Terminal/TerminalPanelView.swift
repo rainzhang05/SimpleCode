@@ -100,6 +100,8 @@ struct TerminalPanelView: View {
         }
         .padding(.horizontal, Spacing.small)
         .frame(height: 36)
+        .contentShape(Rectangle())
+        .nativeArrowCursor()
         .accessibilityElement(children: .contain)
     }
 

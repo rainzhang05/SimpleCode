@@ -70,6 +70,14 @@ extension View {
             NativeCursorRegion(cursor: .pointingHand)
         }
     }
+
+    /// Owns the arrow cursor over SwiftUI chrome that overlays an NSTextView,
+    /// so the editor I-beam does not bleed through.
+    func nativeArrowCursor() -> some View {
+        overlay {
+            NativeCursorRegion(cursor: .arrow)
+        }
+    }
 }
 
 struct NativeResizeHandle: NSViewRepresentable {
