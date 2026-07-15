@@ -72,6 +72,11 @@ final class LineNumberGutterView: NSView {
         )
         ColorRole.gutterBackgroundNSColor.setFill()
         gutterRect.intersection(dirtyRect).fill()
+        drawCurrentLineHighlight(
+            from: codeTextView,
+            within: gutterRect,
+            dirtyRect: dirtyRect
+        )
 
         let origin = codeTextView.textContainerOrigin
         let topPoint = EditorTextGeometry.layoutPoint(
@@ -147,6 +152,27 @@ final class LineNumberGutterView: NSView {
         )
         let point = convert(textPoint, from: codeTextView)
         numberString.draw(at: NSPoint(x: max(4, point.x), y: point.y), withAttributes: attributes)
+    }
+
+    private func drawCurrentLineHighlight(
+        from codeTextView: CodeTextView,
+        within gutterRect: NSRect,
+        dirtyRect: NSRect
+    ) {
+        guard let editorRect = codeTextView.currentLineHighlightRect() else { return }
+        let highlightRect = convert(editorRect, from: codeTextView)
+        let paintRect = highlightRect.intersection(gutterRect).intersection(dirtyRect)
+        guard !paintRect.isEmpty else { return }
+
+        ColorRole.editorCurrentLineNSColor.setFill()
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(
+            roundedRect: highlightRect,
+            xRadius: CodeTextView.currentLineHighlightCornerRadius,
+            yRadius: CodeTextView.currentLineHighlightCornerRadius
+        ).addClip()
+        paintRect.fill()
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     private static func lineNumberPointSize(editorFont: NSFont?) -> CGFloat {

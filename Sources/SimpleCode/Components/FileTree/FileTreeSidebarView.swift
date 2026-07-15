@@ -51,7 +51,9 @@ struct FileTreeSidebarView: View {
             }
         }
         .frame(maxHeight: .infinity)
-        .background(ColorRole.editorBackground)
+        .glassPanel(cornerRadius: CornerRadius.panel)
+        .shadow(color: .black.opacity(0.16), radius: 22, y: 10)
+        .clipShape(RoundedRectangle(cornerRadius: CornerRadius.panel, style: .continuous))
         .overlay(alignment: .trailing) {
             resizeHandle
         }

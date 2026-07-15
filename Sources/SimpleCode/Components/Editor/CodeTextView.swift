@@ -102,16 +102,34 @@ final class CodeTextView: NSTextView {
 
     // MARK: Current-line highlight
 
+    static let currentLineHighlightCornerRadius: CGFloat = 7
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
         drawCurrentLineHighlight(in: rect)
     }
 
     private func drawCurrentLineHighlight(in dirtyRect: NSRect) {
-        guard highlightCurrentLine else { return }
-        guard selectedRange().length == 0 else { return }
+        guard let highlightRect = currentLineHighlightRect() else { return }
+        let paintRect = highlightRect.intersection(dirtyRect)
+        guard !paintRect.isEmpty else { return }
+
+        ColorRole.editorCurrentLineNSColor.setFill()
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(
+            roundedRect: highlightRect,
+            xRadius: Self.currentLineHighlightCornerRadius,
+            yRadius: Self.currentLineHighlightCornerRadius
+        ).addClip()
+        paintRect.fill()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    func currentLineHighlightRect() -> NSRect? {
+        guard highlightCurrentLine else { return nil }
+        guard selectedRange().length == 0 else { return nil }
         guard let layoutManager = textLayoutManager,
-              let selectionRange = layoutManager.textSelections.first?.textRanges.first else { return }
+              let selectionRange = layoutManager.textSelections.first?.textRanges.first else { return nil }
 
         var viewRect: NSRect?
         if let fragment = layoutManager.textLayoutFragment(for: selectionRange.location) {
@@ -128,25 +146,14 @@ final class CodeTextView: NSTextView {
             }
         }
 
-        guard var viewRect else { return }
+        guard var viewRect else { return nil }
         let visible = visibleRect
         let horizontalMin = max(visible.minX, bounds.minX)
         let horizontalMax = min(visible.maxX, bounds.maxX)
         viewRect.origin.x = horizontalMin
         viewRect.size.width = max(0, horizontalMax - horizontalMin)
         let highlightRect = viewRect.insetBy(dx: 4, dy: 0)
-        let paintRect = highlightRect.intersection(dirtyRect)
-        guard !paintRect.isEmpty else { return }
-
-        ColorRole.editorCurrentLineNSColor.setFill()
-        NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(
-            roundedRect: highlightRect,
-            xRadius: 5,
-            yRadius: 5
-        ).addClip()
-        paintRect.fill()
-        NSGraphicsContext.restoreGraphicsState()
+        return highlightRect.isEmpty ? nil : highlightRect
     }
 
     // MARK: Editor commands

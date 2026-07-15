@@ -18,10 +18,7 @@ enum ColorRoleDefaults {
         light: NSColor(srgbRed: 181.0 / 255, green: 213.0 / 255, blue: 1, alpha: 1),
         dark: NSColor(srgbRed: 38.0 / 255, green: 79.0 / 255, blue: 120.0 / 255, alpha: 1)
     )
-    static let gutterBackground = ColorRolePair(
-        light: NSColor(srgbRed: 248.0 / 255, green: 249.0 / 255, blue: 250.0 / 255, alpha: 1),
-        dark: NSColor(srgbRed: 17.0 / 255, green: 19.0 / 255, blue: 23.0 / 255, alpha: 1)
-    )
+    static let gutterBackground = editorBackground
     static let lineNumber = ColorRolePair(
         light: NSColor(srgbRed: 107.0 / 255, green: 114.0 / 255, blue: 128.0 / 255, alpha: 1),
         dark: NSColor(srgbRed: 139.0 / 255, green: 148.0 / 255, blue: 158.0 / 255, alpha: 1)

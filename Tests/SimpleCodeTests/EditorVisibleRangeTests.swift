@@ -601,6 +601,40 @@ struct EditorVisibleRangeTests {
     }
 
     @MainActor
+    @Test func gutterPreservesRoundedCurrentLineHighlight() throws {
+        let textView = CodeTextView()
+        textView.appearance = NSAppearance(named: .aqua)
+        textView.frame = NSRect(x: 0, y: 0, width: 240, height: 90)
+        textView.font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        textView.string = "first line\nsecond line"
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+
+        let gutter = LineNumberGutterView(codeTextView: textView)
+        var lineStartIndex = LineStartIndex()
+        lineStartIndex.rebuild(from: textView.string)
+        gutter.lineStartIndex = lineStartIndex
+        _ = gutter.updateMetrics(font: textView.font, lineCount: 2)
+        textView.configureLineNumberGutter(visible: true, width: gutter.width)
+        textView.addSubview(gutter, positioned: .above, relativeTo: nil)
+        textView.layoutSubtreeIfNeeded()
+        textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
+
+        let layoutManager = try #require(textView.textLayoutManager)
+        let contentManager = try #require(layoutManager.textContentManager)
+        layoutManager.ensureLayout(for: contentManager.documentRange)
+        let selectionLocation = try #require(layoutManager.textSelections.first?.textRanges.first?.location)
+        let fragment = try #require(layoutManager.textLayoutFragment(for: selectionLocation))
+        let lineFrame = try #require(EditorTextGeometry.visualLineFrame(in: fragment, textView: textView))
+        let editorHighlight = try #require(textView.currentLineHighlightRect())
+        let gutterHighlight = gutter.convert(editorHighlight, from: textView)
+
+        #expect(editorHighlight.midY == lineFrame.midY)
+        #expect(gutterHighlight.minX == 4)
+        #expect(gutterHighlight.intersects(gutter.bounds))
+        #expect(CodeTextView.currentLineHighlightCornerRadius == 7)
+    }
+
+    @MainActor
     @Test func sharedTextGeometryAccountsForInsetsPaddingAndScrollCoordinates() throws {
         let textView = CodeTextView()
         textView.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
