@@ -218,8 +218,13 @@ enum EditorTextSupport {
 
     static func indentLevel(of whitespace: String, usesTabs: Bool, tabWidth: Int) -> Int {
         if usesTabs {
-            return whitespace.filter { $0 == "\t" }.count
-                + whitespace.filter { $0 == " " }.count / tabWidth
+            var tabs = 0
+            var spaces = 0
+            for ch in whitespace {
+                if ch == "\t" { tabs += 1 }
+                else if ch == " " { spaces += 1 }
+            }
+            return tabs + (spaces / tabWidth)
         }
         return whitespace.count / tabWidth
     }

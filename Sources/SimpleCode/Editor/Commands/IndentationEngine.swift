@@ -111,7 +111,8 @@ enum IndentationEngine {
             if indent.hasSuffix("\t") {
                 return String(indent.dropLast())
             }
-            let spaces = indent.filter { $0 == " " }.count
+            var spaces = 0
+            for ch in indent where ch == " " { spaces += 1 }
             if spaces >= options.tabWidth {
                 var result = indent
                 var removed = 0
