@@ -1019,12 +1019,13 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             let selection = result.resultingSelections.first ?? textView.selectedRange()
             if !result.edits.isEmpty {
                 applyTextEdits(result.edits, in: textView, resultingSelection: selection)
+                // didProcessEditing is skipped while isApplyingCommand; refresh here.
+                textView.needsDisplay = true
+                overlay?.needsDisplay = true
             } else {
                 textView.setSelectedRange(selection)
                 session.selectionRange = selection
             }
-            textView.needsDisplay = true
-            overlay?.needsDisplay = true
         }
 
         private func applyTextEdits(
