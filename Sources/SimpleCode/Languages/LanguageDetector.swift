@@ -50,11 +50,11 @@ enum LanguageDetector {
     }
 
     private static func detectShebang(in content: String) -> LanguageID? {
-        guard let firstLine = content.firstLine else { return nil }
-        let trimmed = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let firstLine = content.firstLineSubstring else { return nil }
+        let trimmed = firstLine.drop(while: { $0.isWhitespace })
         guard trimmed.hasPrefix("#!") else { return nil }
 
-        let interpreter = String(trimmed.dropFirst(2)).lowercased()
+        let interpreter = trimmed.dropFirst(2).lowercased()
         for definition in LanguageRegistry.all {
             guard !definition.shebangPatterns.isEmpty else { continue }
             if definition.shebangPatterns.contains(where: { interpreter.contains($0.lowercased()) }) {
@@ -81,10 +81,10 @@ enum LanguageDetector {
 }
 
 private extension String {
-    var firstLine: String? {
-        guard let newlineIndex = firstIndex(of: "\n") else {
-            return isEmpty ? nil : self
+    var firstLineSubstring: Substring? {
+        guard let newlineIndex = firstIndex(where: { $0.isNewline }) else {
+            return isEmpty ? nil : self[...]
         }
-        return String(self[..<newlineIndex])
+        return self[..<newlineIndex]
     }
 }
