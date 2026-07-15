@@ -227,10 +227,6 @@ final class FileTreeModel {
         return workspaceRoot
     }
 
-    func node(for id: FileTreeNodeID) -> FileTreeNodeState? {
-        findNode(id: id)
-    }
-
     private func setLoading(_ loading: Bool, for nodeID: FileTreeNodeID) {
         updateNode(nodeID) { $0.isLoading = loading }
     }
