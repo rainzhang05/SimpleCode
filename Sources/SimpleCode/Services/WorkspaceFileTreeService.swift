@@ -4,7 +4,7 @@ struct FileTreeNodeID: Hashable, Sendable {
     let path: String
 
     init(url: URL) {
-        self.path = url.standardizedFileURL.path
+        self.path = url.path
     }
 
     var url: URL { URL(fileURLWithPath: path) }
@@ -36,7 +36,7 @@ actor WorkspaceFileTreeService {
         workspaceRoot: URL,
         userPatterns: [String] = []
     ) -> FileTreeDirectoryListing {
-        let rootPath = workspaceRoot.standardizedFileURL.path
+        let rootPath = workspaceRoot.path
         let keys: [URLResourceKey] = [
             .isDirectoryKey,
             .isSymbolicLinkKey,
@@ -58,7 +58,7 @@ actor WorkspaceFileTreeService {
                 let isDirectory = values?.isDirectory ?? false
                 let isSymlink = values?.isSymbolicLink ?? false
                 let name = item.lastPathComponent
-                let itemPath = item.standardizedFileURL.path
+                let itemPath = item.path
                 let relativePath = itemPath.hasPrefix(rootPath + "/")
                     ? String(itemPath.dropFirst(rootPath.count + 1))
                     : name
