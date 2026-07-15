@@ -11,7 +11,7 @@ struct LineStartIndexTests {
         index.applyEdit(
             editedRange: NSRange(location: 5, length: 1),
             changeInLength: 1,
-            insertedText: "!",
+            insertedContainsLineBreak: false,
             documentLength: 6,
             fullTextFallback: {
                 fallbackReadCount += 1
@@ -33,8 +33,8 @@ struct LineStartIndexTests {
         index.applyEdit(
             editedRange: NSRange(location: 20_000, length: 1),
             changeInLength: 1,
-            insertedText: "!",
-            documentLength: original.utf16.count + 1,
+            insertedContainsLineBreak: false,
+            documentLength: (original as NSString).length + 1,
             fullTextFallback: {
                 fallbackReadCount += 1
                 return String(original.prefix(20_000)) + "!" + String(original.dropFirst(20_000))
@@ -92,8 +92,9 @@ struct LineStartIndexTests {
         index.applyEdit(
             editedRange: NSRange(location: 5, length: 0),
             changeInLength: -1,
-            insertedText: "",
-            fullText: "first"
+            insertedContainsLineBreak: false,
+            documentLength: 5,
+            fullTextFallback: { "first" }
         )
 
         #expect(index.lineCount == 1)
@@ -106,8 +107,9 @@ struct LineStartIndexTests {
         index.applyEdit(
             editedRange: NSRange(location: 2, length: 0),
             changeInLength: 1,
-            insertedText: "\n",
-            fullText: "ab\n"
+            insertedContainsLineBreak: true,
+            documentLength: 3,
+            fullTextFallback: { "ab\n" }
         )
         #expect(index.lineCount == 2)
         #expect(index.lineNumber(atUTF16Offset: 3) == 2)
@@ -119,8 +121,9 @@ struct LineStartIndexTests {
         index.applyEdit(
             editedRange: NSRange(location: 1, length: 1),
             changeInLength: -1,
-            insertedText: "",
-            fullText: "ab"
+            insertedContainsLineBreak: false,
+            documentLength: 2,
+            fullTextFallback: { "ab" }
         )
         #expect(index.lineCount == 1)
         #expect(index.lineNumber(atUTF16Offset: 1) == 1)
@@ -133,8 +136,9 @@ struct LineStartIndexTests {
         index.applyEdit(
             editedRange: NSRange(location: 2, length: 1),
             changeInLength: 0,
-            insertedText: "\n",
-            fullText: "ab\nd"
+            insertedContainsLineBreak: true,
+            documentLength: 4,
+            fullTextFallback: { "ab\nd" }
         )
 
         #expect(index.lineCount == 2)
@@ -149,8 +153,9 @@ struct LineStartIndexTests {
         index.applyEdit(
             editedRange: NSRange(location: 2, length: 0),
             changeInLength: -1,
-            insertedText: "",
-            fullText: "a\rb"
+            insertedContainsLineBreak: false,
+            documentLength: 3,
+            fullTextFallback: { "a\rb" }
         )
 
         #expect(index.lineCount == 2)

@@ -12,38 +12,6 @@ struct LineStartIndex: Equatable, Sendable {
         lineStartOffsets = Self.scanLineStarts(in: text)
     }
 
-    mutating func applyEdit(
-        editedRange: NSRange,
-        changeInLength delta: Int,
-        insertedText: String,
-        fullText: String
-    ) {
-        applyEdit(
-            editedRange: editedRange,
-            changeInLength: delta,
-            insertedContainsLineBreak: Self.containsLineBreak(insertedText),
-            documentLength: (fullText as NSString).length,
-            fullTextFallback: { fullText }
-        )
-    }
-
-    /// Convenience for tests and callers that already have the inserted string.
-    mutating func applyEdit(
-        editedRange: NSRange,
-        changeInLength delta: Int,
-        insertedText: String,
-        documentLength fullLength: Int,
-        fullTextFallback: () -> String
-    ) {
-        applyEdit(
-            editedRange: editedRange,
-            changeInLength: delta,
-            insertedContainsLineBreak: Self.containsLineBreak(insertedText),
-            documentLength: fullLength,
-            fullTextFallback: fullTextFallback
-        )
-    }
-
     /// Keeps ordinary character edits on the offset-only fast path. The complete
     /// document is requested only for newline/CRLF repairs or an invariant failure.
     mutating func applyEdit(
