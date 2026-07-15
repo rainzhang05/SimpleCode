@@ -217,11 +217,6 @@ final class WorkspaceModel {
         )
     }
 
-    func createNewFile(in directory: URL? = nil) async {
-        let dir = directory ?? fileTree.destinationDirectoryForCreation()
-        await createNewFile(named: uniqueName(base: CreationKind.file.defaultName, in: dir), in: dir)
-    }
-
     func createNewFile(named name: String, in directory: URL) async {
         do {
             let result = try await fileOperations.createFile(at: directory, name: name)
@@ -231,11 +226,6 @@ final class WorkspaceModel {
         } catch {
             errorAlertMessage = error.localizedDescription
         }
-    }
-
-    func createNewFolder(in directory: URL? = nil) async {
-        let dir = directory ?? fileTree.destinationDirectoryForCreation()
-        await createNewFolder(named: uniqueName(base: CreationKind.folder.defaultName, in: dir), in: dir)
     }
 
     func createNewFolder(named name: String, in directory: URL) async {
