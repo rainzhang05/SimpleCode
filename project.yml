@@ -90,7 +90,7 @@ targets:
         PRODUCT_NAME: SimpleCode
         PRODUCT_BUNDLE_IDENTIFIER: com.simplecode.app
         MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 1
+        CURRENT_PROJECT_VERSION: 2
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSMinimumSystemVersion: "26.0"
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
@@ -99,6 +99,22 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: SimpleCode/SimpleCode.entitlements
+    # actool often emits an incomplete AppIcon.icns (only 16/128 slots). Finder and
+    # DMG use that file for the app icon, so replace it after Resources with a full
+    # iconutil build from Supporting/AppIcon.icns.
+    postBuildScripts:
+      - name: Embed Complete AppIcon.icns
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          SRC="${SRCROOT}/Supporting/AppIcon.icns"
+          DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/AppIcon.icns"
+          if [[ ! -f "$SRC" ]]; then
+            echo "error: missing complete AppIcon at $SRC" >&2
+            exit 1
+          fi
+          cp -f "$SRC" "$DEST"
+          echo "Installed complete AppIcon.icns ($(wc -c < "$DEST") bytes)"
     scheme:
       testTargets:
         - SimpleCodeTests

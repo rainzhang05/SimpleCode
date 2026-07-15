@@ -902,6 +902,7 @@
 				CD9F3293BEA4A9C4641DF9AF /* Sources */,
 				17C4C9DAB0E2538AD7659EC3 /* Resources */,
 				7FE402A500D8E411AA076386 /* Frameworks */,
+				F2CD20BE258C9D42AA41B298 /* Embed Complete AppIcon.icns */,
 			);
 			buildRules = (
 			);
@@ -1046,6 +1047,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		F2CD20BE258C9D42AA41B298 /* Embed Complete AppIcon.icns */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Complete AppIcon.icns";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nSRC=\"${SRCROOT}/Supporting/AppIcon.icns\"\nDEST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/AppIcon.icns\"\nif [[ ! -f \"$SRC\" ]]; then\n  echo \"error: missing complete AppIcon at $SRC\" >&2\n  exit 1\nfi\ncp -f \"$SRC\" \"$DEST\"\necho \"Installed complete AppIcon.icns ($(wc -c < \"$DEST\") bytes)\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		CD9F3293BEA4A9C4641DF9AF /* Sources */ = {
@@ -1362,7 +1385,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = SimpleCode/SimpleCode.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1491,7 +1514,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = SimpleCode/SimpleCode.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
