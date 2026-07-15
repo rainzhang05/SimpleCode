@@ -94,12 +94,6 @@ extension View {
         pointerStyle(.link)
     }
 
-    /// Pointing-hand feedback for interactive SwiftUI controls. Prefer this over
-    /// embedding a hittable AppKit cursor region, which would steal button clicks.
-    func nativePointingHandCursor() -> some View {
-        pointerStyle(.link)
-    }
-
     /// Owns the arrow cursor over non-interactive SwiftUI chrome that overlays
     /// an NSTextView. Do not apply this to Buttons.
     func nativeArrowCursor() -> some View {
