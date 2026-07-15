@@ -51,11 +51,6 @@ final class RunCommandStore {
         configuration = stateStore.state(for: workspaceID).runConfiguration
     }
 
-    func useSuggestion() {
-        guard let suggestion = latestSuggestion, suggestion.isRunnable, let command = suggestion.command else { return }
-        setCommand(command, explicit: true)
-    }
-
     func clearExplicitCommand() {
         stateStore.updateRunConfiguration(for: workspaceID) { config in
             config.command = ""
