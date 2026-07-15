@@ -1041,7 +1041,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                 documentLength: textStorage.length,
                 undoSelection: originalSelection,
                 redoSelection: resultingSelection,
-                replacedText: { textStorage.attributedSubstring(from: $0).string }
+                replacedText: { textStorage.mutableString.substring(with: $0) }
             ) else { return }
 
             isApplyingCommand = true
