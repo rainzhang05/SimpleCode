@@ -83,7 +83,7 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
         cachedRevision = revision
         cachedTokens = tokens
         hasMultilineConstructs = Self.containsMultilineConstructs(text, supportsBackticks: configuration.supportsBackticks)
-        let wholeDocument = NSRange(location: 0, length: text.utf16.count)
+        let wholeDocument = NSRange(location: 0, length: (text as NSString).length)
         return HighlightBatch(revision: revision, coveredRanges: [wholeDocument], tokens: tokens)
     }
 
@@ -99,12 +99,13 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
             state: InitialLexicalState()
         )
         initialSawMultilineConstructs = false
+        let documentUTF16Count = (text as NSString).length
         let priority = NSIntersectionRange(
             priorityUTF16Range,
-            NSRange(location: 0, length: text.utf16.count)
+            NSRange(location: 0, length: documentUTF16Count)
         )
         let remaining = InitialHighlightPaging.remainingRanges(
-            documentLength: text.utf16.count,
+            documentLength: documentUTF16Count,
             excluding: priority
         )
         let initialCursor = remaining.isEmpty
