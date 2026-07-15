@@ -5,7 +5,7 @@ import AppKit
 /// Responsibility owned by this file: configuring `NSTextView`/TextKit for code
 /// editing (plain-text semantics, monospaced font, non-wrapping horizontally
 /// scrollable layout, current-line highlighting) and nothing else — it has no
-/// knowledge of SwiftTreeSitter, `EditorDocumentModel`, or SwiftUI. Syntax
+/// knowledge of SwiftTreeSitter, document sessions, or SwiftUI. Syntax
 /// highlighting and document-model bookkeeping live in `CodeEditorRepresentable`'s
 /// coordinator, which owns this view via `NSViewRepresentable`.
 ///

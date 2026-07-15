@@ -21,7 +21,6 @@
 		0DA94D5A1275FEBCF1CEB394 /* GoToLineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C99A781240861EE1758A9557 /* GoToLineView.swift */; };
 		0E5EC9FA529514A911D2102C /* AppResources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64A84E8189A854C34100FD3F /* AppResources.swift */; };
 		0F2173543F4C8025CEA8A3E4 /* Metrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = BABFC8C0937FCFB81A60D3A2 /* Metrics.swift */; };
-		101137AB88F61FB9705A7688 /* EditorDocumentModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFC218685A1BD66674594F5 /* EditorDocumentModel.swift */; };
 		107138A4B56C2C7B0488541F /* WorkspaceRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = F964D60D1DFB200AD75C65D4 /* WorkspaceRecord.swift */; };
 		10F6A39648DA61C17ED7A676 /* WorkspaceFileTreeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26F4A523C0DA019F7DCBD68 /* WorkspaceFileTreeService.swift */; };
 		114E4012BFCE08C337410DE9 /* MoveValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBDAED3859C5D4C53C970756 /* MoveValidatorTests.swift */; };
@@ -244,7 +243,6 @@
 		187C7042C35CDDEBE750A9BF /* ColorRole.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorRole.swift; sourceTree = "<group>"; };
 		19ACA6FB24594C293C9C0434 /* WorkspaceStateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceStateStore.swift; sourceTree = "<group>"; };
 		1AA8D0DAD646696BED7C86CC /* FileOperationError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileOperationError.swift; sourceTree = "<group>"; };
-		1AFC218685A1BD66674594F5 /* EditorDocumentModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorDocumentModel.swift; sourceTree = "<group>"; };
 		1B799E0709EC0BDAB88EE2F2 /* RunCommandSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunCommandSuggestion.swift; sourceTree = "<group>"; };
 		1BB45C5704F01015F4E8153E /* pre-receive.sample */ = {isa = PBXFileReference; path = "pre-receive.sample"; sourceTree = "<group>"; };
 		1FEE0CFD88DC7927146A4F92 /* GitExecutableResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitExecutableResolver.swift; sourceTree = "<group>"; };
@@ -697,7 +695,6 @@
 				45A6BC61BA0FC1652FA28790 /* CodeEditorRepresentable.swift */,
 				07FD4BF55031E777CFE3615E /* CodeTextView.swift */,
 				EC358454060AB7248FB9A27C /* CodeTextViewCommandDelegate.swift */,
-				1AFC218685A1BD66674594F5 /* EditorDocumentModel.swift */,
 				7EE3FBE00941259E3BE3ADBE /* EditorDocumentView.swift */,
 				3B769E80491A1605191C5CA2 /* EditorTabStripView.swift */,
 				4A91CD6AFB72B2065763F739 /* EditorVisibleRange.swift */,
@@ -1094,7 +1091,6 @@
 				E91289A3E546A0044CC2A443 /* DocumentWatcherRegistry.swift in Sources */,
 				3ED1750308F4F38665587076 /* EditorCommandController.swift in Sources */,
 				5437D5A3AB968BC0FC330268 /* EditorCommandTypes.swift in Sources */,
-				101137AB88F61FB9705A7688 /* EditorDocumentModel.swift in Sources */,
 				ACC1D05AF35C8B561B764BE5 /* EditorDocumentSession.swift in Sources */,
 				2F7B3AB617971C818DB8051A /* EditorDocumentView.swift in Sources */,
 				CC4D515AB61A89BA726D4C99 /* EditorOverlayView.swift in Sources */,
