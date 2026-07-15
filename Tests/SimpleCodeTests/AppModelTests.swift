@@ -165,12 +165,13 @@ struct AppModelTests {
 
     @Test func nativeResizeHandleReportsWindowRelativeDragDistance() throws {
         let view = ResizeTrackingView()
-        var horizontalDelta: CGFloat?
+        var horizontalDeltas: [CGFloat] = []
         view.axis = .horizontal
-        view.onDrag = { horizontalDelta = $0 }
+        view.onDrag = { horizontalDeltas.append($0) }
         view.mouseDown(with: try mouseEvent(.leftMouseDown, location: NSPoint(x: 20, y: 30)))
         view.mouseDragged(with: try mouseEvent(.leftMouseDragged, location: NSPoint(x: 61, y: 74)))
-        #expect(horizontalDelta == 41)
+        view.mouseDragged(with: try mouseEvent(.leftMouseDragged, location: NSPoint(x: 70, y: 80)))
+        #expect(horizontalDeltas == [41, 9])
 
         var verticalDelta: CGFloat?
         view.axis = .vertical
@@ -178,6 +179,15 @@ struct AppModelTests {
         view.mouseDown(with: try mouseEvent(.leftMouseDown, location: NSPoint(x: 40, y: 50)))
         view.mouseDragged(with: try mouseEvent(.leftMouseDragged, location: NSPoint(x: 28, y: 87)))
         #expect(verticalDelta == 37)
+
+        NSCursor.arrow.set()
+        view.cursorUpdate(with: try mouseEvent(.mouseMoved, location: NSPoint(x: 28, y: 87)))
+        #expect(NSCursor.current == .resizeUpDown)
+
+        let actionCursorRegion = CursorTrackingView(cursor: .pointingHand)
+        NSCursor.arrow.set()
+        actionCursorRegion.cursorUpdate(with: try mouseEvent(.mouseMoved, location: NSPoint(x: 4, y: 4)))
+        #expect(NSCursor.current == .pointingHand)
     }
 
     @Test func workspaceBootstrapIsIdempotentAndTeardownIsSafeToRepeat() async throws {

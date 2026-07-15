@@ -32,8 +32,13 @@ struct GlassPanel: ViewModifier {
 extension View {
     /// Wraps content in a rounded Liquid Glass surface suitable for floating chrome
     /// (panel headers, popovers, action cards). Not intended for large bodies of text.
+    @ViewBuilder
     func glassPanel(cornerRadius: CGFloat = CornerRadius.panel, interactive: Bool = false) -> some View {
-        modifier(GlassPanel(cornerRadius: cornerRadius, isInteractive: interactive))
-            .pointerStyle(interactive ? .link : nil)
+        if interactive {
+            modifier(GlassPanel(cornerRadius: cornerRadius, isInteractive: true))
+                .pointerStyle(.link)
+        } else {
+            modifier(GlassPanel(cornerRadius: cornerRadius, isInteractive: false))
+        }
     }
 }

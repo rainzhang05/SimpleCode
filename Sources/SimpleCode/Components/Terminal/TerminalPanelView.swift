@@ -10,9 +10,6 @@ struct TerminalPanelView: View {
     var isVisible: Bool = true
     var onClose: () -> Void
 
-    @State private var resizeStartHeight: CGFloat?
-    @State private var isResizeHandleHovered = false
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -49,28 +46,18 @@ struct TerminalPanelView: View {
             accessibilityIdentifier: "terminal.resizeHandle",
             accessibilityValue: "\(Int(panelHeight)) points"
         ) { translation in
-            let startHeight = resizeStartHeight ?? panelHeight
-            if resizeStartHeight == nil { resizeStartHeight = startHeight }
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                panelHeight = startHeight + translation
+                panelHeight += translation
             }
-        } onEnd: {
-            resizeStartHeight = nil
-        } onIncrement: {
+        } onEnd: {} onIncrement: {
             panelHeight += 16
         } onDecrement: {
             panelHeight -= 16
         }
             .frame(height: 14)
             .contentShape(Rectangle())
-            .overlay {
-                Capsule()
-                    .fill(.primary.opacity(isResizeHandleHovered ? 0.34 : 0.14))
-                    .frame(width: 32, height: 2)
-            }
-            .onHover { isResizeHandleHovered = $0 }
     }
 
     private var header: some View {
@@ -134,7 +121,7 @@ struct TerminalPanelView: View {
         .frame(width: 24, height: 24)
         .contentShape(Circle())
         .help(help)
-        .pointingHandCursor()
+        .nativePointingHandCursor()
         .accessibilityLabel(title)
         .accessibilityIdentifier(identifier)
     }

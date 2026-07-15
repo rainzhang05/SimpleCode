@@ -3,9 +3,6 @@ import UniformTypeIdentifiers
 
 struct FileTreeSidebarView: View {
     @Bindable var workspace: WorkspaceModel
-    @State private var resizeStartWidth: CGFloat?
-    @State private var isResizeHandleHovered = false
-
     private var openFilePaths: Set<String> {
         Set(workspace.openDocuments.sessions.compactMap {
             $0.fileURL?.standardizedFileURL.path
@@ -79,28 +76,18 @@ struct FileTreeSidebarView: View {
             accessibilityIdentifier: "fileTree.resizeHandle",
             accessibilityValue: "\(Int(workspace.sidebarWidth)) points"
         ) { translation in
-            let startWidth = resizeStartWidth ?? workspace.sidebarWidth
-            if resizeStartWidth == nil { resizeStartWidth = startWidth }
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                workspace.sidebarWidth = startWidth + translation
+                workspace.sidebarWidth += translation
             }
-        } onEnd: {
-            resizeStartWidth = nil
-        } onIncrement: {
+        } onEnd: {} onIncrement: {
             workspace.sidebarWidth += 16
         } onDecrement: {
             workspace.sidebarWidth -= 16
         }
             .frame(width: 14)
             .contentShape(Rectangle())
-            .overlay {
-                Capsule()
-                    .fill(.primary.opacity(isResizeHandleHovered ? 0.34 : 0.14))
-                    .frame(width: 2, height: 32)
-            }
-            .onHover { isResizeHandleHovered = $0 }
     }
 
     private func handleRootDrop(providers: [NSItemProvider]) -> Bool {
