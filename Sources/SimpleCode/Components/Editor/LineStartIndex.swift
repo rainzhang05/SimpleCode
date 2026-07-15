@@ -21,9 +21,26 @@ struct LineStartIndex: Equatable, Sendable {
         applyEdit(
             editedRange: editedRange,
             changeInLength: delta,
-            insertedText: insertedText,
+            insertedContainsLineBreak: Self.containsLineBreak(insertedText),
             documentLength: (fullText as NSString).length,
             fullTextFallback: { fullText }
+        )
+    }
+
+    /// Convenience for tests and callers that already have the inserted string.
+    mutating func applyEdit(
+        editedRange: NSRange,
+        changeInLength delta: Int,
+        insertedText: String,
+        documentLength fullLength: Int,
+        fullTextFallback: () -> String
+    ) {
+        applyEdit(
+            editedRange: editedRange,
+            changeInLength: delta,
+            insertedContainsLineBreak: Self.containsLineBreak(insertedText),
+            documentLength: fullLength,
+            fullTextFallback: fullTextFallback
         )
     }
 
@@ -32,7 +49,7 @@ struct LineStartIndex: Equatable, Sendable {
     mutating func applyEdit(
         editedRange: NSRange,
         changeInLength delta: Int,
-        insertedText: String,
+        insertedContainsLineBreak: Bool,
         documentLength fullLength: Int,
         fullTextFallback: () -> String
     ) {
@@ -48,7 +65,7 @@ struct LineStartIndex: Equatable, Sendable {
             && lineStartOffsets[firstLineStartAfterEditStart] <= editEnd
         let touchesPotentialCRLFBoundary = containsLineStart(at: editStart + 1)
             || containsLineStart(at: editEnd + 1)
-        if insertedText.contains(where: { $0 == "\n" || $0 == "\r" })
+        if insertedContainsLineBreak
             || removedLineStart
             || touchesPotentialCRLFBoundary {
             rebuild(from: fullTextFallback())
@@ -66,6 +83,26 @@ struct LineStartIndex: Equatable, Sendable {
             || lineStartOffsets.last.map({ $0 > fullLength }) == true {
             rebuild(from: fullTextFallback())
         }
+    }
+
+    static func containsLineBreak(_ text: String) -> Bool {
+        text.contains(where: { $0 == "\n" || $0 == "\r" })
+    }
+
+    /// Scans UTF-16 code units without allocating an attributed substring.
+    static func containsLineBreak(in storage: NSString, range: NSRange) -> Bool {
+        guard range.length > 0 else { return false }
+        let end = NSMaxRange(range)
+        var index = range.location
+        while index < end {
+            switch storage.character(at: index) {
+            case 10, 13:
+                return true
+            default:
+                index += 1
+            }
+        }
+        return false
     }
 
     private func containsLineStart(at offset: Int) -> Bool {

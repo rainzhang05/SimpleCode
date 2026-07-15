@@ -534,11 +534,13 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             session.markDirty()
             onTextChanged()
 
-            let insertedText = textStorage.attributedSubstring(from: editedRange).string
             session.lineStartIndex.applyEdit(
                 editedRange: editedRange,
                 changeInLength: delta,
-                insertedText: insertedText,
+                insertedContainsLineBreak: LineStartIndex.containsLineBreak(
+                    in: textStorage.mutableString,
+                    range: editedRange
+                ),
                 documentLength: textStorage.length,
                 fullTextFallback: { textStorage.string }
             )
@@ -1051,7 +1053,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                     session.lineStartIndex.applyEdit(
                         editedRange: NSRange(location: edit.range.location, length: replacementLength),
                         changeInLength: delta,
-                        insertedText: edit.replacement,
+                        insertedContainsLineBreak: LineStartIndex.containsLineBreak(edit.replacement),
                         documentLength: textStorage.length,
                         fullTextFallback: { textStorage.string }
                     )
