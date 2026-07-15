@@ -2,9 +2,6 @@ import Foundation
 
 /// Centralized file-size policy for opening and editing documents.
 enum FileSizeThresholds {
-    /// Normal editing without extra warnings.
-    static let normalMaximumBytes: Int64 = 5 * 1_024 * 1_024
-
     /// Strong warning; syntax highlighting may be disabled.
     static let warningBytes: Int64 = 5 * 1_024 * 1_024
 
