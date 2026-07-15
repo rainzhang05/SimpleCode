@@ -80,13 +80,8 @@ struct TerminalPanelView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Terminal \(sessionStateLabel), \(session.workingDirectory.path)")
-            .contentShape(Rectangle())
-            .nativeArrowCursor()
 
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .nativeArrowCursor()
+            Spacer(minLength: 0)
 
             terminalAction(
                 title: "Clear Terminal",
@@ -105,6 +100,13 @@ struct TerminalPanelView: View {
         }
         .padding(.horizontal, Spacing.small)
         .frame(height: 36)
+        .background {
+            // Full header chrome owns the arrow cursor behind the buttons so
+            // Clear/Close remain the frontmost hit targets for clicks.
+            Color.clear
+                .contentShape(Rectangle())
+                .nativeArrowCursor()
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -126,7 +128,7 @@ struct TerminalPanelView: View {
         .frame(width: 24, height: 24)
         .contentShape(Circle())
         .help(help)
-        .nativePointingHandCursor()
+        .pointingHandCursor()
         .accessibilityLabel(title)
         .accessibilityIdentifier(identifier)
     }

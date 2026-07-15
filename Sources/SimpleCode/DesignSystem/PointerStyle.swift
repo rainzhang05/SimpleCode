@@ -1,9 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// An AppKit cursor owner that participates in hit-testing so it can win
-/// arbitration against overlapping NSTextView I-beam rects, while forwarding
-/// mouse events so SwiftUI controls underneath still receive clicks.
+/// An AppKit cursor owner for non-interactive chrome that overlays an NSTextView.
+/// It participates in hit-testing so AppKit awards its cursor over the editor
+/// I-beam. Do not place it over SwiftUI Buttons — those should use
+/// `pointerStyle` / `pointingHandCursor()` so clicks are not stolen.
 final class CursorTrackingView: NSView {
     private var cursor: NSCursor
     private var lastRegisteredBounds: NSRect = .zero
@@ -60,38 +61,6 @@ final class CursorTrackingView: NSView {
         cursor.set()
     }
 
-    override func mouseDown(with event: NSEvent) {
-        forward(event) { $0.mouseDown(with: $1) }
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        forward(event) { $0.mouseUp(with: $1) }
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        forward(event) { $0.mouseDragged(with: $1) }
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        forward(event) { $0.rightMouseDown(with: $1) }
-    }
-
-    override func rightMouseUp(with event: NSEvent) {
-        forward(event) { $0.rightMouseUp(with: $1) }
-    }
-
-    override func otherMouseDown(with event: NSEvent) {
-        forward(event) { $0.otherMouseDown(with: $1) }
-    }
-
-    override func otherMouseUp(with event: NSEvent) {
-        forward(event) { $0.otherMouseUp(with: $1) }
-    }
-
-    override func scrollWheel(with event: NSEvent) {
-        forward(event) { $0.scrollWheel(with: $1) }
-    }
-
     private func refreshCursorRectsIfBoundsChanged() {
         guard bounds.size != lastRegisteredBounds.size || bounds.origin != lastRegisteredBounds.origin else {
             return
@@ -102,16 +71,6 @@ final class CursorTrackingView: NSView {
     private func invalidateRegisteredCursorRects() {
         guard window != nil, !bounds.isEmpty else { return }
         window?.invalidateCursorRects(for: self)
-    }
-
-    private func forward(_ event: NSEvent, to handler: (NSView, NSEvent) -> Void) {
-        guard let window else { return }
-        isHidden = true
-        defer { isHidden = false }
-        guard let target = window.contentView?.hitTest(event.locationInWindow), target !== self else {
-            return
-        }
-        handler(target, event)
     }
 }
 
@@ -135,18 +94,14 @@ extension View {
         pointerStyle(.link)
     }
 
-    /// Embedded AppKit surfaces can otherwise win cursor arbitration from nearby
-    /// SwiftUI buttons. This transparent region gives the button one native owner.
+    /// Pointing-hand feedback for interactive SwiftUI controls. Prefer this over
+    /// embedding a hittable AppKit cursor region, which would steal button clicks.
     func nativePointingHandCursor() -> some View {
-        overlay {
-            NativeCursorRegion(cursor: .pointingHand)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .allowsHitTesting(true)
-        }
+        pointerStyle(.link)
     }
 
-    /// Owns the arrow cursor over SwiftUI chrome that overlays an NSTextView,
-    /// so the editor I-beam does not bleed through.
+    /// Owns the arrow cursor over non-interactive SwiftUI chrome that overlays
+    /// an NSTextView. Do not apply this to Buttons.
     func nativeArrowCursor() -> some View {
         overlay {
             NativeCursorRegion(cursor: .arrow)
