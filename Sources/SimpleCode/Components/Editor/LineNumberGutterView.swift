@@ -5,6 +5,10 @@ import AppKit
 /// This deliberately is not an `NSRulerView`: attaching an AppKit ruler to the
 /// TextKit 2 scroll view takes a legacy rendering integration path. Line geometry
 /// is instead read from TextKit 2 layout fragments, bounded to visible fragments.
+///
+/// The gutter view tracks `visibleRect.minX` so it stays pinned to the leading
+/// edge of the viewport while the document scrolls horizontally, avoiding paint
+/// trails from document-relative drawing.
 final class LineNumberGutterView: NSView {
     static let minimumWidth: CGFloat = 42
 
@@ -14,8 +18,14 @@ final class LineNumberGutterView: NSView {
 
     init(codeTextView: CodeTextView) {
         self.codeTextView = codeTextView
-        super.init(frame: codeTextView.bounds)
-        autoresizingMask = [.width, .height]
+        super.init(frame: NSRect(
+            x: codeTextView.visibleRect.minX,
+            y: codeTextView.bounds.minY,
+            width: Self.minimumWidth,
+            height: codeTextView.bounds.height
+        ))
+        autoresizingMask = [.height]
+        clipsToBounds = true
     }
 
     @available(*, unavailable)
@@ -23,7 +33,7 @@ final class LineNumberGutterView: NSView {
         fatalError("LineNumberGutterView does not support NSCoder")
     }
 
-    override var isOpaque: Bool { false }
+    override var isOpaque: Bool { true }
     override var isFlipped: Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -38,22 +48,19 @@ final class LineNumberGutterView: NSView {
         needsDisplay = true
     }
 
-    /// Vertical scrolling naturally redraws only newly exposed strips. A horizontal
-    /// scroll must repaint the narrow pinned gutter at its new document position,
-    /// without invalidating the full editor-sized subview.
-    func invalidateVisibleRegion() {
-        guard let codeTextView else { return }
-        let visibleRect = codeTextView.visibleRect
-        let gutterRect = convert(
-            NSRect(
-                x: visibleRect.minX,
-                y: visibleRect.minY,
-                width: width,
-                height: visibleRect.height
-            ),
-            from: codeTextView
+    /// Keeps the gutter pinned to the viewport's leading edge as the document
+    /// scrolls. Changing the frame invalidates the previous and new regions so
+    /// old digit paint cannot smear across the editor.
+    func syncFrame(to textView: CodeTextView) {
+        let visible = textView.visibleRect
+        let newFrame = NSRect(
+            x: visible.minX,
+            y: textView.bounds.minY,
+            width: width,
+            height: textView.bounds.height
         )
-        setNeedsDisplay(gutterRect)
+        guard !frame.equalTo(newFrame) else { return }
+        frame = newFrame
     }
 
     /// Returns `true` when the reserved editor inset needs to be laid out again.
@@ -69,6 +76,9 @@ final class LineNumberGutterView: NSView {
         let proposedWidth = max(Self.minimumWidth, ceil(digitWidth * CGFloat(digitCount) + 18))
         guard abs(proposedWidth - width) > 0.5 else { return false }
         width = proposedWidth
+        if let codeTextView {
+            syncFrame(to: codeTextView)
+        }
         needsDisplay = true
         return true
     }
@@ -79,22 +89,14 @@ final class LineNumberGutterView: NSView {
               let contentManager = layoutManager.textContentManager else { return }
 
         let visibleRect = codeTextView.visibleRect
+        ColorRole.gutterBackgroundNSColor.setFill()
+        bounds.intersection(dirtyRect).fill()
+
         let dirtyTextRect = codeTextView.convert(dirtyRect, from: self).intersection(visibleRect)
         guard !dirtyTextRect.isEmpty else { return }
-        let gutterRect = convert(
-            NSRect(
-                x: visibleRect.minX,
-                y: visibleRect.minY,
-                width: width,
-                height: visibleRect.height
-            ),
-            from: codeTextView
-        )
-        ColorRole.gutterBackgroundNSColor.setFill()
-        gutterRect.intersection(dirtyRect).fill()
+
         drawCurrentLineHighlight(
             from: codeTextView,
-            within: gutterRect,
             dirtyRect: dirtyRect
         )
 
@@ -148,9 +150,9 @@ final class LineNumberGutterView: NSView {
             draw(
                 lineNumber: lineNumber,
                 baseline: baseline,
-                visibleRect: visibleRect,
                 font: currentLineNumber == lineNumber ? currentFont : normalFont,
-                attributes: currentLineNumber == lineNumber ? currentAttributes : normalAttributes
+                attributes: currentLineNumber == lineNumber ? currentAttributes : normalAttributes,
+                from: codeTextView
             )
             return true
         }
@@ -159,29 +161,26 @@ final class LineNumberGutterView: NSView {
     private func draw(
         lineNumber: Int,
         baseline: CGFloat,
-        visibleRect: NSRect,
         font: NSFont,
-        attributes: [NSAttributedString.Key: Any]
+        attributes: [NSAttributedString.Key: Any],
+        from codeTextView: CodeTextView
     ) {
         let numberString = "\(lineNumber)" as NSString
         let size = numberString.size(withAttributes: attributes)
-        guard let codeTextView else { return }
-        let textPoint = NSPoint(
-            x: visibleRect.minX + width - size.width - 8,
-            y: baseline - font.ascender
-        )
-        let point = convert(textPoint, from: codeTextView)
-        numberString.draw(at: NSPoint(x: max(4, point.x), y: point.y), withAttributes: attributes)
+        let y = convert(
+            NSPoint(x: 0, y: baseline - font.ascender),
+            from: codeTextView
+        ).y
+        numberString.draw(at: NSPoint(x: max(4, width - size.width - 8), y: y), withAttributes: attributes)
     }
 
     private func drawCurrentLineHighlight(
         from codeTextView: CodeTextView,
-        within gutterRect: NSRect,
         dirtyRect: NSRect
     ) {
         guard let editorRect = codeTextView.currentLineHighlightRect() else { return }
         let highlightRect = convert(editorRect, from: codeTextView)
-        let paintRect = highlightRect.intersection(gutterRect).intersection(dirtyRect)
+        let paintRect = highlightRect.intersection(bounds).intersection(dirtyRect)
         guard !paintRect.isEmpty else { return }
 
         ColorRole.editorCurrentLineNSColor.setFill()

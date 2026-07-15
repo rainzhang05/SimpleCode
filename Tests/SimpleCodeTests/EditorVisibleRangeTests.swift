@@ -665,6 +665,7 @@ struct EditorVisibleRangeTests {
         _ = gutter.updateMetrics(font: textView.font, lineCount: 2)
         textView.configureLineNumberGutter(visible: true, width: gutter.width)
         textView.addSubview(gutter, positioned: .above, relativeTo: nil)
+        gutter.syncFrame(to: textView)
         textView.layoutSubtreeIfNeeded()
         textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
 
@@ -1050,6 +1051,7 @@ struct EditorVisibleRangeTests {
         gutter.updateMetrics(font: textView.font, lineCount: 1)
         textView.configureLineNumberGutter(visible: true, width: gutter.width)
         textView.addSubview(gutter)
+        gutter.syncFrame(to: textView)
         textView.layoutSubtreeIfNeeded()
 
         let layoutManager = try #require(textView.textLayoutManager)
@@ -1118,6 +1120,25 @@ struct EditorVisibleRangeTests {
                 return color.alphaComponent > 0.02 && distance < 0.4
             }
         }
+    }
+
+    @MainActor
+    @Test func lineNumberGutterTracksVisibleLeadingEdgeWithoutDocumentSizedWidth() {
+        let textView = CodeTextView()
+        textView.frame = NSRect(x: 0, y: 0, width: 800, height: 200)
+        textView.string = String(repeating: "wide line content ", count: 40)
+        let gutter = LineNumberGutterView(codeTextView: textView)
+        textView.addSubview(gutter)
+        gutter.syncFrame(to: textView)
+
+        #expect(abs(gutter.frame.minX - textView.visibleRect.minX) < 0.5)
+        #expect(abs(gutter.frame.width - gutter.width) < 0.5)
+        #expect(gutter.frame.width < textView.bounds.width)
+
+        textView.scroll(NSPoint(x: 120, y: 0))
+        gutter.syncFrame(to: textView)
+        #expect(abs(gutter.frame.minX - textView.visibleRect.minX) < 0.5)
+        #expect(abs(gutter.frame.width - gutter.width) < 0.5)
     }
 
     @MainActor

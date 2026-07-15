@@ -142,6 +142,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         _ = gutter.updateMetrics(font: textView.font, lineCount: session.lineStartIndex.lineCount)
         gutter.isHidden = !settings.editor.showLineNumbers
         textView.addSubview(gutter, positioned: .above, relativeTo: nil)
+        gutter.syncFrame(to: textView)
         textView.configureLineNumberGutter(visible: settings.editor.showLineNumbers, width: gutter.width)
 
         context.coordinator.textView = textView
@@ -480,7 +481,9 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             pendingScrollOffset = origin
             if abs(origin.x - lastHorizontalScrollOffset) > 0.5 {
                 lastHorizontalScrollOffset = origin.x
-                gutter?.invalidateVisibleRegion()
+                if let textView {
+                    gutter?.syncFrame(to: textView)
+                }
             }
             guard !isLiveScrolling else { return }
             flushViewportState()
