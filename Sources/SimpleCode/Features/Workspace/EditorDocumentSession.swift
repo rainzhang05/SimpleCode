@@ -174,6 +174,14 @@ final class EditorDocumentSession: Identifiable {
         }
     }
 
+    /// Drops an invalid continuation without claiming that its unvisited ranges
+    /// were colored. Viewport highlighting can then recover the visible region.
+    func abandonDeferredInitialHighlighting(from cursor: InitialHighlightCursor) {
+        guard deferredInitialHighlightCursor == cursor else { return }
+        deferredInitialHighlightCursor = nil
+        hasCompleteSyntaxCoverage = false
+    }
+
     func refreshSyntaxAttributes() {
         guard didApplySyntaxHighlighting else { return }
         let fullRange = NSRange(location: 0, length: textStorage.length)

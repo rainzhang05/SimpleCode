@@ -703,7 +703,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
                           self.session.revision == request.cursor.revision,
                           self.session.deferredInitialHighlightCursor == request.cursor else { return }
                     guard let page else {
-                        self.session.advanceDeferredInitialHighlighting(from: request.cursor, to: nil)
+                        self.session.abandonDeferredInitialHighlighting(from: request.cursor)
+                        self.scheduleViewportHighlight()
                         return
                     }
                     guard page.batch.revision == request.cursor.revision,

@@ -1282,6 +1282,32 @@ struct EditorVisibleRangeTests {
     }
 
     @MainActor
+    @Test func abandonedInitialSyntaxDoesNotClaimCompleteCoverage() {
+        let session = EditorDocumentSession(displayName: "Partial.swift")
+        session.textStorage.setAttributedString(NSAttributedString(string: String(repeating: "let value = 1\n", count: 100)))
+        let priorityRange = NSRange(location: 0, length: 32)
+        session.applyInitialHighlighting(HighlightBatch(
+            revision: session.revision,
+            coveredRanges: [priorityRange],
+            tokens: []
+        ))
+        let cursor = InitialHighlightCursor(
+            generation: 1,
+            revision: session.revision,
+            remainingRanges: [NSRange(
+                location: NSMaxRange(priorityRange),
+                length: session.textStorage.length - NSMaxRange(priorityRange)
+            )]
+        )
+        session.deferInitialHighlighting(cursor)
+
+        session.abandonDeferredInitialHighlighting(from: cursor)
+
+        #expect(session.deferredInitialHighlightCursor == nil)
+        #expect(!session.hasCompleteSyntaxCoverage)
+    }
+
+    @MainActor
     @Test func coordinatorStylesContentThatArrivesAfterAttachment() throws {
         let suiteName = "SimpleCode.EditorVisibleRangeTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
