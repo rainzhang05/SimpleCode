@@ -27,13 +27,14 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
 
     func load(text: String, revision: Int) async -> HighlightBatch {
         invalidateInitialContinuation()
-        let tokens = highlight(text, restrictedTo: NSRange(location: 0, length: text.utf16.count))
+        let documentUTF16Count = (text as NSString).length
+        let tokens = highlight(text, restrictedTo: NSRange(location: 0, length: documentUTF16Count))
         cachedText = text
         cachedRevision = revision
         cachedTokens = tokens
         return HighlightBatch(
             revision: revision,
-            coveredRanges: [NSRange(location: 0, length: text.utf16.count)],
+            coveredRanges: [NSRange(location: 0, length: documentUTF16Count)],
             tokens: tokens
         )
     }
@@ -45,16 +46,17 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
     ) async -> InitialHighlightPage {
         initialGeneration &+= 1
         initialRevision = revision
+        let documentUTF16Count = (text as NSString).length
         let priority = NSIntersectionRange(
             priorityUTF16Range,
-            NSRange(location: 0, length: text.utf16.count)
+            NSRange(location: 0, length: documentUTF16Count)
         )
         let tokens = highlight(text, restrictedTo: priority)
         cachedText = text
         cachedRevision = revision
         cachedTokens = tokens
         let remaining = InitialHighlightPaging.remainingRanges(
-            documentLength: text.utf16.count,
+            documentLength: documentUTF16Count,
             excluding: priority
         )
         if remaining.isEmpty {
