@@ -311,6 +311,10 @@ final class EditorDocumentSession: Identifiable {
                 coveredRanges.contains { NSIntersectionRange(token.range, $0).length > 0 }
             }
             semanticTokens.append(contentsOf: tokens)
+            pruneSyntaxContext(coveredRanges: coveredRanges)
+            appendSyntaxContext(from: tokens)
+            didApplySyntaxHighlighting = true
+            return
         }
         didApplySyntaxHighlighting = true
         rebuildSyntaxContext()
@@ -362,6 +366,15 @@ final class EditorDocumentSession: Identifiable {
             } else if token.category == .comment || token.category == .documentationComment {
                 syntaxContext.commentRanges.append(token.range)
             }
+        }
+    }
+
+    private func pruneSyntaxContext(coveredRanges: [NSRange]) {
+        syntaxContext.stringRanges.removeAll { range in
+            coveredRanges.contains { NSIntersectionRange(range, $0).length > 0 }
+        }
+        syntaxContext.commentRanges.removeAll { range in
+            coveredRanges.contains { NSIntersectionRange(range, $0).length > 0 }
         }
     }
 }
