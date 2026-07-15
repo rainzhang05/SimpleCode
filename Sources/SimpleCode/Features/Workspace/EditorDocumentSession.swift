@@ -253,10 +253,6 @@ final class EditorDocumentSession: Identifiable {
         displayName = url.lastPathComponent
     }
 
-    func noteExternalModification() {
-        hasExternalModification = true
-    }
-
     func setExternalChangeState(_ state: ExternalChangeState) {
         externalChangeState = state
         hasExternalModification = state != .none
