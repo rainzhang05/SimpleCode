@@ -171,9 +171,10 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
         revision: Int,
         visibleUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
+        let documentUTF16Count = (fullText as NSString).length
         guard cachedRevision == revision else {
             let batch = await load(text: fullText, revision: revision)
-            let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count)
+            let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: documentUTF16Count)
             return (
                 HighlightBatch(
                     revision: revision,
@@ -184,7 +185,7 @@ actor AssemblyPatternHighlighter: SyntaxHighlighter {
             )
         }
 
-        let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: fullText.utf16.count)
+        let visibleRanges = Self.mergedRanges([visibleUTF16Range], documentLength: documentUTF16Count)
         if initialRevision == revision, let viewportRange = visibleRanges.first {
             let viewportTokens = highlight(fullText, restrictedTo: viewportRange)
             return (
