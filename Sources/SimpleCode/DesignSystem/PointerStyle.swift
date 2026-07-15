@@ -2,10 +2,9 @@ import AppKit
 import SwiftUI
 
 /// A hit-test-transparent AppKit region that owns one cursor while the pointer is
-/// inside it. Tracking areas arbitrate correctly with embedded AppKit controls,
-/// unlike process-global SwiftUI hover callbacks.
+/// inside it. AppKit cursor rectangles arbitrate correctly with embedded AppKit
+/// controls, unlike process-global SwiftUI hover callbacks.
 final class CursorTrackingView: NSView {
-    private var trackingRegion: NSTrackingArea?
     private var cursor: NSCursor
 
     init(cursor: NSCursor) {
@@ -29,21 +28,14 @@ final class CursorTrackingView: NSView {
     }
 
     func updateCursor(_ cursor: NSCursor) {
+        guard self.cursor !== cursor else { return }
         self.cursor = cursor
+        window?.invalidateCursorRects(for: self)
     }
 
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let trackingRegion {
-            removeTrackingArea(trackingRegion)
-        }
-        let region = NSTrackingArea(
-            rect: .zero,
-            options: [.activeInKeyWindow, .inVisibleRect, .cursorUpdate],
-            owner: self
-        )
-        addTrackingArea(region)
-        trackingRegion = region
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: cursor)
     }
 
     override func cursorUpdate(with event: NSEvent) {
@@ -74,10 +66,9 @@ extension View {
     /// Embedded AppKit surfaces can otherwise win cursor arbitration from nearby
     /// SwiftUI buttons. This transparent region gives the button one native owner.
     func nativePointingHandCursor() -> some View {
-        pointerStyle(.link)
-            .overlay {
-                NativeCursorRegion(cursor: .pointingHand)
-            }
+        overlay {
+            NativeCursorRegion(cursor: .pointingHand)
+        }
     }
 }
 
@@ -132,6 +123,7 @@ final class ResizeTrackingView: NSView {
     var axis: NativeResizeHandle.Axis = .horizontal {
         didSet {
             guard oldValue != axis else { return }
+            window?.invalidateCursorRects(for: self)
             needsDisplay = true
         }
     }
@@ -161,7 +153,6 @@ final class ResizeTrackingView: NSView {
             options: [
                 .activeInKeyWindow,
                 .inVisibleRect,
-                .cursorUpdate,
                 .mouseEnteredAndExited,
                 .enabledDuringMouseDrag,
             ],
@@ -169,6 +160,11 @@ final class ResizeTrackingView: NSView {
         )
         addTrackingArea(region)
         trackingRegion = region
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: axis.cursor)
     }
 
     override func cursorUpdate(with event: NSEvent) {
@@ -200,6 +196,10 @@ final class ResizeTrackingView: NSView {
         case .vertical:
             onDrag?(location.y - previousDragLocation.y)
         }
+        // Resizing can relayout the view and re-arbitrate cursor rectangles.
+        // Reassert the drag cursor after the callback so it stays stable even
+        // when the pointer has moved beyond the narrow handle.
+        axis.cursor.set()
     }
 
     override func mouseUp(with event: NSEvent) {
