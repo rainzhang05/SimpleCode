@@ -25,7 +25,6 @@ enum ColorRole {
 
     static let editorForegroundPair = ColorRoleDefaults.editorForeground
     static var editorForegroundNSColor: NSColor { editorForegroundPair.dynamic }
-    static var editorForeground: Color { Color(nsColor: editorForegroundNSColor) }
 
     static let editorLineNumberPair = ColorRoleDefaults.lineNumber
     static var editorLineNumberNSColor: NSColor { editorLineNumberPair.dynamic }
