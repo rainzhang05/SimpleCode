@@ -238,12 +238,17 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         failedRevision: Int
     ) -> ParseResult? {
         let previousText = lastParsedText
+        let previousPoints = points(
+            atUTF16Offset: edit.startUTF16,
+            and: edit.oldEndUTF16,
+            in: previousText
+        )
         let inputEdit = InputEdit(
             startByte: edit.startUTF16 * 2,
             oldEndByte: edit.oldEndUTF16 * 2,
             newEndByte: edit.newEndUTF16 * 2,
-            startPoint: point(atUTF16Offset: edit.startUTF16, in: previousText),
-            oldEndPoint: point(atUTF16Offset: edit.oldEndUTF16, in: previousText),
+            startPoint: previousPoints.start,
+            oldEndPoint: previousPoints.end,
             newEndPoint: point(atUTF16Offset: edit.newEndUTF16, in: fullText)
         )
 
@@ -362,21 +367,40 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
     }
 
     private func point(atUTF16Offset offset: Int, in text: String) -> Point {
+        points(atUTF16Offset: offset, and: offset, in: text).start
+    }
+
+    /// Resolves two monotonically increasing UTF-16 offsets in one scan of `text`.
+    private func points(
+        atUTF16Offset startOffset: Int,
+        and endOffset: Int,
+        in text: String
+    ) -> (start: Point, end: Point) {
         let nsText = text as NSString
-        let limit = max(0, min(offset, nsText.length))
+        let startLimit = max(0, min(startOffset, nsText.length))
+        let endLimit = max(0, min(max(startOffset, endOffset), nsText.length))
         var row = 0
         var lineStart = 0
         var index = 0
-        while index < limit {
+        var startPoint = Point(row: 0, column: 0)
+
+        while index < endLimit {
+            if index == startLimit {
+                startPoint = Point(row: row, column: (startLimit - lineStart) * 2)
+            }
             if nsText.character(at: index) == 10 { // LF; CRLF is one parser line.
                 row += 1
                 lineStart = index + 1
             }
             index += 1
         }
+        if startLimit == endLimit {
+            startPoint = Point(row: row, column: (startLimit - lineStart) * 2)
+        }
         // The parser is fed UTF-16LE, so its line-relative column is expressed in
         // bytes rather than Swift/String character offsets.
-        return Point(row: row, column: (limit - lineStart) * 2)
+        let endPoint = Point(row: row, column: (endLimit - lineStart) * 2)
+        return (startPoint, endPoint)
     }
 
     private func mergedRanges(_ ranges: [NSRange], documentLength: Int) -> [NSRange] {
