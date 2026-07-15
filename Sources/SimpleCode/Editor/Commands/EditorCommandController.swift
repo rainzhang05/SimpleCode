@@ -91,21 +91,4 @@ struct EditorCommandController: Sendable {
     func trimTrailingWhitespace(text: String, selection: NSRange) -> EditorCommandResult {
         LineCommandEngine.trimTrailingWhitespace(text: text, selection: selection)
     }
-
-    func insertFinalNewline(text: String) -> EditorCommandResult? {
-        LineCommandEngine.insertFinalNewline(text: text)
-    }
-
-    func matchingBracket(
-        at location: Int,
-        in text: String,
-        syntaxContext: SyntaxContext? = nil
-    ) -> Int? {
-        BracketMatcher.matchingBracket(at: location, in: text, syntaxContext: syntaxContext)
-    }
-
-    /// Applies edits from end to start and returns the resulting text.
-    func apply(_ result: EditorCommandResult, to text: String) -> String {
-        EditorTextSupport.applyEdits(result.edits, to: text)
-    }
 }
