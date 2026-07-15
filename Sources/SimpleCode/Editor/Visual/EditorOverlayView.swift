@@ -93,8 +93,8 @@ final class EditorOverlayView: NSView {
     }
 
     private func drawWhitespaceMarkers(in textView: NSTextView, dirtyRect: NSRect) {
+        guard let text = textView.textStorage?.mutableString else { return }
         let color = ColorRole.whitespaceMarkerNSColor
-        let text = textView.string as NSString
         let textDirtyRect = textView.convert(dirtyRect, from: self)
         let visibleRange = characterRange(in: textView, intersecting: textDirtyRect)
         let visibleEnd = NSMaxRange(visibleRange)
@@ -178,7 +178,7 @@ final class EditorOverlayView: NSView {
     }
 
     private func characterRange(in textView: NSTextView, intersecting requestedRect: NSRect) -> NSRange {
-        let fallback = NSRange(location: 0, length: (textView.string as NSString).length)
+        let fallback = NSRange(location: 0, length: textView.textStorage?.length ?? 0)
         guard let layoutManager = textView.textLayoutManager,
               let contentManager = layoutManager.textContentManager,
               fallback.length > 0 else { return fallback }
