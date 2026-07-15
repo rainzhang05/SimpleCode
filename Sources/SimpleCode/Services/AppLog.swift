@@ -11,7 +11,6 @@ enum AppLog {
 
     static let app = Logger(subsystem: subsystem, category: "app")
     static let filesystem = Logger(subsystem: subsystem, category: "filesystem")
-    static let editor = Logger(subsystem: subsystem, category: "editor")
     static let syntax = Logger(subsystem: subsystem, category: "syntax")
     static let terminal = Logger(subsystem: subsystem, category: "terminal")
     static let run = Logger(subsystem: subsystem, category: "run")
