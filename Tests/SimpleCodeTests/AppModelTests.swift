@@ -189,6 +189,9 @@ struct AppModelTests {
         #expect(NSCursor.current == .resizeUpDown)
 
         let actionCursorRegion = CursorTrackingView(cursor: .pointingHand)
+        actionCursorRegion.frame = NSRect(x: 0, y: 0, width: 24, height: 24)
+        #expect(actionCursorRegion.hitTest(NSPoint(x: 12, y: 12)) === actionCursorRegion)
+        #expect(actionCursorRegion.hitTest(NSPoint(x: 40, y: 40)) == nil)
         NSCursor.arrow.set()
         actionCursorRegion.cursorUpdate(with: try mouseEvent(.mouseMoved, location: NSPoint(x: 4, y: 4)))
         #expect(NSCursor.current == .pointingHand)

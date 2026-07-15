@@ -1,11 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// A hit-test-transparent AppKit region that owns one cursor while the pointer is
-/// inside it. AppKit cursor rectangles arbitrate correctly with embedded AppKit
-/// controls, unlike process-global SwiftUI hover callbacks.
+/// An AppKit cursor owner that participates in hit-testing so it can win
+/// arbitration against overlapping NSTextView I-beam rects, while forwarding
+/// mouse events so SwiftUI controls underneath still receive clicks.
 final class CursorTrackingView: NSView {
     private var cursor: NSCursor
+    private var lastRegisteredBounds: NSRect = .zero
 
     init(cursor: NSCursor) {
         self.cursor = cursor
@@ -20,7 +21,7 @@ final class CursorTrackingView: NSView {
     override var isOpaque: Bool { false }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
+        bounds.contains(point) ? self : nil
     }
 
     override func accessibilityIsIgnored() -> Bool {
@@ -30,16 +31,87 @@ final class CursorTrackingView: NSView {
     func updateCursor(_ cursor: NSCursor) {
         guard self.cursor !== cursor else { return }
         self.cursor = cursor
-        window?.invalidateCursorRects(for: self)
+        invalidateRegisteredCursorRects()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        invalidateRegisteredCursorRects()
+    }
+
+    override func layout() {
+        super.layout()
+        refreshCursorRectsIfBoundsChanged()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        refreshCursorRectsIfBoundsChanged()
     }
 
     override func resetCursorRects() {
         super.resetCursorRects()
+        guard !bounds.isEmpty else { return }
         addCursorRect(bounds, cursor: cursor)
+        lastRegisteredBounds = bounds
     }
 
     override func cursorUpdate(with event: NSEvent) {
         cursor.set()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        forward(event) { $0.mouseDown(with: $1) }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        forward(event) { $0.mouseUp(with: $1) }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        forward(event) { $0.mouseDragged(with: $1) }
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        forward(event) { $0.rightMouseDown(with: $1) }
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        forward(event) { $0.rightMouseUp(with: $1) }
+    }
+
+    override func otherMouseDown(with event: NSEvent) {
+        forward(event) { $0.otherMouseDown(with: $1) }
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        forward(event) { $0.otherMouseUp(with: $1) }
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        forward(event) { $0.scrollWheel(with: $1) }
+    }
+
+    private func refreshCursorRectsIfBoundsChanged() {
+        guard bounds.size != lastRegisteredBounds.size || bounds.origin != lastRegisteredBounds.origin else {
+            return
+        }
+        invalidateRegisteredCursorRects()
+    }
+
+    private func invalidateRegisteredCursorRects() {
+        guard window != nil, !bounds.isEmpty else { return }
+        window?.invalidateCursorRects(for: self)
+    }
+
+    private func forward(_ event: NSEvent, to handler: (NSView, NSEvent) -> Void) {
+        guard let window else { return }
+        isHidden = true
+        defer { isHidden = false }
+        guard let target = window.contentView?.hitTest(event.locationInWindow), target !== self else {
+            return
+        }
+        handler(target, event)
     }
 }
 
@@ -68,6 +140,8 @@ extension View {
     func nativePointingHandCursor() -> some View {
         overlay {
             NativeCursorRegion(cursor: .pointingHand)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(true)
         }
     }
 
@@ -76,6 +150,8 @@ extension View {
     func nativeArrowCursor() -> some View {
         overlay {
             NativeCursorRegion(cursor: .arrow)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .allowsHitTesting(true)
         }
     }
 }

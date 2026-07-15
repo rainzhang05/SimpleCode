@@ -80,8 +80,13 @@ struct TerminalPanelView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Terminal \(sessionStateLabel), \(session.workingDirectory.path)")
+            .contentShape(Rectangle())
+            .nativeArrowCursor()
 
-            Spacer()
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .nativeArrowCursor()
 
             terminalAction(
                 title: "Clear Terminal",
@@ -100,8 +105,6 @@ struct TerminalPanelView: View {
         }
         .padding(.horizontal, Spacing.small)
         .frame(height: 36)
-        .contentShape(Rectangle())
-        .nativeArrowCursor()
         .accessibilityElement(children: .contain)
     }
 
