@@ -81,8 +81,6 @@ final class EditorDocumentSession: Identifiable {
         self.textStorage = NSTextStorage()
     }
 
-    var isUntitled: Bool { fileURL == nil }
-
     @discardableResult
     func bumpRevision() -> Int {
         revision += 1
