@@ -70,6 +70,8 @@ final class FindReplaceController {
         matches = []
         currentMatchIndex = nil
         statusMessage = nil
+        cachedRegex = nil
+        cachedRegexKey = nil
     }
 
     func findNext() -> NSRange? {
