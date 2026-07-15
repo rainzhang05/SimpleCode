@@ -1124,9 +1124,13 @@ struct EditorVisibleRangeTests {
 
     @MainActor
     @Test func lineNumberGutterTracksVisibleLeadingEdgeWithoutDocumentSizedWidth() {
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 200))
+        scrollView.hasHorizontalScroller = true
         let textView = CodeTextView()
         textView.frame = NSRect(x: 0, y: 0, width: 800, height: 200)
         textView.string = String(repeating: "wide line content ", count: 40)
+        scrollView.documentView = textView
+
         let gutter = LineNumberGutterView(codeTextView: textView)
         textView.addSubview(gutter)
         gutter.syncFrame(to: textView)
@@ -1135,10 +1139,12 @@ struct EditorVisibleRangeTests {
         #expect(abs(gutter.frame.width - gutter.width) < 0.5)
         #expect(gutter.frame.width < textView.bounds.width)
 
-        textView.scroll(NSPoint(x: 120, y: 0))
+        scrollView.contentView.scroll(to: NSPoint(x: 120, y: 0))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
         gutter.syncFrame(to: textView)
         #expect(abs(gutter.frame.minX - textView.visibleRect.minX) < 0.5)
         #expect(abs(gutter.frame.width - gutter.width) < 0.5)
+        #expect(abs(gutter.frame.minX - 120) < 0.5)
     }
 
     @MainActor

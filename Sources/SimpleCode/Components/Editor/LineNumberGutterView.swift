@@ -16,13 +16,14 @@ final class LineNumberGutterView: NSView {
     var lineStartIndex = LineStartIndex()
     private(set) var width: CGFloat = minimumWidth
 
-    init(codeTextView: CodeTextView) {
+        init(codeTextView: CodeTextView) {
         self.codeTextView = codeTextView
+        let height = codeTextView.bounds.height > 0 ? codeTextView.bounds.height : codeTextView.frame.height
         super.init(frame: NSRect(
-            x: codeTextView.visibleRect.minX,
-            y: codeTextView.bounds.minY,
+            x: 0,
+            y: 0,
             width: Self.minimumWidth,
-            height: codeTextView.bounds.height
+            height: max(height, 1)
         ))
         autoresizingMask = [.height]
         clipsToBounds = true
@@ -52,12 +53,22 @@ final class LineNumberGutterView: NSView {
     /// scrolls. Changing the frame invalidates the previous and new regions so
     /// old digit paint cannot smear across the editor.
     func syncFrame(to textView: CodeTextView) {
-        let visible = textView.visibleRect
+        let viewportMinX: CGFloat
+        if textView.enclosingScrollView != nil {
+            let visibleMinX = textView.visibleRect.minX
+            viewportMinX = visibleMinX.isFinite ? visibleMinX : 0
+        } else {
+            // Standalone text views report an unreliable visibleRect.
+            viewportMinX = 0
+        }
+        let height = textView.bounds.height.isFinite && textView.bounds.height > 0
+            ? textView.bounds.height
+            : max(textView.frame.height, 1)
         let newFrame = NSRect(
-            x: visible.minX,
-            y: textView.bounds.minY,
+            x: viewportMinX,
+            y: textView.bounds.minY.isFinite ? textView.bounds.minY : 0,
             width: width,
-            height: textView.bounds.height
+            height: height
         )
         guard !frame.equalTo(newFrame) else { return }
         frame = newFrame
