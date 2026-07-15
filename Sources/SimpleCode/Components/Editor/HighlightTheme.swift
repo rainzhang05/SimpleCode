@@ -6,8 +6,10 @@ enum HighlightTheme {
         if let exact = exactMatches[name] {
             return exact
         }
-        guard let firstComponent = name.split(separator: ".").first else { return nil }
-        return prefixMatches[String(firstComponent)]
+        if let dot = name.firstIndex(of: ".") {
+            return prefixMatches[String(name[..<dot])]
+        }
+        return prefixMatches[name]
     }
 
     private static let exactMatches: [String: SyntaxCategory] = [
