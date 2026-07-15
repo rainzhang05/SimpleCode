@@ -127,6 +127,74 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
         assertEditorScreenshotContainsPaintedGlyphs(fileName: "Notes.txt")
     }
 
+    func testMarkdownSingleClickSyntaxSelectionUndoRedoAndTerminalAutofocus() throws {
+        let fixture = try makeWorkspaceFixture(prefix: "SimpleCodeInteractionRegression")
+        let markdown = fixture.root.appending(path: "README.md")
+        try """
+        # SimpleCode
+
+        > Native macOS editor
+
+        ```swift
+        let answer = 42
+        ```
+        """.write(to: markdown, atomically: true, encoding: .utf8)
+
+        openWorkspace(at: fixture.root)
+        let markdownRow = element("fileTree.row.README.md")
+        XCTAssertTrue(markdownRow.waitForExistence(timeout: 8), debugSnapshot())
+        markdownRow.click()
+        XCTAssertTrue(element("editor.tab.README.md").waitForExistence(timeout: 8), debugSnapshot())
+
+        let editor = element("editor.textView")
+        XCTAssertTrue(editor.waitForExistence(timeout: 8), debugSnapshot())
+        let beforeSelection = editor.screenshot()
+        editor.click()
+        let afterSelection = editor.screenshot()
+        assertSyntaxColorCountIsStable(before: beforeSelection, after: afterSelection)
+
+        let originalValue = try XCTUnwrap(editor.value as? String)
+        app.typeKey(.end, modifierFlags: .command)
+        app.typeText("Z")
+        XCTAssertEqual(editor.value as? String, originalValue + "Z")
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertEqual(editor.value as? String, originalValue)
+        app.typeKey("z", modifierFlags: [.command, .shift])
+        XCTAssertEqual(editor.value as? String, originalValue + "Z")
+        app.typeKey("z", modifierFlags: .command)
+        XCTAssertEqual(editor.value as? String, originalValue)
+        saveActiveDocument()
+        waitForValue(element("editor.tab.README.md"), "saved", timeout: 8)
+
+        clickElement(app.buttons["workspace.terminalToggle"])
+        XCTAssertTrue(element("terminal.panel").waitForExistence(timeout: 8), debugSnapshot())
+        let valueBeforeTerminalTyping = editor.value as? String
+        app.typeText("x")
+        XCTAssertEqual(
+            editor.value as? String,
+            valueBeforeTerminalTyping,
+            "Opening Terminal should move keyboard input out of the editor.\n\(debugSnapshot())"
+        )
+        clickElement(app.buttons["terminal.clearButton"])
+    }
+
+    func testPanelResizeHandlesTrackDragDistanceWithoutJumping() throws {
+        let fixture = try openFixtureWorkspace()
+        openMainFile(in: fixture)
+
+        let sidebarHandle = element("fileTree.resizeHandle")
+        XCTAssertTrue(sidebarHandle.waitForExistence(timeout: 8), debugSnapshot())
+        let sidebarStartX = sidebarHandle.frame.midX
+        sidebarHandle.click()
+        app.typeKey(.rightArrow, modifierFlags: [])
+        XCTAssertEqual(sidebarHandle.frame.midX - sidebarStartX, 16, accuracy: 2, debugSnapshot())
+
+        clickElement(app.buttons["workspace.terminalToggle"])
+        let terminalHandle = element("terminal.resizeHandle")
+        XCTAssertTrue(terminalHandle.waitForExistence(timeout: 8), debugSnapshot())
+        XCTAssertEqual(terminalHandle.value as? String, "220 points")
+    }
+
     func testSettingsUsesFourFocusedTabsAndConditionalEditorControls() throws {
         launchApp()
         waitForWelcome()
@@ -418,6 +486,40 @@ final class SimpleCodeUITests: SimpleCodeUITestCase {
             file: file,
             line: line
         )
+    }
+
+    private func assertSyntaxColorCountIsStable(
+        before: XCUIScreenshot,
+        after: XCUIScreenshot,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let beforeCount = syntaxColoredPixelCount(in: before)
+        let afterCount = syntaxColoredPixelCount(in: after)
+        XCTAssertGreaterThan(beforeCount, 20, "Expected visible syntax colors before selection.", file: file, line: line)
+        XCTAssertGreaterThan(
+            afterCount,
+            beforeCount * 3 / 4,
+            "Selection removed syntax colors: before=\(beforeCount), after=\(afterCount).",
+            file: file,
+            line: line
+        )
+    }
+
+    private func syntaxColoredPixelCount(in screenshot: XCUIScreenshot) -> Int {
+        guard let data = screenshot.image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: data) else { return 0 }
+        var count = 0
+        for y in stride(from: 2, to: bitmap.pixelsHigh, by: 2) {
+            for x in stride(from: 2, to: bitmap.pixelsWide, by: 2) {
+                guard let color = rgb(bitmap.colorAt(x: x, y: y)) else { continue }
+                let spread = max(color.red, color.green, color.blue) - min(color.red, color.green, color.blue)
+                if spread > 0.16, min(color.red, color.green, color.blue) < 0.9 {
+                    count += 1
+                }
+            }
+        }
+        return count
     }
 
     private func clickSwitch(_ element: XCUIElement) {

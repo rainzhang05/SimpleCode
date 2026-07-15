@@ -174,15 +174,6 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         if context.coordinator.needsAttachment(for: session) {
             context.coordinator.attach(session: session, to: textView)
         }
-        let desiredFont = Typography.editorFont(
-            family: settings.typography.editorFontFamily,
-            size: fontSize,
-            ligatures: settings.typography.editorFontLigatures
-        )
-        if textView.font != desiredFont {
-            textView.font = desiredFont
-            context.coordinator.gutter?.invalidate()
-        }
         textView.isEditable = !session.isReadOnly
         context.coordinator.applyEditorSettings(to: textView, scrollView: scrollView)
         if let pending = session.pendingSelectionRange {
@@ -227,6 +218,14 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         private var lastAppliedSettings = EditorAppliedSettings()
         private var lastWordWrapEnabled: Bool?
 
+        private var editorFont: NSFont {
+            Typography.editorFont(
+                family: settings.typography.editorFontFamily,
+                size: CGFloat(settings.typography.editorFontSize),
+                ligatures: settings.typography.editorFontLigatures
+            )
+        }
+
         init(
             session: EditorDocumentSession,
             settings: AppSettingsSnapshot,
@@ -267,7 +266,6 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             textView.highlightCurrentLine = snapshot.highlightCurrentLine
             scrollView.backgroundColor = ColorRole.editorBackgroundNSColor
             textView.backgroundColor = ColorRole.editorBackgroundNSColor
-            textView.textColor = ColorRole.editorForegroundNSColor
             textView.insertionPointColor = ColorRole.editorForegroundNSColor
             textView.selectedTextAttributes = [
                 .backgroundColor: ColorRole.editorSelectionNSColor
@@ -284,7 +282,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             }
 
             let gutterMetricsChanged = gutter?.updateMetrics(
-                font: textView.font,
+                font: editorFont,
                 lineCount: session.lineStartIndex.lineCount
             ) ?? false
             if lastAppliedSettings.showLineNumbers != snapshot.showLineNumbers || gutterMetricsChanged {
@@ -363,7 +361,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             session.textStorage.delegate = self
 
             gutter?.lineStartIndex = session.lineStartIndex
-            _ = gutter?.updateMetrics(font: textView.font, lineCount: session.lineStartIndex.lineCount)
+            _ = gutter?.updateMetrics(font: editorFont, lineCount: session.lineStartIndex.lineCount)
             textView.configureLineNumberGutter(
                 visible: settings.editor.showLineNumbers,
                 width: gutter?.width ?? LineNumberGutterView.minimumWidth
@@ -493,7 +491,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             )
             gutter?.lineStartIndex = session.lineStartIndex
             if let textView,
-               gutter?.updateMetrics(font: textView.font, lineCount: session.lineStartIndex.lineCount) == true {
+               gutter?.updateMetrics(font: editorFont, lineCount: session.lineStartIndex.lineCount) == true {
                 textView.configureLineNumberGutter(
                     visible: settings.editor.showLineNumbers,
                     width: gutter?.width ?? LineNumberGutterView.minimumWidth
@@ -841,7 +839,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         private func applyBaseTextAttributesIfNeeded(to textView: CodeTextView, force: Bool) {
-            guard let font = textView.font else { return }
+            let font = editorFont
             let foreground = ColorRole.editorForegroundNSColor
             let paragraphStyle = NSParagraphStyle.default
             textView.typingAttributes = [
@@ -879,7 +877,8 @@ struct CodeEditorRepresentable: NSViewRepresentable {
         }
 
         private func applyBaseTextAttributes(to textStorage: NSTextStorage, in editedRange: NSRange) {
-            guard let textView, let font = textView.font else { return }
+            guard let textView else { return }
+            let font = editorFont
             let documentRange = NSRange(location: 0, length: textStorage.length)
             let range = NSIntersectionRange(editedRange, documentRange)
             guard range.length > 0 else { return }
@@ -1061,7 +1060,7 @@ struct CodeEditorRepresentable: NSViewRepresentable {
             onTextChanged()
 
             gutter?.lineStartIndex = session.lineStartIndex
-            if gutter?.updateMetrics(font: textView.font, lineCount: session.lineStartIndex.lineCount) == true {
+            if gutter?.updateMetrics(font: editorFont, lineCount: session.lineStartIndex.lineCount) == true {
                 textView.configureLineNumberGutter(
                     visible: settings.editor.showLineNumbers,
                     width: gutter?.width ?? LineNumberGutterView.minimumWidth

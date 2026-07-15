@@ -267,6 +267,10 @@ struct EditorVisibleRangeTests {
         coordinator.textView = textView
         coordinator.scrollView = scrollView
         coordinator.attach(session: session, to: textView)
+        coordinator.applyEditorSettings(to: textView, scrollView: scrollView)
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+        coordinator.textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification))
+        coordinator.applyEditorSettings(to: textView, scrollView: scrollView)
 
         let actual = try #require(session.textStorage.attribute(
             .foregroundColor,
@@ -566,6 +570,19 @@ struct EditorVisibleRangeTests {
         let bitmap = try #require(textView.bitmapImageRepForCachingDisplay(in: textView.bounds))
         textView.cacheDisplay(in: textView.bounds, to: bitmap)
 
+        let layoutManager = try #require(textView.textLayoutManager)
+        let contentManager = try #require(layoutManager.textContentManager)
+        layoutManager.ensureLayout(for: contentManager.documentRange)
+        let selectionLocation = try #require(layoutManager.textSelections.first?.textRanges.first?.location)
+        let fragment = try #require(layoutManager.textLayoutFragment(for: selectionLocation))
+        let lineFrame = try #require(EditorTextGeometry.visualLineFrame(in: fragment, textView: textView))
+        let pixelsPerPoint = CGFloat(bitmap.pixelsHigh) / textView.bounds.height
+        let middleRow = Int(lineFrame.midY * pixelsPerPoint)
+        let outside = try #require(bitmap.colorAt(x: 1, y: middleRow)?.usingColorSpace(.sRGB))
+        #expect(outside.redComponent > 0.98)
+        #expect(outside.greenComponent > 0.98)
+        #expect(outside.blueComponent > 0.98)
+
         var foundMarker = false
         for y in stride(from: 0, to: bitmap.pixelsHigh, by: 2) {
             for x in stride(from: 0, to: bitmap.pixelsWide, by: 3) {
@@ -720,7 +737,7 @@ struct EditorVisibleRangeTests {
         let bitmap = try #require(textView.bitmapImageRepForCachingDisplay(in: textView.bounds))
         textView.cacheDisplay(in: textView.bounds, to: bitmap)
 
-        let sampleX = bitmap.pixelsWide - 10
+        let sampleX = bitmap.pixelsWide / 2
         let markerRows = (0..<bitmap.pixelsHigh).filter { y in
             guard let color = bitmap.colorAt(x: sampleX, y: y)?.usingColorSpace(.sRGB) else {
                 return false
@@ -736,7 +753,6 @@ struct EditorVisibleRangeTests {
         }
         let precedingViewY = expectedFrame.minY - 0.5 / pixelsPerPoint
         let precedingRow = Int(floor(precedingViewY * pixelsPerPoint))
-
         #expect(markerRows == expectedRows)
         #expect(abs(expectedFrame.height - rawEmptyLineHeight) < 0.001)
         #expect(abs(CGFloat(markerRows.count) / pixelsPerPoint - rawEmptyLineHeight) <= 1 / pixelsPerPoint)
@@ -1375,6 +1391,47 @@ struct EditorVisibleRangeTests {
         #expect(textView.string == "    x\n    y")
         undoManager.redo()
         #expect(textView.string == "  x\n    y")
+    }
+
+    @MainActor
+    @Test func commandZAndShiftCommandZRouteToTheDocumentUndoManager() throws {
+        let textView = CodeTextView()
+        let undoManager = UndoManager()
+        textView.attachUndoManager(undoManager)
+        textView.string = "alpha"
+        textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
+        textView.insertText(" beta")
+        #expect(undoManager.canUndo)
+
+        let undoEvent = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .command,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "z",
+            charactersIgnoringModifiers: "z",
+            isARepeat: false,
+            keyCode: 6
+        ))
+        #expect(textView.performKeyEquivalent(with: undoEvent))
+        #expect(textView.string == "alpha")
+
+        let redoEvent = try #require(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command, .shift],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "Z",
+            charactersIgnoringModifiers: "z",
+            isARepeat: false,
+            keyCode: 6
+        ))
+        #expect(textView.performKeyEquivalent(with: redoEvent))
+        #expect(textView.string == "alpha beta")
     }
 
     @MainActor

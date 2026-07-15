@@ -130,16 +130,43 @@ final class CodeTextView: NSTextView {
 
         guard var viewRect else { return }
         let visible = visibleRect
-        viewRect.origin.x = visible.minX
-        viewRect.size.width = visible.width
-        let paintRect = viewRect.intersection(dirtyRect)
+        let horizontalMin = max(visible.minX, bounds.minX)
+        let horizontalMax = min(visible.maxX, bounds.maxX)
+        viewRect.origin.x = horizontalMin
+        viewRect.size.width = max(0, horizontalMax - horizontalMin)
+        let highlightRect = viewRect.insetBy(dx: 4, dy: 0)
+        let paintRect = highlightRect.intersection(dirtyRect)
         guard !paintRect.isEmpty else { return }
 
         ColorRole.editorCurrentLineNSColor.setFill()
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(
+            roundedRect: highlightRect,
+            xRadius: 5,
+            yRadius: 5
+        ).addClip()
         paintRect.fill()
+        NSGraphicsContext.restoreGraphicsState()
     }
 
     // MARK: Editor commands
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isUndoShortcut = event.charactersIgnoringModifiers?.lowercased() == "z"
+            && modifiers.subtracting([.command, .shift]).isEmpty
+            && modifiers.contains(.command)
+        guard isUndoShortcut else { return super.performKeyEquivalent(with: event) }
+
+        if modifiers.contains(.shift) {
+            guard undoManager?.canRedo == true else { return true }
+            undoManager?.redo()
+        } else {
+            guard undoManager?.canUndo == true else { return true }
+            undoManager?.undo()
+        }
+        return true
+    }
 
     override func insertNewline(_ sender: Any?) {
         guard !hasMarkedText() else {

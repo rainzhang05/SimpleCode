@@ -170,6 +170,27 @@ struct HighlightingIntegrationTests {
         #expect(batch.tokens.contains { $0.category == .type || $0.category == .variable })
     }
 
+    @Test func markdownTreeSitterProducesTokens() async throws {
+        let highlighter = try #require(TreeSitterHighlighter(languageID: .markdown))
+        let source = """
+        # Heading
+
+        > quoted text
+
+        ```swift
+        let answer = 42
+        ```
+
+        [documentation](https://example.com)
+        """
+
+        let batch = await highlighter.load(text: source, revision: 1)
+
+        #expect(!batch.tokens.isEmpty)
+        #expect(batch.tokens.contains { $0.category == .keyword })
+        #expect(batch.tokens.contains { $0.category == .string || $0.category == .label })
+    }
+
     @Test func assemblyPatternProducesTokens() async {
         guard let highlighter = HighlightProviderFactory.makeHighlighter(for: .assembly) as? AssemblyPatternHighlighter else {
             Issue.record("Assembly highlighter failed to initialize")
