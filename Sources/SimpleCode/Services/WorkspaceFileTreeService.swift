@@ -37,6 +37,7 @@ actor WorkspaceFileTreeService {
         userPatterns: [String] = []
     ) -> FileTreeDirectoryListing {
         let rootPath = workspaceRoot.path
+        let rootPathPrefix = rootPath + "/"
         let keys: [URLResourceKey] = [
             .isDirectoryKey,
             .isSymbolicLinkKey,
@@ -58,19 +59,20 @@ actor WorkspaceFileTreeService {
                 let isDirectory = values?.isDirectory ?? false
                 let isSymlink = values?.isSymbolicLink ?? false
                 let name = item.lastPathComponent
-                let itemPath = item.path
-                let relativePath = itemPath.hasPrefix(rootPath + "/")
-                    ? String(itemPath.dropFirst(rootPath.count + 1))
-                    : name
+                if isDirectory && !userPatterns.isEmpty {
+                    let itemPath = item.path
+                    let relativePath = itemPath.hasPrefix(rootPathPrefix)
+                        ? String(itemPath.dropFirst(rootPathPrefix.count))
+                        : name
 
-                if isDirectory,
-                   WorkspaceTreeExclusions.shouldExclude(
+                    if WorkspaceTreeExclusions.shouldExclude(
                        directoryName: name,
                        relativePath: relativePath,
                        isWorkspaceRoot: false,
                        userPatterns: userPatterns
-                   ) {
-                    continue
+                    ) {
+                        continue
+                    }
                 }
 
                 children.append(FileTreeChild(
