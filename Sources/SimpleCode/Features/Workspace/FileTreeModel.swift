@@ -135,9 +135,11 @@ final class FileTreeModel {
         // Parents have to be restored before their descendants can be found in the
         // freshly rebuilt tree. Deterministic shallow-to-deep replay also avoids
         // redundant failed lookups for deeply expanded workspaces.
-        for id in preserved.sorted(by: { lhs, rhs in
-            lhs.path.split(separator: "/").count < rhs.path.split(separator: "/").count
-        }) {
+        let orderedExpandedIDs = preserved
+            .map { id in (id, id.path.split(separator: "/").count) }
+            .sorted { $0.1 < $1.1 }
+            .map(\.0)
+        for id in orderedExpandedIDs {
             guard exclusionGeneration.permitsCommit(from: generation) else { return }
             await loadChildrenIfNeeded(
                 for: id,
