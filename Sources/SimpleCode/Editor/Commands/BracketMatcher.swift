@@ -110,16 +110,20 @@ enum BracketMatcher {
     }
 
     private static func skipToken(at location: Int, context: SyntaxContext) -> Int? {
-        let ranges = context.stringRanges + context.commentRanges
-        for range in ranges where NSLocationInRange(location, range) {
+        for range in context.stringRanges where NSLocationInRange(location, range) {
+            return range.location + range.length
+        }
+        for range in context.commentRanges where NSLocationInRange(location, range) {
             return range.location + range.length
         }
         return nil
     }
 
     private static func skipTokenBackward(at location: Int, context: SyntaxContext) -> Int? {
-        let ranges = context.stringRanges + context.commentRanges
-        for range in ranges where NSLocationInRange(location, range) {
+        for range in context.stringRanges where NSLocationInRange(location, range) {
+            return range.location - 1
+        }
+        for range in context.commentRanges where NSLocationInRange(location, range) {
             return range.location - 1
         }
         return nil
