@@ -25,12 +25,6 @@ enum GitExecutableResolver: Sendable {
         return .failure(.gitUnavailable)
     }
 
-    static func resetCacheForTesting() {
-        lock.lock()
-        defer { lock.unlock() }
-        cachedPath = nil
-    }
-
     private static func runXcrunFindGit() -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
