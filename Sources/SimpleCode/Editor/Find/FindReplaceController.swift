@@ -34,6 +34,20 @@ final class FindReplaceController {
         }
     }
 
+    /// Updates the caret/selection without re-copying document text. Full searches
+    /// only run when `selectionOnly` is on (search range depends on selection).
+    func updateSelection(_ selection: NSRange) {
+        documentSelection = selection
+        guard isVisible else { return }
+        if selectionOnly {
+            scheduleSearch()
+            return
+        }
+        guard !matches.isEmpty else { return }
+        currentMatchIndex = firstMatchIndex(atOrAfter: selection.location) ?? 0
+        statusMessage = matchStatus()
+    }
+
     func showFind() {
         isVisible = true
         scheduleSearch()

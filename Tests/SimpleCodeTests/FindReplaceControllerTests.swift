@@ -45,6 +45,36 @@ struct FindReplaceControllerTests {
         #expect(controller.matches.isEmpty)
     }
 
+    @Test func selectionChangeRetargetsMatchWithoutRescanning() async {
+        let controller = FindReplaceController()
+        controller.bind(text: "foo bar foo", selection: NSRange(location: 0, length: 0))
+        controller.searchText = "foo"
+        controller.showFind()
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(controller.matches.count == 2)
+        let generation = controller.searchGeneration
+        controller.updateSelection(NSRange(location: 8, length: 0))
+        #expect(controller.searchGeneration == generation)
+        #expect(controller.matches.count == 2)
+        #expect(controller.currentMatchIndex == 1)
+    }
+
+    @Test func selectionOnlyResearchesOnSelectionChange() async {
+        let controller = FindReplaceController()
+        controller.bind(text: "foo bar foo", selection: NSRange(location: 0, length: 3))
+        controller.searchText = "foo"
+        controller.selectionOnly = true
+        controller.showFind()
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(controller.matches.count == 1)
+        #expect(controller.matches[0].range.location == 0)
+
+        controller.updateSelection(NSRange(location: 8, length: 3))
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(controller.matches.count == 1)
+        #expect(controller.matches[0].range.location == 8)
+    }
+
     @Test func staleSearchResultsAreCancelled() async {
         let controller = FindReplaceController()
         controller.bind(text: "alpha beta gamma", selection: NSRange(location: 0, length: 0))

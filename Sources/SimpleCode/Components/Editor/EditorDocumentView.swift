@@ -36,7 +36,7 @@ struct EditorDocumentView: View {
         }
         .onChange(of: session.selectionRange) { _, newValue in
             guard workspace.findReplace.isVisible else { return }
-            workspace.findReplace.bind(text: session.textStorage.string, selection: newValue)
+            workspace.findReplace.updateSelection(newValue)
         }
         .onAppear {
             guard workspace.findReplace.isVisible else { return }
