@@ -68,7 +68,7 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         lastParsedText = text
         pendingRetryUTF16Ranges = []
         let tokens = newTree.map { highlightTokens(in: $0, restrictedTo: nil) } ?? []
-        let wholeDocument = NSRange(location: 0, length: text.utf16.count)
+        let wholeDocument = NSRange(location: 0, length: (text as NSString).length)
         return HighlightBatch(revision: revision, coveredRanges: [wholeDocument], tokens: tokens)
     }
 
@@ -275,7 +275,7 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
             lastParsedText = fullText
             return ParseResult(
                 tree: rebuiltTree,
-                changedUTF16Ranges: [NSRange(location: 0, length: fullText.utf16.count)]
+                changedUTF16Ranges: [NSRange(location: 0, length: (fullText as NSString).length)]
             )
         }
 
