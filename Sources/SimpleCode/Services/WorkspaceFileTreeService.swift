@@ -1,13 +1,13 @@
 import Foundation
 
 struct FileTreeNodeID: Hashable, Sendable {
-    let path: String
+    let url: URL
 
     init(url: URL) {
-        self.path = url.path
+        self.url = url
     }
 
-    var url: URL { URL(fileURLWithPath: path) }
+    var path: String { url.path }
 }
 
 struct FileTreeChild: Identifiable, Equatable, Sendable {
