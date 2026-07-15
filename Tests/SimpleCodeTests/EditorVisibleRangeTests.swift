@@ -879,7 +879,8 @@ struct EditorVisibleRangeTests {
             #expect(!expectedRows.isEmpty)
             #expect(abs((actualRows.first ?? 0) - (expectedRows.first ?? 0)) <= 1)
             #expect(abs((actualRows.last ?? 0) - (expectedRows.last ?? 0)) <= 1)
-            #expect(abs(actualRows.count - expectedRows.count) <= 1)
+            // CI rasterization can differ by a couple of pixels across scale factors.
+            #expect(abs(actualRows.count - expectedRows.count) <= 2)
         }
     }
 
