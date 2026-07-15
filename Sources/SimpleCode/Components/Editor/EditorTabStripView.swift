@@ -36,6 +36,8 @@ struct EditorTabStripView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .bold))
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .opacity(0.7)
