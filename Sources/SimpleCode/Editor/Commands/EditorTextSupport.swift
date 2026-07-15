@@ -158,28 +158,6 @@ enum EditorTextSupport {
         return result
     }
 
-    static func adjustSelections(
-        _ selections: [NSRange],
-        for edit: TextEdit,
-        isBeforeEdit: Bool
-    ) -> [NSRange] {
-        let editStart = edit.range.location
-        let editEnd = edit.range.location + edit.range.length
-        let delta = (edit.replacement as NSString).length - edit.range.length
-        return selections.map { selection in
-            if selection.location + selection.length <= editStart {
-                return selection
-            }
-            if selection.location >= editEnd {
-                return NSRange(location: selection.location + delta, length: selection.length)
-            }
-            if isBeforeEdit {
-                return NSRange(location: editStart, length: 0)
-            }
-            return NSRange(location: editStart + (edit.replacement as NSString).length, length: 0)
-        }
-    }
-
     /// Maps a selected range through a batch of non-overlapping edits expressed
     /// in the original document coordinate space. The leading boundary keeps an
     /// insertion at its edge selected; the trailing boundary includes it.
@@ -213,24 +191,6 @@ enum EditorTextSupport {
         return position + delta
     }
 
-    static func indentLevel(of whitespace: String, usesTabs: Bool, tabWidth: Int) -> Int {
-        if usesTabs {
-            var tabs = 0
-            var spaces = 0
-            for ch in whitespace {
-                if ch == "\t" { tabs += 1 }
-                else if ch == " " { spaces += 1 }
-            }
-            return tabs + (spaces / tabWidth)
-        }
-        return whitespace.count / tabWidth
-    }
-
-    static func indentString(level: Int, options: IndentationOptions) -> String {
-        guard level > 0 else { return "" }
-        return String(repeating: options.indentUnit, count: level)
-    }
-
     static func trimTrailingWhitespace(from line: String) -> String {
         var result = line
         while let last = result.unicodeScalars.last, CharacterSet.whitespaces.contains(last) {
@@ -239,18 +199,8 @@ enum EditorTextSupport {
         return result
     }
 
-    static func character(at location: Int, in text: String) -> UInt16? {
-        let ns = nsString(text)
-        guard location >= 0, location < ns.length else { return nil }
-        return ns.character(at: location)
-    }
-
     static func substring(_ range: NSRange, in text: String) -> String {
         guard range.length > 0 else { return "" }
         return nsString(text).substring(with: range)
-    }
-
-    static func rangesOverlap(_ a: NSRange, _ b: NSRange) -> Bool {
-        NSIntersectionRange(a, b).length > 0
     }
 }
