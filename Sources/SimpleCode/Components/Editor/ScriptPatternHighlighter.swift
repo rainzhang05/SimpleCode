@@ -632,7 +632,7 @@ actor ScriptPatternHighlighter: SyntaxHighlighter {
     }
 
     private func highlightEntireDocument(_ text: String) -> [SyntaxToken] {
-        highlight(text, restrictedTo: NSRange(location: 0, length: text.utf16.count))
+        highlight(text, restrictedTo: NSRange(location: 0, length: (text as NSString).length))
     }
 
     private func highlight(_ text: String, restrictedTo range: NSRange) -> [SyntaxToken] {
