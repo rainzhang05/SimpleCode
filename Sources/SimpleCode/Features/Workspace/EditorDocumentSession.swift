@@ -327,21 +327,25 @@ final class EditorDocumentSession: Identifiable {
     }
 
     private func rebuildSyntaxContext() {
-        let stringRanges = semanticTokens
-            .filter { $0.category == .string }
-            .map(\.range)
-        let commentRanges = semanticTokens
-            .filter { $0.category == .comment || $0.category == .documentationComment }
-            .map(\.range)
+        var stringRanges: [NSRange] = []
+        var commentRanges: [NSRange] = []
+        for token in semanticTokens {
+            if token.category == .string {
+                stringRanges.append(token.range)
+            } else if token.category == .comment || token.category == .documentationComment {
+                commentRanges.append(token.range)
+            }
+        }
         syntaxContext = SyntaxContext(stringRanges: stringRanges, commentRanges: commentRanges)
     }
 
     private func appendSyntaxContext(from tokens: [SyntaxToken]) {
-        syntaxContext.stringRanges.append(contentsOf: tokens.lazy
-            .filter { $0.category == .string }
-            .map(\.range))
-        syntaxContext.commentRanges.append(contentsOf: tokens.lazy
-            .filter { $0.category == .comment || $0.category == .documentationComment }
-            .map(\.range))
+        for token in tokens {
+            if token.category == .string {
+                syntaxContext.stringRanges.append(token.range)
+            } else if token.category == .comment || token.category == .documentationComment {
+                syntaxContext.commentRanges.append(token.range)
+            }
+        }
     }
 }
