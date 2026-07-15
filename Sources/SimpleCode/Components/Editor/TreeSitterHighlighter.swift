@@ -83,18 +83,19 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         tree = newTree
         lastParsedText = text
         pendingRetryUTF16Ranges = []
+        let documentUTF16Count = (text as NSString).length
         let priority = NSIntersectionRange(
             priorityUTF16Range,
-            NSRange(location: 0, length: text.utf16.count)
+            NSRange(location: 0, length: documentUTF16Count)
         )
         let tokens = newTree.map {
             highlightTokens(
                 in: $0,
-                restrictedTo: utf16RangeToByteRange(priority, documentUTF16Count: text.utf16.count)
+                restrictedTo: utf16RangeToByteRange(priority, documentUTF16Count: documentUTF16Count)
             )
         } ?? []
         let remaining = InitialHighlightPaging.remainingRanges(
-            documentLength: text.utf16.count,
+            documentLength: documentUTF16Count,
             excluding: priority
         )
         return InitialHighlightPage(
@@ -125,7 +126,7 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
             in: tree,
             restrictedTo: utf16RangeToByteRange(
                 pageRange,
-                documentUTF16Count: lastParsedText.utf16.count
+                documentUTF16Count: (lastParsedText as NSString).length
             )
         )
         return InitialHighlightPage(
