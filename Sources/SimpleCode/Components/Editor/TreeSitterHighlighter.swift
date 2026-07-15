@@ -145,10 +145,11 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
         priorityUTF16Range: NSRange
     ) async -> (priority: HighlightBatch, remainder: HighlightBatch?) {
         invalidateInitialContinuation()
+        let documentUTF16Count = (fullText as NSString).length
         let editPointRange = NSRange(location: edit.startUTF16, length: max(0, edit.newEndUTF16 - edit.startUTF16))
         let priorityRanges = mergedRanges(
             [priorityUTF16Range, editPointRange],
-            documentLength: fullText.utf16.count
+            documentLength: documentUTF16Count
         )
 
         let parseResult = incrementalParse(fullText: fullText, edit: edit, failedRevision: revision)
@@ -164,7 +165,7 @@ actor TreeSitterHighlighter: SyntaxHighlighter {
             changedUTF16Ranges: parseResult.changedUTF16Ranges,
             revision: revision,
             priorityUTF16Ranges: priorityRanges,
-            documentUTF16Count: fullText.utf16.count,
+            documentUTF16Count: documentUTF16Count,
             includePendingRetry: true
         )
     }
