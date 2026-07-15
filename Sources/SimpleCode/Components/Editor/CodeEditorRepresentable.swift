@@ -887,7 +887,6 @@ struct CodeEditorRepresentable: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             gutter?.invalidate()
-            overlay?.needsDisplay = true
             guard let textView else { return }
             let selectedLocation = textView.selectedRange().location
             let line = session.lineStartIndex.lineNumber(atUTF16Offset: selectedLocation)
