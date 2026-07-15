@@ -25,6 +25,8 @@ final class FindReplaceController {
     private var documentText: String = ""
     private var documentSelection: NSRange = NSRange(location: 0, length: 0)
     private var searchErrorMessage: String?
+    private var cachedRegex: NSRegularExpression?
+    private var cachedRegexKey: String?
 
     func bind(text: String, selection: NSRange) {
         documentText = text
@@ -210,11 +212,7 @@ final class FindReplaceController {
     }
 
     private func regexMatches(in text: String, range: NSRange) -> [FindMatch] {
-        let options: NSRegularExpression.Options = matchCase ? [] : [.caseInsensitive]
-        guard let regex = try? NSRegularExpression(pattern: searchText, options: options) else {
-            searchErrorMessage = "Invalid regular expression"
-            return []
-        }
+        guard let regex = regexForCurrentSearch() else { return [] }
         return regex.matches(in: text, range: range)
             .filter { $0.range.length > 0 }
             .map { FindMatch(range: $0.range) }
@@ -233,8 +231,7 @@ final class FindReplaceController {
 
     private func replacementString(for match: FindMatch, in text: String) -> String {
         guard useRegex else { return replaceText }
-        let options: NSRegularExpression.Options = matchCase ? [] : [.caseInsensitive]
-        guard let regex = try? NSRegularExpression(pattern: searchText, options: options) else { return replaceText }
+        guard let regex = regexForCurrentSearch() else { return replaceText }
         let matched = (text as NSString).substring(with: match.range)
         let matchedRange = NSRange(location: 0, length: (matched as NSString).length)
         return regex.stringByReplacingMatches(
@@ -243,6 +240,23 @@ final class FindReplaceController {
             range: matchedRange,
             withTemplate: replaceText
         )
+    }
+
+    private func regexForCurrentSearch() -> NSRegularExpression? {
+        let key = "\(searchText)\u{0}\(matchCase)"
+        if cachedRegexKey == key, let cachedRegex {
+            return cachedRegex
+        }
+        let options: NSRegularExpression.Options = matchCase ? [] : [.caseInsensitive]
+        guard let regex = try? NSRegularExpression(pattern: searchText, options: options) else {
+            searchErrorMessage = "Invalid regular expression"
+            cachedRegex = nil
+            cachedRegexKey = key
+            return nil
+        }
+        cachedRegex = regex
+        cachedRegexKey = key
+        return regex
     }
 
     private func firstMatchIndex(atOrAfter offset: Int) -> Int? {
