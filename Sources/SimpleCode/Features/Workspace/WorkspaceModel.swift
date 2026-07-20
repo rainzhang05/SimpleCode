@@ -373,7 +373,8 @@ final class WorkspaceModel {
     }
 
     func save(session: EditorDocumentSession) async throws {
-        try await openDocuments.save(session: session, to: session.fileURL!)
+        guard let url = session.fileURL else { return }
+        try await openDocuments.save(session: session, to: url)
     }
 
     func saveActive() async throws { try await openDocuments.saveActive() }
