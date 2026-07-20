@@ -44,10 +44,12 @@ struct NewFolderSheet: View {
                 Button("Cancel", role: .cancel) {
                     onCancel()
                 }
+                .keyboardShortcut(.cancelAction)
                 .pointingHandCursor()
                 Button("Create") {
                     create()
                 }
+                .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .pointingHandCursor()
                 .disabled(folderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || parentURL == nil)
