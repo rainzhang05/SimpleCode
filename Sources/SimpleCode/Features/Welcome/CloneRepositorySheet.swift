@@ -159,6 +159,7 @@ struct CloneRepositorySheet: View {
                     onCancel()
                 }
             }
+            .keyboardShortcut(.cancelAction)
             .pointingHandCursor()
             .accessibilityIdentifier("clone.sheet.cancelButton")
 
@@ -182,6 +183,7 @@ struct CloneRepositorySheet: View {
                 Button("Clone") {
                     controller.startClone()
                 }
+                .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .pointingHandCursor()
                 .disabled(!controller.canClone || isBusy)
