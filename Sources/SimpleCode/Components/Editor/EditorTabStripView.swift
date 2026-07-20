@@ -29,7 +29,7 @@ struct EditorTabStripView: View {
                 .lineLimit(1)
                 .font(.system(size: 12, weight: isActive ? .semibold : .regular))
             if session.isDirty {
-                Circle().fill(ColorRole.chromeAccent).frame(width: 6, height: 6)
+                Circle().fill(.orange).frame(width: 6, height: 6)
             }
             Button {
                 workspace.requestCloseTab(sessionID: session.id)
@@ -45,7 +45,10 @@ struct EditorTabStripView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(isActive ? ColorRole.chromeAccent.opacity(0.13) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(
+            isActive ? Color.primary.opacity(0.08) : .clear,
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
         .glassPanel(cornerRadius: 8, interactive: true)
         .opacity(isActive ? 1 : 0.78)
         .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
