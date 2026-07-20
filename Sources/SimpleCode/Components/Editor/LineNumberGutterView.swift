@@ -16,7 +16,7 @@ final class LineNumberGutterView: NSView {
     var lineStartIndex = LineStartIndex()
     private(set) var width: CGFloat = minimumWidth
 
-        init(codeTextView: CodeTextView) {
+    init(codeTextView: CodeTextView) {
         self.codeTextView = codeTextView
         let height = codeTextView.bounds.height > 0 ? codeTextView.bounds.height : codeTextView.frame.height
         super.init(frame: NSRect(
