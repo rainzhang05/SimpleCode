@@ -74,6 +74,7 @@ final class AppModel {
                 pendingWorkspaceURL = url
                 existing.unsavedSessionsForSheet = existing.openDocuments.dirtySessions()
                 existing.pendingCloseAction = { [weak self] in
+                    existing.tearDown()
                     self?.performOpenWorkspace(at: url)
                 }
                 return
