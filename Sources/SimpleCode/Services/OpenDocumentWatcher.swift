@@ -45,8 +45,6 @@ final class OpenDocumentWatcher {
         parentSource?.cancel()
         fileSource = nil
         parentSource = nil
-        if fileDescriptor >= 0 { close(fileDescriptor) }
-        if parentDescriptor >= 0 { close(parentDescriptor) }
         fileDescriptor = -1
         parentDescriptor = -1
         watchedURL = nil
@@ -67,10 +65,9 @@ final class OpenDocumentWatcher {
         fileSource.setEventHandler { [weak self] in
             self?.handleFileEvent()
         }
-        fileSource.setCancelHandler { [weak self] in
-            guard let self, self.fileDescriptor >= 0 else { return }
-            close(self.fileDescriptor)
-            self.fileDescriptor = -1
+        let openedFileDescriptor = fileDescriptor
+        fileSource.setCancelHandler {
+            close(openedFileDescriptor)
         }
         self.fileSource = fileSource
         fileSource.resume()
@@ -87,10 +84,9 @@ final class OpenDocumentWatcher {
         parentSource.setEventHandler { [weak self] in
             self?.recheckFile()
         }
-        parentSource.setCancelHandler { [weak self] in
-            guard let self, self.parentDescriptor >= 0 else { return }
-            close(self.parentDescriptor)
-            self.parentDescriptor = -1
+        let openedParentDescriptor = parentDescriptor
+        parentSource.setCancelHandler {
+            close(openedParentDescriptor)
         }
         self.parentSource = parentSource
         parentSource.resume()
