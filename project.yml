@@ -89,8 +89,8 @@ targets:
       base:
         PRODUCT_NAME: SimpleCode
         PRODUCT_BUNDLE_IDENTIFIER: com.simplecode.app
-        MARKETING_VERSION: 0.1.0
-        CURRENT_PROJECT_VERSION: 2
+        MARKETING_VERSION: 0.2.0
+        CURRENT_PROJECT_VERSION: 3
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_LSMinimumSystemVersion: "26.0"
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
