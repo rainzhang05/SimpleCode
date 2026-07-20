@@ -27,6 +27,7 @@ struct GoToLineView: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
+                    .keyboardShortcut(.cancelAction)
                     .pointingHandCursor()
                 Button("Go") {
                     if let offset = controller.resolve(lineStartIndex: lineStartIndex, lineCount: lineCount, text: text) {
