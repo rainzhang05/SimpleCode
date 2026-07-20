@@ -156,6 +156,23 @@ final class CodeTextView: NSTextView {
         return highlightRect.isEmpty ? nil : highlightRect
     }
 
+    // MARK: Cursor
+
+    /// NSTextView receives `mouseMoved` as first responder and sets the I-beam
+    /// cursor even when the pointer is over an overlay (terminal panel,
+    /// sidebar). Only let it manage the cursor when the pointer is actually
+    /// over this view.
+    override func mouseMoved(with event: NSEvent) {
+        guard let contentView = window?.contentView else {
+            super.mouseMoved(with: event)
+            return
+        }
+        let point = contentView.superview?.convert(event.locationInWindow, from: nil) ?? event.locationInWindow
+        let hitView = contentView.hitTest(point)
+        guard hitView === self || hitView?.isDescendant(of: self) == true else { return }
+        super.mouseMoved(with: event)
+    }
+
     // MARK: Editor commands
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
