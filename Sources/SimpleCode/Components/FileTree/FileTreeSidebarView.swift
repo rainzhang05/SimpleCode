@@ -339,6 +339,7 @@ private struct RenameSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel, action: onCancel)
+                    .keyboardShortcut(.cancelAction)
                     .pointingHandCursor()
                 Button("Rename", action: onRename)
                     .keyboardShortcut(.defaultAction)
