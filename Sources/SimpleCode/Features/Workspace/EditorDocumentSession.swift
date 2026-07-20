@@ -261,10 +261,6 @@ final class EditorDocumentSession: Identifiable {
         hasExternalModification = false
     }
 
-    func reloadFromDisk(_ content: LoadedFileContent) {
-        applyLoadedContent(content, url: fileURL!)
-    }
-
     func setLanguageOverride(_ id: LanguageID) {
         languageOverride = id
         language = id
