@@ -68,7 +68,7 @@ struct EditorTabStripView: View {
                 Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 Button("Copy Path") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(url.path, forType: .string) }
                 Button("Copy Relative Path") {
-                    let relative = url.path.replacingOccurrences(of: workspace.rootURL.path + "/", with: "")
+                    let relative = FileTreeAccessibility.relativePath(for: url, workspaceRoot: workspace.rootURL)
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(relative, forType: .string)
                 }
