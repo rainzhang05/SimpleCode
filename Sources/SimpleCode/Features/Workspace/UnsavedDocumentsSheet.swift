@@ -22,6 +22,7 @@ struct UnsavedDocumentsSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { onAction(.cancel) }
+                    .keyboardShortcut(.cancelAction)
                     .pointingHandCursor()
                     .accessibilityIdentifier("unsaved.sheet.cancel")
                 Button("Don't Save", role: .destructive) { onAction(.dontSave) }
