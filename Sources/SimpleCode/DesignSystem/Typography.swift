@@ -40,8 +40,9 @@ enum FontCatalog {
             guard let font = NSFont(name: family, size: 12) else { return false }
             return font.isFixedPitch
         }.sorted()
-        cachedFamilies = [Typography.systemMonospacedFamilyName] + families.filter { $0 != Typography.systemMonospacedFamilyName }
-        return cachedFamilies!
+        let resolved = [Typography.systemMonospacedFamilyName] + families.filter { $0 != Typography.systemMonospacedFamilyName }
+        cachedFamilies = resolved
+        return resolved
     }
 
     static func resolvedMonospacedFamily(_ family: String) -> String {
