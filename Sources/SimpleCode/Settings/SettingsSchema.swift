@@ -71,7 +71,7 @@ struct TypographySettings: Codable, Equatable, Sendable {
 
     static var defaults: TypographySettings {
         TypographySettings(
-            editorFontFamily: Typography.systemMonospacedFamilyName,
+            editorFontFamily: Typography.defaultEditorFontFamily,
             editorFontSize: Double(Typography.defaultEditorFontSize),
             editorFontLigatures: false,
             terminalFontFamily: Typography.systemMonospacedFamilyName,

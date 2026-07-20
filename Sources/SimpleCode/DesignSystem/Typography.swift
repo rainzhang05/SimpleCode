@@ -6,6 +6,8 @@ enum Typography {
     static let minimumEditorFontSize: CGFloat = 9
     static let maximumEditorFontSize: CGFloat = 36
     static let systemMonospacedFamilyName = ".AppleSystemUIFontMonospaced"
+    /// Preferred editor face when installed; falls back via `FontCatalog` if missing.
+    static let defaultEditorFontFamily = "Maple Mono NF CN"
 
     static func editorFont(family: String, size: CGFloat, ligatures: Bool) -> NSFont {
         let resolvedFamily = FontCatalog.resolvedMonospacedFamily(family)
