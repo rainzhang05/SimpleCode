@@ -80,8 +80,11 @@ struct WorkspaceView: View {
             get: { workspace.errorAlertMessage != nil },
             set: { if !$0 { workspace.errorAlertMessage = nil; workspace.pendingDeleteURL = nil } }
         )) {
-            if workspace.pendingDeleteURL != nil {
-                Button("Move to Trash", role: .destructive) { Task { await workspace.confirmDelete() } }
+            if let pendingDeleteURL = workspace.pendingDeleteURL {
+                Button("Move to Trash", role: .destructive) {
+                    workspace.pendingDeleteURL = nil
+                    Task { await workspace.confirmDelete(url: pendingDeleteURL) }
+                }
                 Button("Cancel", role: .cancel) { workspace.pendingDeleteURL = nil }
             } else {
                 Button("OK", role: .cancel) {}

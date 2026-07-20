@@ -357,6 +357,10 @@ final class WorkspaceModel {
     func confirmDelete() async {
         guard let url = pendingDeleteURL else { return }
         pendingDeleteURL = nil
+        await confirmDelete(url: url)
+    }
+
+    func confirmDelete(url: URL) async {
         do {
             _ = try await fileOperations.trash(item: url)
             if let session = openDocuments.session(for: url) {
