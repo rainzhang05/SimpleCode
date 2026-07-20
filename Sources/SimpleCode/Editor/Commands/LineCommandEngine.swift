@@ -37,14 +37,14 @@ enum LineCommandEngine {
         selection: NSRange
     ) -> EditorCommandResult? {
         let lines = EditorTextSupport.affectedLineRanges(for: selection, in: text)
-        guard let first = lines.first else { return nil }
+        guard let first = lines.first, let last = lines.last else { return nil }
         guard first.location > 0 else { return nil }
 
         let ns = EditorTextSupport.nsString(text)
         let prevLine = ns.lineRange(for: NSRange(location: first.location - 1, length: 0))
         let block = ns.substring(with: NSRange(
             location: first.location,
-            length: lines.last!.location + lines.last!.length - first.location
+            length: last.location + last.length - first.location
         ))
         let prevText = ns.substring(with: prevLine)
 
@@ -63,13 +63,12 @@ enum LineCommandEngine {
         selection: NSRange
     ) -> EditorCommandResult? {
         let lines = EditorTextSupport.affectedLineRanges(for: selection, in: text)
-        guard let last = lines.last else { return nil }
+        guard let first = lines.first, let last = lines.last else { return nil }
         let ns = EditorTextSupport.nsString(text)
         let blockEnd = last.location + last.length
         guard blockEnd < ns.length else { return nil }
 
         let nextLine = ns.lineRange(for: NSRange(location: blockEnd, length: 0))
-        let first = lines.first!
         let block = ns.substring(with: NSRange(
             location: first.location,
             length: blockEnd - first.location
